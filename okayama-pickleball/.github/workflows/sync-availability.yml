@@ -1,0 +1,30 @@
+name: Sync Court Availability
+
+on:
+  schedule:
+    # Runs at minute 0 of every hour from 10:00 to 22:00 JST (01:00 to 13:00 UTC)
+    - cron: '0 1-13 * * *'
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies and Playwright browser
+        run: |
+          npm ci
+          npx playwright install chromium --with-deps
+
+      - name: Run availability scraper
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/scrape-availability.js
