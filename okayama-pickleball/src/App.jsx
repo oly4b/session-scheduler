@@ -613,8 +613,7 @@ export default function App() {
 
     lines.push(
       `👥 Total Voted: ${votes.length} players`,
-      '👟 Clean indoor shoes required (室内履き必須)',
-      '🏓 Beginner paddles available!'
+      '👟 Clean indoor shoes required (室内履き必須)'
     );
     return lines.join('\n');
   }, [rankedTopSlots, votes.length]);
