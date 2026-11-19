@@ -12,11 +12,17 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const ALLOWED_COURTS = new Set(['1/2面A', '1/2面B']);
+const ALLOWED_START_HOURS = new Set([12, 13, 14, 15, 16, 17, 18, 19, 20]);
 
 function getJstDateString(offsetDays = 0) {
   const now = new Date();
   const jstTime = new Date(now.getTime() + 9 * 60 * 60 * 1000 + offsetDays * 86400000);
   return jstTime.toISOString().slice(0, 10);
+}
+
+function getJstYear() {
+  const now = new Date();
+  return new Date(now.getTime() + 9 * 60 * 60 * 1000).getUTCFullYear();
 }
 
 function buildTargetUrl() {
@@ -33,41 +39,18 @@ function buildTargetUrl() {
   return `https://yoyacool.e-harp.jp/okayamacity/FacilityAvailability/Index/331007/0031?${params.toString()}`;
 }
 
-// Convert full-width ASCII (e.g., １／２面Ａ) to half-width (1/2面A)
-function normalizeText(str) {
-  return str
-    .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
-    .replace(/ /g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function extractTargetCourt(label) {
-  const normalized = normalizeText(label);
-  const match = normalized.match(/1\/2\s*面?\s*([AB])/i);
+function resolveDateKey(text) {
+  const match = text.match(/(\d{1,2})月(\d{1,2})日/);
   if (!match) return null;
-  const courtName = `1/2面${match[1].toUpperCase()}`;
-  return ALLOWED_COURTS.has(courtName) ? courtName : null;
-}
+  const month = Number(match[1]);
+  const day = Number(match[2]);
 
-function mapSymbolToStatus(text) {
-  const cleaned = text.replace(/\s+/g, '');
-  if (cleaned.includes('○') || cleaned.includes('〇') || cleaned.includes('空き')) return 'open';
-  if (cleaned.includes('△')) return 'partial';
-  if (cleaned.includes('休館') || cleaned.includes('保守')) return 'closed';
-  return 'booked';
-}
-// Split any multi-hour range (e.g. "09:00-11:00") into 1-hour blocks ("09:00-10:00", "10:00-11:00")
-function expandToHourlyRanges(startStr, endStr) {
-  const startHour = parseInt(startStr.split(':')[0], 10);
-  const endHour = parseInt(endStr.split(':')[0], 10);
-  const ranges = [];
-  for (let h = startHour; h < endHour; h++) {
-    const from = `${String(h).padStart(2, '0')}:00`;
-    const to = `${String(h + 1).padStart(2, '0')}:00`;
-    ranges.push(`${from}-${to}`);
-  }
-  return ranges.length > 0 ? ranges : [`${startStr}-${endStr}`];
+  const nowJst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const currentYear = getJstYear();
+  const currentMonth = nowJst.getUTCMonth() + 1;
+  const year = currentMonth === 12 && month === 1 ? currentYear + 1 : currentYear;
+
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 async function run() {
@@ -82,96 +65,111 @@ async function run() {
 
   try {
     await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
-    await page.waitForSelector('table', { timeout: 20000 });
-    await page.waitForTimeout(1500);
+    await page.waitForSelector('.AvailabilityFrameSet_frame', { timeout: 20000 });
+    await page.waitForTimeout(1000);
 
-    const rawGrid = await page.evaluate(() => {
-      const tables = Array.from(document.querySelectorAll('table'));
-      return tables.map((table) =>
-        Array.from(table.querySelectorAll('tr')).map((tr) =>
-          Array.from(tr.querySelectorAll('th, td')).map((cell) => ({
-            text: cell.innerText.trim(),
-            aria: cell.getAttribute('aria-label') || cell.getAttribute('title') || '',
-          }))
-        )
+    const parsedRows = await page.evaluate(() => {
+      const normalize = (s) =>
+        (s || '')
+          .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+          .replace(/ /g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+      const visibleTables = Array.from(document.querySelectorAll('table')).filter(
+        (t) => t.offsetParent !== null
       );
+
+      const targetTable =
+        visibleTables.find((t) => normalize(t.innerText).includes('サブアリーナ')) ||
+        visibleTables[0];
+
+      if (!targetTable) return [];
+
+      return Array.from(targetTable.querySelectorAll('tr')).map((tr) => {
+        const rowText = normalize(tr.innerText);
+        const cells = Array.from(tr.querySelectorAll('th, td'));
+        const frames = Array.from(tr.querySelectorAll('.AvailabilityFrameSet_frame')).map((el) =>
+          normalize(el.innerText)
+        );
+
+        return {
+          rowText,
+          firstCellText: cells[0] ? normalize(cells[0].innerText) : '',
+          frames,
+        };
+      });
     });
 
+    let currentCourt = null;
     const records = [];
 
-    for (const rows of rawGrid) {
-      if (rows.length < 2) continue;
+    for (const row of parsedRows) {
+      const hasDate = /\d{1,2}月\d{1,2}日/.test(row.firstCellText);
 
-      // Detect date columns from header rows
-      const dateHeaders = [];
-      for (const row of rows.slice(0, 3)) {
-        const matches = row.filter((c) => /\d{1,2}\/\d{1,2}|\d{1,2}日/.test(c.text));
-        if (matches.length >= 7) {
-          let dayOffset = 0;
-          for (const cell of row) {
-            if (/\d{1,2}\/\d{1,2}|\d{1,2}日/.test(cell.text)) {
-              dateHeaders.push({
-                slotDate: getJstDateString(dayOffset),
-              });
-              dayOffset += 1;
-            }
-          }
-          break;
+      // Section banner rows have "サブアリーナ" + court label, and NO date
+      if (!hasDate && row.rowText.includes('サブアリーナ')) {
+        const courtMatch = row.rowText.match(/1\/2\s*面?\s*([AB])/i);
+        if (courtMatch) {
+          currentCourt = `1/2面${courtMatch[1].toUpperCase()}`;
+        } else {
+          currentCourt = null; // e.g., 全面
         }
+        continue;
       }
 
-      if (dateHeaders.length === 0) continue;
+      if (!hasDate || !ALLOWED_COURTS.has(currentCourt)) continue;
 
-      let currentCourt = null;
+      const slotDate = resolveDateKey(row.firstCellText);
+      if (!slotDate || row.frames.length === 0) continue;
 
-      for (const row of rows) {
-        if (row.length <= dateHeaders.length) continue;
+      for (const frameText of row.frames) {
+        // Parse "12時から13時 ..."
+        const hourMatch = frameText.match(/(\d{1,2})時から(\d{1,2})時/);
+        if (!hourMatch) continue;
 
-        const labelCells = row.slice(0, row.length - dateHeaders.length);
-        const statusCells = row.slice(row.length - dateHeaders.length);
+        const startHour = Number(hourMatch[1]);
+        const endHour = Number(hourMatch[2]);
+        if (!ALLOWED_START_HOURS.has(startHour)) continue;
 
-        const rawRowLabel = labelCells.map((c) => c.text).filter(Boolean).join(' ');
-        const normalizedLabel = normalizeText(rawRowLabel);
-
-        // Update active court whenever a court section header appears (handles rowspan groups)
-        if (/全面|1\/2/.test(normalizedLabel)) {
-          currentCourt = extractTargetCourt(normalizedLabel); // null if 全面 or other section
+        let status = 'booked';
+        if (
+          frameText.includes('trip_origin') ||
+          frameText.includes('空き状況のみ') ||
+          frameText.includes('空きあり') ||
+          frameText.includes('○')
+        ) {
+          status = 'open';
+        } else if (
+          frameText.includes('hotel') ||
+          frameText.includes('休館') ||
+          frameText.includes('保守')
+        ) {
+          status = 'closed';
         }
 
-        // Skip rows outside 1/2面A and 1/2面B
-        if (!currentCourt) continue;
+        const timeRange = `${String(startHour).padStart(2, '0')}:00-${String(endHour).padStart(
+          2,
+          '0'
+        )}:00`;
+        const slotKey = `${slotDate}_${currentCourt}_${timeRange}`;
 
-        const timeMatch = normalizedLabel.match(/(\d{1,2}:\d{2})\s*[〜~\-－]\s*(\d{1,2}:\d{2})/);
-        if (!timeMatch) continue;
-        const timeRange = `${timeMatch[1]}-${timeMatch[2]}`;
-
-        statusCells.forEach((cell, idx) => {
-          const dateInfo = dateHeaders[idx];
-          if (!dateInfo) return;
-
-          const status = mapSymbolToStatus(`${cell.text} ${cell.aria}`);
-          const hourlyRanges = expandToHourlyRanges(timeMatch[1], timeMatch[2]);
-
-            for (const hourRange of hourlyRanges) {
-                const slotKey = `${dateInfo.slotDate}_${currentCourt}_${hourRange}`;
-                records.push({
-                slot_key: slotKey,
-                slot_date: dateInfo.slotDate,
-                time_range: hourRange,
-                court_detail: currentCourt,
-                status,
-                updated_at: new Date().toISOString(),
-                });
-            }
+        records.push({
+          slot_key: slotKey,
+          slot_date: slotDate,
+          time_range: timeRange,
+          court_detail: currentCourt,
+          status,
+          updated_at: new Date().toISOString(),
         });
       }
     }
 
-    console.log(`Parsed ${records.length} slots for 1/2面A and 1/2面B`);
+    console.log(`Parsed ${records.length} 1-hour slots (12:00–21:00) for 1/2面A & 1/2面B`);
 
     if (records.length === 0) {
-      console.warn('No 1/2面A or 1/2面B rows matched. First table snapshot:');
-      console.log(JSON.stringify(rawGrid[0]?.slice(0, 8), null, 2));
+      console.warn('0 records parsed. Sample rows:');
+      console.log(JSON.stringify(parsedRows.slice(0, 10), null, 2));
       process.exit(0);
     }
 

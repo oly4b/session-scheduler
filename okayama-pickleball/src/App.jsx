@@ -24,12 +24,9 @@ import {
 import { supabase } from './lib/supabase';
 
 // ============================================================================
-// 1-HOUR NON-OVERLAPPING TIME BLOCKS (瀬戸町総合運動公園体育館 サブアリーナ)
+// 1-HOUR NON-OVERLAPPING TIME BLOCKS (12:00 – 21:00)
 // ============================================================================
 const TIME_BLOCKS = [
-  { id: '09:00-10:00', label: '09:00–10:00', shortLabel: '09:00', isStudentPrime: false },
-  { id: '10:00-11:00', label: '10:00–11:00', shortLabel: '10:00', isStudentPrime: false },
-  { id: '11:00-12:00', label: '11:00–12:00', shortLabel: '11:00', isStudentPrime: false },
   { id: '12:00-13:00', label: '12:00–13:00', shortLabel: '12:00', isStudentPrime: false },
   { id: '13:00-14:00', label: '13:00–14:00', shortLabel: '13:00', isStudentPrime: false },
   { id: '14:00-15:00', label: '14:00–15:00', shortLabel: '14:00', isStudentPrime: false },
@@ -179,7 +176,7 @@ export default function App() {
 
       if (error || !data) return;
 
-      // Group by "YYYY-MM-DD_HH:00-HH:00" -> { A: 'open' | 'booked', B: 'open' | 'booked' }
+      // Group by "YYYY-MM-DD_HH:00-HH:00" -> { A: 'open' | 'booked' | 'closed', B: ... }
       const map = {};
       let latest = '';
       for (const row of data) {
@@ -258,7 +255,7 @@ export default function App() {
       if (info.A === 'closed' && info.B === 'closed') {
         return {
           text: '休館',
-          className: 'bg-slate-100 text-slate-500 border-slate-200'
+          className: 'bg-slate-200 text-slate-600 border-slate-300'
         };
       }
       return {
@@ -328,7 +325,7 @@ export default function App() {
             slots[block.id] = { status: 'booked' };
           }
         } else {
-          // Fallback before first scraper run: Tuesday is closed at Seto Gym
+          // Fallback before first scraper run: Tuesdays are closed at Seto Gym
           if (meta.dowIdx === 2) {
             closedCount = TIME_BLOCKS.length;
           } else {
@@ -458,6 +455,8 @@ export default function App() {
   // 5. INTERACTIVE CELL CYCLING & VOTER FORM ACTIONS
   // --------------------------------------------------------------------------
   const handleCycleSlot = (slotKey) => {
+    if (!slotTallies[slotKey]) return; // Ignore blocked/closed cells
+
     if (gridViewMode === 'heatmap') {
       setInspectSlot(slotTallies[slotKey]);
       return;
@@ -615,7 +614,7 @@ export default function App() {
     const lines = [
       '🏓 岡大dinks | 瀬戸町総合運動公園体育館',
       '🏟️ サブアリーナ 1/2面A・1/2面B (Sub-Arena Half-Court)',
-      '📅 日程調整 / 1-Hour Slot Poll:',
+      '📅 日程調整 / 1-Hour Slot Poll (12:00–21:00):',
       ''
     ];
 
@@ -694,10 +693,14 @@ export default function App() {
                   <span className="text-xs text-sky-200 font-medium">
                     岡大dinks
                   </span>
-                  {hasLiveAvailability && lastSyncedAt && (
+                  {hasLiveAvailability ? (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/10 text-[10px] text-lime-200 font-semibold">
                       <RefreshCw className="w-2.5 h-2.5" />
-                      yoyacool同期済: {lastSyncedAt}
+                      yoyacool同期済{lastSyncedAt ? `: ${lastSyncedAt}` : ''}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-400/20 text-[10px] text-amber-200 font-semibold">
+                      ※ 初回空き状況スクレイピング待機中
                     </span>
                   )}
                 </div>
@@ -915,7 +918,7 @@ export default function App() {
 
             <div className="text-center">
               <div className="inline-block px-2 py-0.5 rounded bg-rose-700 text-white text-[10px] font-extrabold tracking-wider mb-0.5">
-                1時間枠表示モード (1-Hour Blocks)
+                1時間枠表示モード (12:00–21:00)
               </div>
               <div className="text-sm sm:text-base font-extrabold tracking-tight text-white">
                 {currentWeek.rangeLabel}
@@ -1022,10 +1025,10 @@ export default function App() {
                 <span className="px-1.5 py-0.5 rounded bg-rose-50 border border-rose-200 text-rose-600 font-bold text-[10px]">
                   予約済
                 </span>
-                施設予約埋まり
+                施設予約埋まり (選択不可)
               </span>
               <span className="inline-flex items-center gap-1 text-slate-500">
-                <span className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-500 font-bold text-[10px] inline-flex items-center gap-0.5">
+                <span className="px-1.5 py-0.5 rounded bg-slate-200 border border-slate-300 text-slate-600 font-bold text-[10px] inline-flex items-center gap-0.5">
                   <BedDouble className="w-3 h-3" /> 休館
                 </span>
                 休館日
@@ -1042,13 +1045,13 @@ export default function App() {
             <table className="w-full border-collapse text-center">
               <thead>
                 <tr className="bg-[#eef3f8] border-b-2 border-slate-300 text-slate-800">
-                  <th className="sticky left-0 z-20 bg-[#dce5f0] py-2.5 px-2.5 min-w-[112px] sm:min-w-[132px] text-left text-xs font-extrabold text-[#1B365D] border-r-2 border-slate-300">
+                  <th className="sticky left-0 z-20 bg-[#dce5f0] py-2.5 px-2.5 min-w-[116px] sm:min-w-[136px] text-left text-xs font-extrabold text-[#1B365D] border-r-2 border-slate-300">
                     日付 / 曜日
                   </th>
                   {TIME_BLOCKS.map((block) => (
                     <th
                       key={block.id}
-                      className="py-2 px-1 min-w-[82px] sm:min-w-[96px] border-r border-slate-300 last:border-r-0"
+                      className="py-2 px-1.5 min-w-[92px] sm:min-w-[106px] border-r border-slate-300 last:border-r-0"
                     >
                       <div className="text-[11px] sm:text-xs font-extrabold text-[#1B365D]">
                         {block.label}
@@ -1065,17 +1068,18 @@ export default function App() {
 
               <tbody className="divide-y divide-slate-300">
                 {currentWeek.days.map((day) => {
+                  // Solid opaque backgrounds so horizontally scrolled cells never bleed behind sticky column
                   let dateTextColor = 'text-slate-900';
                   let dateBgColor = 'bg-[#f8fafc]';
                   if (day.dayType === 'saturday') {
                     dateTextColor = 'text-blue-700';
-                    dateBgColor = 'bg-blue-50/60';
+                    dateBgColor = 'bg-blue-50';
                   } else if (
                     day.dayType === 'sunday' ||
                     day.dayType === 'holiday'
                   ) {
                     dateTextColor = 'text-red-600';
-                    dateBgColor = 'bg-red-50/60';
+                    dateBgColor = 'bg-red-50';
                   }
 
                   return (
@@ -1113,12 +1117,12 @@ export default function App() {
                           return (
                             <td
                               key={block.id}
-                              className="bg-[#e5e7eb] py-2.5 px-1 align-middle select-none"
+                              className="bg-[#e5e7eb] py-2.5 px-1 align-middle select-none cursor-not-allowed"
                             >
                               <div className="flex flex-col items-center justify-center text-slate-400">
                                 <BedDouble className="w-4 h-4" />
                                 <span className="text-[10px] font-bold mt-0.5">
-                                  {badge ? badge.text : '休館'}
+                                  休館
                                 </span>
                               </div>
                             </td>
@@ -1131,7 +1135,7 @@ export default function App() {
                           return (
                             <td
                               key={block.id}
-                              className="bg-[#e5e7eb]/90 py-2.5 px-1 align-middle select-none"
+                              className="bg-[#e5e7eb] py-2.5 px-1 align-middle select-none cursor-not-allowed"
                             >
                               <div className="flex flex-col items-center justify-center gap-1 text-slate-400">
                                 <span className="text-sm font-extrabold leading-none">
@@ -1190,7 +1194,7 @@ export default function App() {
                         return (
                           <td
                             key={block.id}
-                            className={`p-1 align-middle transition ${heatmapBg} ${
+                            className={`p-1.5 align-middle transition ${heatmapBg} ${
                               isDimmedByFilter ? 'opacity-35' : ''
                             } ${
                               tally.isTopPick
