@@ -188,6 +188,17 @@ async function run() {
       process.exit(0);
     }
 
+    // 1. Remove past dates so the table stays capped at ~252 rows
+    const { error: deleteError } = await supabase
+      .from('court_availability')
+      .delete()
+      .lt('slot_date', getJstDateString(0));
+
+    if (deleteError) {
+      console.error('Supabase prune error:', deleteError);
+    }
+
+    // 2. Upsert the current 14-day window
     const { error } = await supabase
       .from('court_availability')
       .upsert(records, { onConflict: 'slot_key' });
