@@ -61,14 +61,25 @@ async function run() {
   const page = await browser.newPage({
     locale: 'ja-JP',
     timezoneId: 'Asia/Tokyo',
+    viewport: { width: 1440, height: 2400 },
   });
 
   try {
     await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
     await page.waitForSelector('.AvailabilityFrameSet_frame', { timeout: 20000 });
+
+    // Scroll down in steps to force any virtual/lazy-rendered rows (e.g. 12/03 & 1/2面B) to mount
+    await page.evaluate(async () => {
+      for (let y = 0; y <= document.body.scrollHeight; y += 600) {
+        window.scrollTo(0, y);
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      window.scrollTo(0, 0);
+    });
     await page.waitForTimeout(1000);
 
-    const parsedRows = await page.evaluate(() => {
+    // Collect rows from ALL visible availability tables on the page
+    const allTablesRows = await page.evaluate(() => {
       const normalize = (s) =>
         (s || '')
           .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
@@ -77,99 +88,103 @@ async function run() {
           .trim();
 
       const visibleTables = Array.from(document.querySelectorAll('table')).filter(
-        (t) => t.offsetParent !== null
+        (t) => t.offsetParent !== null && normalize(t.innerText).includes('サブアリーナ')
       );
 
-      const targetTable =
-        visibleTables.find((t) => normalize(t.innerText).includes('サブアリーナ')) ||
-        visibleTables[0];
+      return visibleTables.map((table) =>
+        Array.from(table.querySelectorAll('tr')).map((tr) => {
+          const rowText = normalize(tr.innerText);
+          const cells = Array.from(tr.querySelectorAll('th, td'));
+          const frames = Array.from(tr.querySelectorAll('.AvailabilityFrameSet_frame')).map((el) =>
+            normalize(el.innerText)
+          );
 
-      if (!targetTable) return [];
-
-      return Array.from(targetTable.querySelectorAll('tr')).map((tr) => {
-        const rowText = normalize(tr.innerText);
-        const cells = Array.from(tr.querySelectorAll('th, td'));
-        const frames = Array.from(tr.querySelectorAll('.AvailabilityFrameSet_frame')).map((el) =>
-          normalize(el.innerText)
-        );
-
-        return {
-          rowText,
-          firstCellText: cells[0] ? normalize(cells[0].innerText) : '',
-          frames,
-        };
-      });
+          return {
+            rowText,
+            firstCellText: cells[0] ? normalize(cells[0].innerText) : '',
+            frames,
+          };
+        })
+      );
     });
 
-    let currentCourt = null;
-    const records = [];
+    const recordsMap = new Map();
 
-    for (const row of parsedRows) {
-      const hasDate = /\d{1,2}月\d{1,2}日/.test(row.firstCellText);
+    for (const tableRows of allTablesRows) {
+      let currentCourt = null;
 
-      // Section banner rows have "サブアリーナ" + court label, and NO date
-      if (!hasDate && row.rowText.includes('サブアリーナ')) {
-        const courtMatch = row.rowText.match(/1\/2\s*面?\s*([AB])/i);
-        if (courtMatch) {
-          currentCourt = `1/2面${courtMatch[1].toUpperCase()}`;
-        } else {
-          currentCourt = null; // e.g., 全面
-        }
-        continue;
-      }
+      for (const row of tableRows) {
+        const hasDate = /\d{1,2}月\d{1,2}日/.test(row.firstCellText);
 
-      if (!hasDate || !ALLOWED_COURTS.has(currentCourt)) continue;
-
-      const slotDate = resolveDateKey(row.firstCellText);
-      if (!slotDate || row.frames.length === 0) continue;
-
-      for (const frameText of row.frames) {
-        // Parse "12時から13時 ..."
-        const hourMatch = frameText.match(/(\d{1,2})時から(\d{1,2})時/);
-        if (!hourMatch) continue;
-
-        const startHour = Number(hourMatch[1]);
-        const endHour = Number(hourMatch[2]);
-        if (!ALLOWED_START_HOURS.has(startHour)) continue;
-
-        let status = 'booked';
-        if (
-          frameText.includes('trip_origin') ||
-          frameText.includes('空き状況のみ') ||
-          frameText.includes('空きあり') ||
-          frameText.includes('○')
-        ) {
-          status = 'open';
-        } else if (
-          frameText.includes('hotel') ||
-          frameText.includes('休館') ||
-          frameText.includes('保守')
-        ) {
-          status = 'closed';
+        // Section banner rows have "サブアリーナ" + court label, and NO date
+        if (!hasDate && row.rowText.includes('サブアリーナ')) {
+          const courtMatch = row.rowText.match(/1\/2\s*面?\s*([AB])/i);
+          if (courtMatch) {
+            currentCourt = `1/2面${courtMatch[1].toUpperCase()}`;
+          } else {
+            currentCourt = null;
+          }
+          continue;
         }
 
-        const timeRange = `${String(startHour).padStart(2, '0')}:00-${String(endHour).padStart(
-          2,
-          '0'
-        )}:00`;
-        const slotKey = `${slotDate}_${currentCourt}_${timeRange}`;
+        if (!hasDate || !ALLOWED_COURTS.has(currentCourt)) continue;
 
-        records.push({
-          slot_key: slotKey,
-          slot_date: slotDate,
-          time_range: timeRange,
-          court_detail: currentCourt,
-          status,
-          updated_at: new Date().toISOString(),
-        });
+        const slotDate = resolveDateKey(row.firstCellText);
+        if (!slotDate || row.frames.length === 0) continue;
+
+        for (const frameText of row.frames) {
+          const hourMatch = frameText.match(/(\d{1,2})時から(\d{1,2})時/);
+          if (!hourMatch) continue;
+
+          const startHour = Number(hourMatch[1]);
+          const endHour = Number(hourMatch[2]);
+          if (!ALLOWED_START_HOURS.has(startHour)) continue;
+
+          let status = 'booked';
+          if (
+            frameText.includes('trip_origin') ||
+            frameText.includes('空き状況のみ') ||
+            frameText.includes('空きあり') ||
+            frameText.includes('○')
+          ) {
+            status = 'open';
+          } else if (
+            frameText.includes('hotel') ||
+            frameText.includes('休館') ||
+            frameText.includes('保守')
+          ) {
+            status = 'closed';
+          }
+
+          const timeRange = `${String(startHour).padStart(2, '0')}:00-${String(endHour).padStart(
+            2,
+            '0'
+          )}:00`;
+          const slotKey = `${slotDate}_${currentCourt}_${timeRange}`;
+
+          recordsMap.set(slotKey, {
+            slot_key: slotKey,
+            slot_date: slotDate,
+            time_range: timeRange,
+            court_detail: currentCourt,
+            status,
+            updated_at: new Date().toISOString(),
+          });
+        }
       }
     }
 
-    console.log(`Parsed ${records.length} 1-hour slots (12:00–21:00) for 1/2面A & 1/2面B`);
+    const records = Array.from(recordsMap.values());
+    const courtCounts = records.reduce((acc, r) => {
+      acc[r.court_detail] = (acc[r.court_detail] || 0) + 1;
+      return acc;
+    }, {});
+    const uniqueDates = [...new Set(records.map((r) => r.slot_date))].sort();
+
+    console.log(`Parsed ${records.length} total slots:`, courtCounts);
+    console.log(`Dates scraped (${uniqueDates.length}): ${uniqueDates.join(', ')}`);
 
     if (records.length === 0) {
-      console.warn('0 records parsed. Sample rows:');
-      console.log(JSON.stringify(parsedRows.slice(0, 10), null, 2));
       process.exit(0);
     }
 
