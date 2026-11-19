@@ -18,261 +18,74 @@ import {
   BedDouble,
   Eye,
   Sparkles,
-  Grid
+  Grid,
+  RefreshCw
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
 // ============================================================================
-// MUNICIPAL GYM RESERVATION MATRIX DATA (瀬戸町総合運動公園体育館 サブアリーナ 1/2面)
-// Exact availability mapped from yoyacool.e-harp.jp (Nov 20 – Dec 3, 2026)
+// 1-HOUR NON-OVERLAPPING TIME BLOCKS (瀬戸町総合運動公園体育館 サブアリーナ)
 // ============================================================================
 const TIME_BLOCKS = [
-  { id: '13-15', label: '13:00–15:00', shortLabel: '13:00~', isStudentPrime: false },
-  { id: '14-16', label: '14:00–16:00', shortLabel: '14:00~', isStudentPrime: false },
-  { id: '15-17', label: '15:00–17:00', shortLabel: '15:00~', isStudentPrime: false },
-  { id: '16-18', label: '16:00–18:00', shortLabel: '16:00~', isStudentPrime: false },
-  { id: '18-20', label: '18:00–20:00', shortLabel: '18:00~', isStudentPrime: true },
-  { id: '19-21', label: '19:00–21:00', shortLabel: '19:00~', isStudentPrime: true }
+  { id: '09:00-10:00', label: '09:00–10:00', shortLabel: '09:00', isStudentPrime: false },
+  { id: '10:00-11:00', label: '10:00–11:00', shortLabel: '10:00', isStudentPrime: false },
+  { id: '11:00-12:00', label: '11:00–12:00', shortLabel: '11:00', isStudentPrime: false },
+  { id: '12:00-13:00', label: '12:00–13:00', shortLabel: '12:00', isStudentPrime: false },
+  { id: '13:00-14:00', label: '13:00–14:00', shortLabel: '13:00', isStudentPrime: false },
+  { id: '14:00-15:00', label: '14:00–15:00', shortLabel: '14:00', isStudentPrime: false },
+  { id: '15:00-16:00', label: '15:00–16:00', shortLabel: '15:00', isStudentPrime: false },
+  { id: '16:00-17:00', label: '16:00–17:00', shortLabel: '16:00', isStudentPrime: false },
+  { id: '17:00-18:00', label: '17:00–18:00', shortLabel: '17:00', isStudentPrime: false },
+  { id: '18:00-19:00', label: '18:00–19:00', shortLabel: '18:00', isStudentPrime: true },
+  { id: '19:00-20:00', label: '19:00–20:00', shortLabel: '19:00', isStudentPrime: true },
+  { id: '20:00-21:00', label: '20:00–21:00', shortLabel: '20:00', isStudentPrime: true }
 ];
 
-const CALENDAR_WEEKS = [
-  {
-    id: 'week1',
-    shortTitle: 'Week 1: 11/20–11/26',
-    rangeLabel: '2026年 11月20日(金) 〜 11月26日(木)',
-    days: [
-      {
-        dateKey: '2026-11-20',
-        jpDate: '11月20日',
-        dow: '金',
-        dayType: 'weekday',
-        closed: false,
-        slots: {
-          '13-15': { status: 'open', court: '1/2B' },
-          '14-16': { status: 'open', court: '1/2B' },
-          '15-17': { status: 'open', court: '1/2A & 1/2B' },
-          '16-18': { status: 'open', court: '1/2A & 1/2B' },
-          '18-20': { status: 'booked' },
-          '19-21': { status: 'booked' }
-        }
-      },
-      {
-        dateKey: '2026-11-21',
-        jpDate: '11月21日',
-        dow: '土',
-        dayType: 'saturday',
-        closed: false,
-        slots: {
-          '13-15': { status: 'booked' },
-          '14-16': { status: 'booked' },
-          '15-17': { status: 'booked' },
-          '16-18': { status: 'booked' },
-          '18-20': { status: 'booked' },
-          '19-21': { status: 'open', court: '1/2A & 1/2B', studentPrime: true }
-        }
-      },
-      {
-        dateKey: '2026-11-22',
-        jpDate: '11月22日',
-        dow: '日',
-        dayType: 'sunday',
-        closed: false,
-        slots: {
-          '13-15': { status: 'booked' },
-          '14-16': { status: 'booked' },
-          '15-17': { status: 'booked' },
-          '16-18': { status: 'booked' },
-          '18-20': { status: 'booked' },
-          '19-21': { status: 'booked' }
-        }
-      },
-      {
-        dateKey: '2026-11-23',
-        jpDate: '11月23日',
-        dow: '月',
-        holiday: '祝',
-        dayType: 'holiday',
-        closed: false,
-        slots: {
-          '13-15': { status: 'open', court: '1/2A & 1/2B', studentPrime: true },
-          '14-16': { status: 'open', court: '1/2A & 1/2B', studentPrime: true },
-          '15-17': { status: 'open', court: '1/2A & 1/2B', studentPrime: true },
-          '16-18': { status: 'open', court: '1/2A & 1/2B', studentPrime: true },
-          '18-20': { status: 'open', court: '1/2A & 1/2B', studentPrime: true },
-          '19-21': { status: 'open', court: '1/2A & 1/2B', studentPrime: true }
-        }
-      },
-      {
-        dateKey: '2026-11-24',
-        jpDate: '11月24日',
-        dow: '火',
-        dayType: 'weekday',
-        closed: true,
-        slots: {}
-      },
-      {
-        dateKey: '2026-11-25',
-        jpDate: '11月25日',
-        dow: '水',
-        dayType: 'weekday',
-        closed: false,
-        slots: {
-          '13-15': { status: 'booked' },
-          '14-16': { status: 'booked' },
-          '15-17': { status: 'booked' },
-          '16-18': { status: 'open', court: '1/2A & 1/2B' },
-          '18-20': { status: 'open', court: '1/2A', studentPrime: true },
-          '19-21': { status: 'open', court: '1/2A', studentPrime: true }
-        }
-      },
-      {
-        dateKey: '2026-11-26',
-        jpDate: '11月26日',
-        dow: '木',
-        dayType: 'weekday',
-        closed: false,
-        slots: {
-          '13-15': { status: 'open', court: '1/2A & 1/2B' },
-          '14-16': { status: 'open', court: '1/2A & 1/2B' },
-          '15-17': { status: 'open', court: '1/2A & 1/2B' },
-          '16-18': { status: 'open', court: '1/2A & 1/2B' },
-          '18-20': { status: 'open', court: '1/2A & 1/2B', studentPrime: true },
-          '19-21': { status: 'open', court: '1/2A & 1/2B', studentPrime: true }
-        }
-      }
-    ]
-  },
-  {
-    id: 'week2',
-    shortTitle: 'Week 2: 11/27–12/03',
-    rangeLabel: '2026年 11月27日(金) 〜 12月3日(木)',
-    days: [
-      {
-        dateKey: '2026-11-27',
-        jpDate: '11月27日',
-        dow: '金',
-        dayType: 'weekday',
-        closed: false,
-        slots: {
-          '13-15': { status: 'open', court: '1/2A & 1/2B' },
-          '14-16': { status: 'open', court: '1/2A & 1/2B' },
-          '15-17': { status: 'open', court: '1/2A & 1/2B' },
-          '16-18': { status: 'open', court: '1/2A & 1/2B' },
-          '18-20': { status: 'booked' },
-          '19-21': { status: 'booked' }
-        }
-      },
-      {
-        dateKey: '2026-11-28',
-        jpDate: '11月28日',
-        dow: '土',
-        dayType: 'saturday',
-        closed: false,
-        slots: {
-          '13-15': { status: 'open', court: '1/2A & 1/2B', studentPrime: true },
-          '14-16': { status: 'open', court: '1/2A & 1/2B', studentPrime: true },
-          '15-17': { status: 'open', court: '1/2A & 1/2B', studentPrime: true },
-          '16-18': { status: 'open', court: '1/2A & 1/2B', studentPrime: true },
-          '18-20': { status: 'open', court: '1/2A & 1/2B', studentPrime: true },
-          '19-21': { status: 'open', court: '1/2A & 1/2B', studentPrime: true }
-        }
-      },
-      {
-        dateKey: '2026-11-29',
-        jpDate: '11月29日',
-        dow: '日',
-        dayType: 'sunday',
-        closed: false,
-        slots: {
-          '13-15': { status: 'booked' },
-          '14-16': { status: 'booked' },
-          '15-17': { status: 'booked' },
-          '16-18': { status: 'booked' },
-          '18-20': { status: 'open', court: '1/2A & 1/2B', studentPrime: true },
-          '19-21': { status: 'open', court: '1/2A & 1/2B', studentPrime: true }
-        }
-      },
-      {
-        dateKey: '2026-11-30',
-        jpDate: '11月30日',
-        dow: '月',
-        dayType: 'weekday',
-        closed: true,
-        slots: {}
-      },
-      {
-        dateKey: '2026-12-01',
-        jpDate: '12月1日',
-        dow: '火',
-        dayType: 'weekday',
-        closed: false,
-        slots: {
-          '13-15': { status: 'open', court: '1/2A & 1/2B' },
-          '14-16': { status: 'open', court: '1/2A & 1/2B' },
-          '15-17': { status: 'open', court: '1/2A & 1/2B' },
-          '16-18': { status: 'open', court: '1/2A & 1/2B' },
-          '18-20': { status: 'booked' },
-          '19-21': { status: 'booked' }
-        }
-      },
-      {
-        dateKey: '2026-12-02',
-        jpDate: '12月2日',
-        dow: '水',
-        dayType: 'weekday',
-        closed: false,
-        slots: {
-          '13-15': { status: 'booked' },
-          '14-16': { status: 'booked' },
-          '15-17': { status: 'booked' },
-          '16-18': { status: 'open', court: '1/2A & 1/2B' },
-          '18-20': { status: 'open', court: '1/2B', studentPrime: true },
-          '19-21': { status: 'open', court: '1/2B', studentPrime: true }
-        }
-      },
-      {
-        dateKey: '2026-12-03',
-        jpDate: '12月3日',
-        dow: '木',
-        dayType: 'weekday',
-        closed: false,
-        slots: {
-          '13-15': { status: 'open', court: '1/2A & 1/2B' },
-          '14-16': { status: 'open', court: '1/2A & 1/2B' },
-          '15-17': { status: 'open', court: '1/2A & 1/2B' },
-          '16-18': { status: 'open', court: '1/2A & 1/2B' },
-          '18-20': { status: 'open', court: '1/2A & 1/2B', studentPrime: true },
-          '19-21': { status: 'open', court: '1/2A & 1/2B', studentPrime: true }
-        }
-      }
-    ]
-  }
-];
+const JP_DOW = ['日', '月', '火', '水', '木', '金', '土'];
 
-const ALL_OPEN_SLOTS = [];
-CALENDAR_WEEKS.forEach((week, weekIndex) => {
-  week.days.forEach((day) => {
-    if (day.closed) return;
-    TIME_BLOCKS.forEach((block) => {
-      const cell = day.slots[block.id];
-      if (cell && cell.status === 'open') {
-        ALL_OPEN_SLOTS.push({
-          slotKey: `${day.dateKey}_${block.id}`,
-          weekIndex,
-          dateKey: day.dateKey,
-          jpDate: day.jpDate,
-          dow: day.dow,
-          holiday: day.holiday || '',
-          dayType: day.dayType,
-          blockId: block.id,
-          timeLabel: block.label,
-          court: cell.court,
-          studentPrime: Boolean(cell.studentPrime)
-        });
-      }
-    });
-  });
-});
+const JP_HOLIDAYS = new Set([
+  '2026-11-23',
+  '2027-01-01',
+  '2027-01-11',
+  '2027-02-11',
+  '2027-02-23',
+  '2027-03-21',
+  '2027-03-22',
+  '2027-04-29',
+  '2027-05-03',
+  '2027-05-04',
+  '2027-05-05'
+]);
+
+function getJstDayMeta(offsetDays) {
+  const now = new Date();
+  const jstMs = now.getTime() + 9 * 60 * 60 * 1000 + offsetDays * 86400000;
+  const d = new Date(jstMs);
+  const year = d.getUTCFullYear();
+  const month = d.getUTCMonth() + 1;
+  const day = d.getUTCDate();
+  const dowIdx = d.getUTCDay();
+  const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const isHoliday = JP_HOLIDAYS.has(dateKey);
+
+  let dayType = 'weekday';
+  if (isHoliday) dayType = 'holiday';
+  else if (dowIdx === 6) dayType = 'saturday';
+  else if (dowIdx === 0) dayType = 'sunday';
+
+  return {
+    dateKey,
+    year,
+    month,
+    day,
+    jpDate: `${month}月${day}日`,
+    shortDate: `${month}/${day}`,
+    dow: JP_DOW[dowIdx],
+    dowIdx,
+    holiday: isHoliday ? '祝' : '',
+    dayType
+  };
+}
 
 function PickleballIcon({ className = 'w-7 h-7' }) {
   return (
@@ -307,6 +120,8 @@ export default function App() {
   const [loadingVotes, setLoadingVotes] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [votes, setVotes] = useState([]);
+  const [courtAvailability, setCourtAvailability] = useState({});
+  const [lastSyncedAt, setLastSyncedAt] = useState('');
 
   // Week Navigation & Grid Display Modes
   const [activeWeekIdx, setActiveWeekIdx] = useState(0);
@@ -337,7 +152,7 @@ export default function App() {
   };
 
   // --------------------------------------------------------------------------
-  // 1. FETCH VOTES FROM SUPABASE & SUBSCRIBE TO REALTIME UPDATES
+  // 1. FETCH VOTES & LIVE COURT AVAILABILITY FROM SUPABASE
   // --------------------------------------------------------------------------
   const fetchVotes = useCallback(async () => {
     const { data, error } = await supabase
@@ -356,7 +171,44 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    async function fetchAvailability() {
+      const { data, error } = await supabase
+        .from('court_availability')
+        .select('slot_date, time_range, court_detail, status, updated_at')
+        .in('court_detail', ['1/2面A', '1/2面B']);
+
+      if (error || !data) return;
+
+      // Group by "YYYY-MM-DD_HH:00-HH:00" -> { A: 'open' | 'booked', B: 'open' | 'booked' }
+      const map = {};
+      let latest = '';
+      for (const row of data) {
+        const key = `${row.slot_date}_${row.time_range}`;
+        if (!map[key]) map[key] = {};
+        if (row.court_detail === '1/2面A') map[key].A = row.status;
+        if (row.court_detail === '1/2面B') map[key].B = row.status;
+        if (row.updated_at && row.updated_at > latest) {
+          latest = row.updated_at;
+        }
+      }
+      setCourtAvailability(map);
+
+      if (latest) {
+        const dt = new Date(latest);
+        setLastSyncedAt(
+          dt.toLocaleString('ja-JP', {
+            timeZone: 'Asia/Tokyo',
+            month: 'numeric',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        );
+      }
+    }
+
     fetchVotes();
+    fetchAvailability();
 
     const channel = supabase
       .channel('calendar-votes-realtime')
@@ -375,13 +227,188 @@ export default function App() {
   }, [fetchVotes]);
 
   // --------------------------------------------------------------------------
-  // 2. GROUP TALLY & TOP RANKED SLOTS COMPUTATION
+  // 2. COURT AVAILABILITY BADGE HELPER (1/2面A & 1/2面B)
+  // --------------------------------------------------------------------------
+  const getCourtBadge = useCallback(
+    (dateStr, slotId) => {
+      const info = courtAvailability[`${dateStr}_${slotId}`];
+      if (!info) return null;
+
+      const aOpen = info.A === 'open';
+      const bOpen = info.B === 'open';
+
+      if (aOpen && bOpen) {
+        return {
+          text: '1/2A・B 空き',
+          className: 'bg-lime-100 text-lime-800 border-lime-300'
+        };
+      }
+      if (aOpen) {
+        return {
+          text: '1/2A 空き',
+          className: 'bg-emerald-50 text-emerald-700 border-emerald-200'
+        };
+      }
+      if (bOpen) {
+        return {
+          text: '1/2B 空き',
+          className: 'bg-emerald-50 text-emerald-700 border-emerald-200'
+        };
+      }
+      if (info.A === 'closed' && info.B === 'closed') {
+        return {
+          text: '休館',
+          className: 'bg-slate-100 text-slate-500 border-slate-200'
+        };
+      }
+      return {
+        text: '予約済',
+        className: 'bg-rose-50 text-rose-600 border-rose-200'
+      };
+    },
+    [courtAvailability]
+  );
+
+  // --------------------------------------------------------------------------
+  // 3. BUILD ROLLING 14-DAY CALENDAR FROM LIVE SUPABASE AVAILABILITY
+  // --------------------------------------------------------------------------
+  const { calendarWeeks, allOpenSlots, hasLiveAvailability } = useMemo(() => {
+    const hasLive = Object.keys(courtAvailability).length > 0;
+    const days = [];
+
+    for (let offset = 0; offset < 14; offset += 1) {
+      const meta = getJstDayMeta(offset);
+      const isWeekendOrHoliday =
+        meta.dayType === 'saturday' ||
+        meta.dayType === 'sunday' ||
+        meta.dayType === 'holiday';
+
+      const slots = {};
+      let closedCount = 0;
+
+      TIME_BLOCKS.forEach((block) => {
+        const key = `${meta.dateKey}_${block.id}`;
+        const studentPrime = isWeekendOrHoliday || block.isStudentPrime;
+
+        if (hasLive) {
+          const info = courtAvailability[key];
+          if (!info) {
+            slots[block.id] = { status: 'booked' };
+            return;
+          }
+
+          if (info.A === 'closed' && info.B === 'closed') {
+            slots[block.id] = { status: 'closed' };
+            closedCount += 1;
+            return;
+          }
+
+          const aOpen = info.A === 'open';
+          const bOpen = info.B === 'open';
+
+          if (aOpen && bOpen) {
+            slots[block.id] = {
+              status: 'open',
+              court: '1/2A & 1/2B',
+              studentPrime
+            };
+          } else if (aOpen) {
+            slots[block.id] = {
+              status: 'open',
+              court: '1/2A',
+              studentPrime
+            };
+          } else if (bOpen) {
+            slots[block.id] = {
+              status: 'open',
+              court: '1/2B',
+              studentPrime
+            };
+          } else {
+            slots[block.id] = { status: 'booked' };
+          }
+        } else {
+          // Fallback before first scraper run: Tuesday is closed at Seto Gym
+          if (meta.dowIdx === 2) {
+            closedCount = TIME_BLOCKS.length;
+          } else {
+            slots[block.id] = {
+              status: 'open',
+              court: '1/2A & 1/2B',
+              studentPrime
+            };
+          }
+        }
+      });
+
+      const isDayClosed =
+        closedCount === TIME_BLOCKS.length || (!hasLive && meta.dowIdx === 2);
+
+      days.push({
+        ...meta,
+        closed: isDayClosed,
+        slots: isDayClosed ? {} : slots
+      });
+    }
+
+    const week1Days = days.slice(0, 7);
+    const week2Days = days.slice(7, 14);
+
+    const weeks = [
+      {
+        id: 'week1',
+        shortTitle: `Week 1: ${week1Days[0].shortDate}–${week1Days[6].shortDate}`,
+        rangeLabel: `${week1Days[0].year}年 ${week1Days[0].jpDate}(${week1Days[0].dow}) 〜 ${week1Days[6].jpDate}(${week1Days[6].dow})`,
+        days: week1Days
+      },
+      {
+        id: 'week2',
+        shortTitle: `Week 2: ${week2Days[0].shortDate}–${week2Days[6].shortDate}`,
+        rangeLabel: `${week2Days[0].year}年 ${week2Days[0].jpDate}(${week2Days[0].dow}) 〜 ${week2Days[6].jpDate}(${week2Days[6].dow})`,
+        days: week2Days
+      }
+    ];
+
+    const openSlots = [];
+    weeks.forEach((week, weekIndex) => {
+      week.days.forEach((day) => {
+        if (day.closed) return;
+        TIME_BLOCKS.forEach((block) => {
+          const cell = day.slots[block.id];
+          if (cell && cell.status === 'open') {
+            openSlots.push({
+              slotKey: `${day.dateKey}_${block.id}`,
+              weekIndex,
+              dateKey: day.dateKey,
+              jpDate: day.jpDate,
+              dow: day.dow,
+              holiday: day.holiday || '',
+              dayType: day.dayType,
+              blockId: block.id,
+              timeLabel: block.label,
+              court: cell.court,
+              studentPrime: Boolean(cell.studentPrime)
+            });
+          }
+        });
+      });
+    });
+
+    return {
+      calendarWeeks: weeks,
+      allOpenSlots: openSlots,
+      hasLiveAvailability: hasLive
+    };
+  }, [courtAvailability]);
+
+  // --------------------------------------------------------------------------
+  // 4. GROUP TALLY & TOP RANKED SLOTS COMPUTATION
   // --------------------------------------------------------------------------
   const slotTallies = useMemo(() => {
     const tallyMap = {};
     let bestScore = 0;
 
-    ALL_OPEN_SLOTS.forEach((slot) => {
+    allOpenSlots.forEach((slot) => {
       const yesPlayers = [];
       const maybePlayers = [];
       const noPlayers = [];
@@ -412,13 +439,13 @@ export default function App() {
       };
     });
 
-    ALL_OPEN_SLOTS.forEach((slot) => {
+    allOpenSlots.forEach((slot) => {
       tallyMap[slot.slotKey].isTopPick =
         bestScore > 0 && tallyMap[slot.slotKey].score === bestScore;
     });
 
     return tallyMap;
-  }, [votes]);
+  }, [allOpenSlots, votes]);
 
   const rankedTopSlots = useMemo(() => {
     return Object.values(slotTallies)
@@ -428,7 +455,7 @@ export default function App() {
   }, [slotTallies]);
 
   // --------------------------------------------------------------------------
-  // 3. INTERACTIVE CELL CYCLING & VOTER FORM ACTIONS
+  // 5. INTERACTIVE CELL CYCLING & VOTER FORM ACTIONS
   // --------------------------------------------------------------------------
   const handleCycleSlot = (slotKey) => {
     if (gridViewMode === 'heatmap') {
@@ -448,7 +475,7 @@ export default function App() {
   };
 
   const handleQuickFillWeek = (val) => {
-    const currentWeek = CALENDAR_WEEKS[activeWeekIdx];
+    const currentWeek = calendarWeeks[activeWeekIdx];
     setResponses((prev) => {
       const next = { ...prev };
       currentWeek.days.forEach((day) => {
@@ -482,7 +509,7 @@ export default function App() {
   const handleQuickFillPrime = () => {
     setResponses((prev) => {
       const next = { ...prev };
-      ALL_OPEN_SLOTS.forEach((slot) => {
+      allOpenSlots.forEach((slot) => {
         if (slot.studentPrime) {
           next[slot.slotKey] = 'yes';
         }
@@ -587,14 +614,14 @@ export default function App() {
   const shareSummaryText = useMemo(() => {
     const lines = [
       '🏓 岡大dinks | 瀬戸町総合運動公園体育館',
-      '🏟️ サブアリーナ 1/2面 (Sub-Arena Half-Court)',
-      '📅 日程調整 / Court Reservation Poll:',
+      '🏟️ サブアリーナ 1/2面A・1/2面B (Sub-Arena Half-Court)',
+      '📅 日程調整 / 1-Hour Slot Poll:',
       ''
     ];
 
     if (rankedTopSlots.length > 0) {
-      lines.push('🏆 Top Ranked 2-Hr Slots / 現在の人気枠:');
-      rankedTopSlots.slice(0, 3).forEach((s, idx) => {
+      lines.push('🏆 Top Ranked 1-Hr Slots / 現在の人気枠:');
+      rankedTopSlots.slice(0, 5).forEach((s, idx) => {
         const hol = s.holiday ? `(${s.holiday})` : '';
         lines.push(
           `${idx + 1}. ${s.jpDate}(${s.dow})${hol} ${s.timeLabel} — ◯${s.yesCount} / △${s.maybeCount} [${s.court}]`
@@ -602,13 +629,7 @@ export default function App() {
       });
       lines.push('');
     } else {
-      lines.push(
-        '• 11月21日(土) 19:00–21:00',
-        '• 11月23日(月)祝 14:00–16:00 / 16:00–18:00',
-        '• 11月26日(木) 18:00–20:00',
-        '• 11月28日(土) 16:00–18:00',
-        ''
-      );
+      lines.push('まだ投票がありません — リンクから参加できる時間帯を選んでください！', '');
     }
 
     lines.push(
@@ -645,7 +666,7 @@ export default function App() {
     }
   };
 
-  const currentWeek = CALENDAR_WEEKS[activeWeekIdx];
+  const currentWeek = calendarWeeks[activeWeekIdx];
   const mySelectedCount = Object.keys(responses).length;
 
   return (
@@ -673,17 +694,23 @@ export default function App() {
                   <span className="text-xs text-sky-200 font-medium">
                     岡大dinks
                   </span>
+                  {hasLiveAvailability && lastSyncedAt && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/10 text-[10px] text-lime-200 font-semibold">
+                      <RefreshCw className="w-2.5 h-2.5" />
+                      yoyacool同期済: {lastSyncedAt}
+                    </span>
+                  )}
                 </div>
                 <h1 className="text-base sm:text-xl font-extrabold tracking-tight text-white mt-0.5">
                   瀬戸町総合運動公園体育館{' '}
                   <span className="text-lime-300 font-bold">
-                    サブアリーナ 1/2面
+                    サブアリーナ 1/2面A・B
                   </span>
                 </h1>
                 <p className="text-[11px] sm:text-xs text-sky-200 flex items-center gap-1.5 mt-0.5">
                   <MapPin className="w-3.5 h-3.5 text-lime-300 shrink-0" />
                   <span>
-                    Seto Athletic Park Gymnasium • 2-Hour Sub-Arena Slot Poll
+                    Seto Athletic Park Gymnasium • 1-Hour Sub-Arena Slot Poll
                   </span>
                 </p>
               </div>
@@ -733,7 +760,7 @@ export default function App() {
               <span>
                 {editingVoteId
                   ? `編集中 (Editing): ${voterName}`
-                  : 'STEP 1: 名前を入力してカレンダーの空き枠をタップ (Tap Open Cells to Vote)'}
+                  : 'STEP 1: 名前を入力してカレンダーの空き枠をタップ (Tap 1-Hr Slots to Vote)'}
               </span>
             </div>
             {editingVoteId && (
@@ -888,7 +915,7 @@ export default function App() {
 
             <div className="text-center">
               <div className="inline-block px-2 py-0.5 rounded bg-rose-700 text-white text-[10px] font-extrabold tracking-wider mb-0.5">
-                1週間表示モード
+                1時間枠表示モード (1-Hour Blocks)
               </div>
               <div className="text-sm sm:text-base font-extrabold tracking-tight text-white">
                 {currentWeek.rangeLabel}
@@ -897,10 +924,10 @@ export default function App() {
 
             <button
               type="button"
-              disabled={activeWeekIdx === CALENDAR_WEEKS.length - 1}
+              disabled={activeWeekIdx === calendarWeeks.length - 1}
               onClick={() =>
                 setActiveWeekIdx((i) =>
-                  Math.min(CALENDAR_WEEKS.length - 1, i + 1)
+                  Math.min(calendarWeeks.length - 1, i + 1)
                 )
               }
               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#2B547E] hover:bg-[#366799] disabled:opacity-40 disabled:pointer-events-none text-xs font-extrabold border border-white/20 cursor-pointer"
@@ -912,7 +939,7 @@ export default function App() {
 
           <div className="bg-[#f4f6f9] px-3 py-2.5 border-b border-slate-300 flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-1.5">
-              {CALENDAR_WEEKS.map((w, idx) => (
+              {calendarWeeks.map((w, idx) => (
                 <button
                   key={w.id}
                   type="button"
@@ -992,13 +1019,13 @@ export default function App() {
                 不可 (No)
               </span>
               <span className="inline-flex items-center gap-1 text-slate-500">
-                <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-500 font-bold text-[10px]">
-                  ✕ 予約済
+                <span className="px-1.5 py-0.5 rounded bg-rose-50 border border-rose-200 text-rose-600 font-bold text-[10px]">
+                  予約済
                 </span>
                 施設予約埋まり
               </span>
               <span className="inline-flex items-center gap-1 text-slate-500">
-                <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-500 font-bold text-[10px] inline-flex items-center gap-0.5">
+                <span className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-500 font-bold text-[10px] inline-flex items-center gap-0.5">
                   <BedDouble className="w-3 h-3" /> 休館
                 </span>
                 休館日
@@ -1015,15 +1042,15 @@ export default function App() {
             <table className="w-full border-collapse text-center">
               <thead>
                 <tr className="bg-[#eef3f8] border-b-2 border-slate-300 text-slate-800">
-                  <th className="sticky left-0 z-20 bg-[#dce5f0] py-2.5 px-2.5 min-w-[116px] sm:min-w-[138px] text-left text-xs font-extrabold text-[#1B365D] border-r-2 border-slate-300">
+                  <th className="sticky left-0 z-20 bg-[#dce5f0] py-2.5 px-2.5 min-w-[112px] sm:min-w-[132px] text-left text-xs font-extrabold text-[#1B365D] border-r-2 border-slate-300">
                     日付 / 曜日
                   </th>
                   {TIME_BLOCKS.map((block) => (
                     <th
                       key={block.id}
-                      className="py-2 px-1.5 min-w-[84px] sm:min-w-[104px] border-r border-slate-300 last:border-r-0"
+                      className="py-2 px-1 min-w-[82px] sm:min-w-[96px] border-r border-slate-300 last:border-r-0"
                     >
-                      <div className="text-xs sm:text-[13px] font-extrabold text-[#1B365D]">
+                      <div className="text-[11px] sm:text-xs font-extrabold text-[#1B365D]">
                         {block.label}
                       </div>
                       {block.isStudentPrime && (
@@ -1054,7 +1081,7 @@ export default function App() {
                   return (
                     <tr key={day.dateKey} className="divide-x divide-slate-300">
                       <td
-                        className={`sticky left-0 z-10 ${dateBgColor} py-3 px-2.5 text-left border-r-2 border-slate-300 align-middle`}
+                        className={`sticky left-0 z-10 ${dateBgColor} py-2.5 px-2.5 text-left border-r-2 border-slate-300 align-middle`}
                       >
                         <div className="flex items-center gap-1 flex-wrap">
                           <span
@@ -1080,16 +1107,18 @@ export default function App() {
                       </td>
 
                       {TIME_BLOCKS.map((block) => {
+                        const badge = getCourtBadge(day.dateKey, block.id);
+
                         if (day.closed) {
                           return (
                             <td
                               key={block.id}
-                              className="bg-[#e5e7eb] py-3 px-1.5 align-middle select-none"
+                              className="bg-[#e5e7eb] py-2.5 px-1 align-middle select-none"
                             >
                               <div className="flex flex-col items-center justify-center text-slate-400">
-                                <BedDouble className="w-5 h-5" />
+                                <BedDouble className="w-4 h-4" />
                                 <span className="text-[10px] font-bold mt-0.5">
-                                  休館
+                                  {badge ? badge.text : '休館'}
                                 </span>
                               </div>
                             </td>
@@ -1102,15 +1131,23 @@ export default function App() {
                           return (
                             <td
                               key={block.id}
-                              className="bg-[#e5e7eb]/90 py-3 px-1.5 align-middle select-none"
+                              className="bg-[#e5e7eb]/90 py-2.5 px-1 align-middle select-none"
                             >
-                              <div className="flex flex-col items-center justify-center text-slate-400">
-                                <span className="text-base font-extrabold leading-none">
+                              <div className="flex flex-col items-center justify-center gap-1 text-slate-400">
+                                <span className="text-sm font-extrabold leading-none">
                                   ✕
                                 </span>
-                                <span className="text-[10px] font-medium mt-0.5">
-                                  予約済
-                                </span>
+                                {badge ? (
+                                  <span
+                                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border leading-none ${badge.className}`}
+                                  >
+                                    {badge.text}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-medium">
+                                    予約済
+                                  </span>
+                                )}
                               </div>
                             </td>
                           );
@@ -1153,7 +1190,7 @@ export default function App() {
                         return (
                           <td
                             key={block.id}
-                            className={`p-1.5 align-middle transition ${heatmapBg} ${
+                            className={`p-1 align-middle transition ${heatmapBg} ${
                               isDimmedByFilter ? 'opacity-35' : ''
                             } ${
                               tally.isTopPick
@@ -1165,35 +1202,35 @@ export default function App() {
                               <button
                                 type="button"
                                 onClick={() => handleCycleSlot(slotKey)}
-                                className="w-full py-1.5 px-1 rounded-xl flex flex-col items-center justify-center transition active:scale-95 cursor-pointer"
+                                className="w-full py-1 px-0.5 rounded-xl flex flex-col items-center justify-center transition active:scale-95 cursor-pointer"
                                 title={`${day.jpDate}(${day.dow}) ${block.label} [${cellData.court}]`}
                               >
                                 {gridViewMode === 'vote' ? (
                                   <>
                                     {myChoice === 'yes' && (
-                                      <span className="w-8 h-8 rounded-full bg-emerald-600 text-white font-extrabold text-base flex items-center justify-center shadow-xs">
+                                      <span className="w-7 h-7 rounded-full bg-emerald-600 text-white font-extrabold text-sm flex items-center justify-center shadow-xs">
                                         ◯
                                       </span>
                                     )}
                                     {myChoice === 'maybe' && (
-                                      <span className="w-8 h-8 rounded-full bg-amber-500 text-white font-extrabold text-sm flex items-center justify-center shadow-xs">
+                                      <span className="w-7 h-7 rounded-full bg-amber-500 text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
                                         △
                                       </span>
                                     )}
                                     {myChoice === 'no' && (
-                                      <span className="w-8 h-8 rounded-full bg-rose-600 text-white font-extrabold text-sm flex items-center justify-center shadow-xs">
+                                      <span className="w-7 h-7 rounded-full bg-rose-600 text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
                                         ✕
                                       </span>
                                     )}
                                     {!myChoice && (
-                                      <span className="w-8 h-8 rounded-full border-2 border-dashed border-[#1B365D]/40 text-[#1B365D] font-extrabold text-base flex items-center justify-center bg-white">
+                                      <span className="w-7 h-7 rounded-full border-2 border-dashed border-[#1B365D]/40 text-[#1B365D] font-extrabold text-sm flex items-center justify-center bg-white">
                                         ◯
                                       </span>
                                     )}
                                   </>
                                 ) : (
                                   <div className="py-0.5">
-                                    <div className="text-sm sm:text-base font-extrabold text-[#1B365D]">
+                                    <div className="text-xs sm:text-sm font-extrabold text-[#1B365D]">
                                       ◯ {tally.yesCount}
                                     </div>
                                     <div className="text-[10px] font-bold text-amber-700">
@@ -1202,15 +1239,23 @@ export default function App() {
                                   </div>
                                 )}
 
-                                <span className="text-[10px] font-bold text-slate-500 mt-1 leading-none">
-                                  {cellData.court}
-                                </span>
+                                {badge ? (
+                                  <span
+                                    className={`mt-1 text-[9px] sm:text-[10px] font-semibold px-1.5 py-0.5 rounded-full border leading-none whitespace-nowrap ${badge.className}`}
+                                  >
+                                    {badge.text}
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 mt-1 leading-none">
+                                    {cellData.court}
+                                  </span>
+                                )}
                               </button>
 
                               <button
                                 type="button"
                                 onClick={() => setInspectSlot(tally)}
-                                className="w-full py-0.5 px-1 rounded bg-slate-100/90 hover:bg-[#1B365D] hover:text-white text-[10px] font-extrabold text-slate-700 flex items-center justify-center gap-1.5 border border-slate-200 transition cursor-pointer"
+                                className="w-full py-0.5 px-1 rounded bg-slate-100/90 hover:bg-[#1B365D] hover:text-white text-[10px] font-extrabold text-slate-700 flex items-center justify-center gap-1 border border-slate-200 transition cursor-pointer"
                                 title="誰が投票したか見る (View Breakdown)"
                               >
                                 <span className="text-emerald-700">
@@ -1232,14 +1277,14 @@ export default function App() {
           </div>
         </section>
 
-        {/* 3. TOP RANKED 2-HOUR SLOTS & PLAYER COMMENTS */}
+        {/* 3. TOP RANKED 1-HOUR SLOTS & PLAYER COMMENTS */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <section className="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 bg-[#1B365D] text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Trophy className="w-4 h-4 text-lime-300" />
                 <h2 className="font-extrabold text-xs sm:text-sm">
-                  人気ランキング TOP 5 (Best 2-Hr Court Slots)
+                  人気ランキング TOP 5 (Best 1-Hr Court Slots)
                 </h2>
               </div>
               <span className="text-[11px] text-sky-200">
@@ -1364,14 +1409,14 @@ export default function App() {
           <Info className="w-4 h-4 text-[#1B365D] shrink-0 mt-0.5" />
           <div className="space-y-0.5">
             <p className="font-extrabold text-slate-800">
-              瀬戸町総合運動公園体育館 (サブアリーナ 1/2面) メモ:
+              瀬戸町総合運動公園体育館 (サブアリーナ 1/2面A・1/2面B) メモ:
             </p>
             <p>
               • JR山陽本線「瀬戸駅」からアクセス可能（岡山駅から約16〜20分）。大学5限終了後（17:20）でも
-              <strong>18:00–20:00 / 19:00–21:00</strong>枠なら余裕を持って集合できます。
+              <strong>18:00–21:00</strong>の各1時間枠なら余裕を持って集合できます。
             </p>
             <p>
-              • 体育館内は<strong>室内専用シューズ（ノンマーキング）必須</strong>です。初心者用パドル貸出あり。
+              • 体育館内は<strong>室内専用シューズ（ノンマーキング）必須</strong>です。
             </p>
           </div>
         </footer>
