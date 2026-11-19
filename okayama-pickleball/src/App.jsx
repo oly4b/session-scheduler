@@ -1,3 +1,19 @@
+/**
+ * @fileoverview Okayama Pickleball Session Scheduler (`岡大dinks`)
+ * Coordinates group pickleball sessions at Seto Athletic Park Gymnasium Sub-Arena
+ * (Okayama City, Room 141) by combining real-time player availability voting with
+ * automated 14-day court availability synced from the municipal `yoyacool` portal.
+ *
+ * Key Features:
+ * - Rolling 14-day JST calendar split into Week 1 (Days 1–7) and Week 2 (Days 8–14)
+ * - Non-overlapping 1-hour session slots from 12:00 to 21:00 JST
+ * - Live half-court availability badges (`1/2A`, `1/2B`, `予約済`, `休館`) backed by Supabase
+ * - Real-time group voting (`◯` / `△` / `✕`) and member notes via Supabase Realtime
+ * - Dual grid view modes ("自分の回答" interactive voting vs. "みんなの集計" group heatmap)
+ * - Automated Top 5 best-slot ranking with court-capacity indicators (6–8 optimal, 9+ double court)
+ * - One-click formatted invite summary generator for LINE OpenChat and Instagram DMs
+ */
+
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   MapPin,
@@ -24,8 +40,14 @@ import {
 import { supabase } from './lib/supabase';
 
 // ============================================================================
-// 1-HOUR NON-OVERLAPPING TIME BLOCKS (12:00 – 21:00)
+// CONSTANTS & JST CALENDAR UTILITIES
 // ============================================================================
+
+/**
+ * Non-overlapping 1-hour session blocks (12:00–21:00 JST) matching the
+ * hourly frames scraped by `scripts/scrape-availability.js`.
+ * Slots starting at 18:00+ are flagged as `isStudentPrime` (after 5th-period classes).
+ */
 const TIME_BLOCKS = [
   { id: '12:00-13:00', label: '12:00–13:00', shortLabel: '12:00', isStudentPrime: false },
   { id: '13:00-14:00', label: '13:00–14:00', shortLabel: '13:00', isStudentPrime: false },
@@ -38,8 +60,13 @@ const TIME_BLOCKS = [
   { id: '20:00-21:00', label: '20:00–21:00', shortLabel: '20:00', isStudentPrime: true }
 ];
 
+/** Japanese day-of-week labels indexed by `Date.prototype.getUTCDay()` (0 = Sunday). */
 const JP_DOW = ['日', '月', '火', '水', '木', '金', '土'];
 
+/**
+ * Japanese national holidays (`YYYY-MM-DD` in JST) used for red calendar styling
+ * and full-day Student Prime tagging.
+ */
 const JP_HOLIDAYS = new Set([
   '2026-11-23',
   '2027-01-01',
@@ -54,6 +81,24 @@ const JP_HOLIDAYS = new Set([
   '2027-05-05'
 ]);
 
+/**
+ * Computes Japan Standard Time (UTC+9) date metadata for a given day offset from today.
+ * Anchoring to UTC+9 ensures daily rollover happens at 00:00 JST regardless of visitor timezone.
+ *
+ * @param {number} offsetDays - Days from today in JST (`0` = today, `13` = day 14).
+ * @returns {{
+ *   dateKey: string,
+ *   year: number,
+ *   month: number,
+ *   day: number,
+ *   jpDate: string,
+ *   shortDate: string,
+ *   dow: string,
+ *   dowIdx: number,
+ *   holiday: string,
+ *   dayType: 'weekday' | 'saturday' | 'sunday' | 'holiday'
+ * }}
+ */
 function getJstDayMeta(offsetDays) {
   const now = new Date();
   const jstMs = now.getTime() + 9 * 60 * 60 * 1000 + offsetDays * 86400000;
@@ -84,6 +129,12 @@ function getJstDayMeta(offsetDays) {
   };
 }
 
+/**
+ * Decorative pickleball SVG emblem displayed in the application header.
+ *
+ * @param {{ className?: string }} props
+ * @returns {JSX.Element}
+ */
 function PickleballIcon({ className = 'w-7 h-7' }) {
   return (
     <svg
@@ -125,14 +176,14 @@ export default function App() {
   const [gridViewMode, setGridViewMode] = useState('vote'); // 'vote' | 'heatmap'
   const [highlightPrimeOnly, setHighlightPrimeOnly] = useState(false);
 
-  // Voter Input State
+  // Voter Input & Edit State
   const [voterName, setVoterName] = useState('');
   const [voterNote, setVoterNote] = useState('');
   const [responses, setResponses] = useState({});
   const [editingVoteId, setEditingVoteId] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Modals & Notifications
+  // Modals & Toast Notifications
   const [inspectSlot, setInspectSlot] = useState(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [voteToDelete, setVoteToDelete] = useState(null);
@@ -141,6 +192,11 @@ export default function App() {
 
   const voterBarRef = useRef(null);
 
+  /**
+   * Displays a temporary floating notification banner for 3.2 seconds.
+   *
+   * @param {string} msg - Message to display in the toast banner.
+   */
   const triggerToast = (msg) => {
     setToastMessage(msg);
     setTimeout(() => {
@@ -151,6 +207,10 @@ export default function App() {
   // --------------------------------------------------------------------------
   // 1. FETCH VOTES & LIVE COURT AVAILABILITY FROM SUPABASE
   // --------------------------------------------------------------------------
+
+  /**
+   * Loads all player vote records from `public.calendar_votes` ordered by creation time.
+   */
   const fetchVotes = useCallback(async () => {
     const { data, error } = await supabase
       .from('calendar_votes')
@@ -167,6 +227,13 @@ export default function App() {
     setLoadingVotes(false);
   }, []);
 
+  /**
+   * On mount:
+   * 1. Fetches `1/2面A` and `1/2面B` statuses from `public.court_availability`, indexing
+   *    them by `${slot_date}_${time_range}` and extracting the latest `updated_at` timestamp.
+   * 2. Fetches initial player votes and subscribes to Supabase Realtime (`postgres_changes`)
+   *    so live updates from other members sync automatically.
+   */
   useEffect(() => {
     async function fetchAvailability() {
       const { data, error } = await supabase
@@ -226,6 +293,15 @@ export default function App() {
   // --------------------------------------------------------------------------
   // 2. COURT AVAILABILITY BADGE HELPER (1/2面A & 1/2面B)
   // --------------------------------------------------------------------------
+
+  /**
+   * Returns badge label and Tailwind color classes for a specific date and 1-hour slot
+   * based on the combined `1/2面A` and `1/2面B` statuses in `courtAvailability`.
+   *
+   * @param {string} dateStr - ISO date string (`YYYY-MM-DD`).
+   * @param {string} slotId - Hourly block ID (e.g., `"18:00-19:00"`).
+   * @returns {{ text: string, className: string } | null}
+   */
   const getCourtBadge = useCallback(
     (dateStr, slotId) => {
       const info = courtAvailability[`${dateStr}_${slotId}`];
@@ -269,6 +345,14 @@ export default function App() {
   // --------------------------------------------------------------------------
   // 3. BUILD ROLLING 14-DAY CALENDAR FROM LIVE SUPABASE AVAILABILITY
   // --------------------------------------------------------------------------
+
+  /**
+   * Constructs the 2-week (14-day) calendar structure and flat list of open slots:
+   * - Splits days `0..6` into Week 1 and days `7..13` into Week 2.
+   * - When live `court_availability` rows exist, any unscraped slot defaults to `booked`
+   *   (locked) so unverified dates cannot receive votes.
+   * - Falls back to closing Tuesdays (`dowIdx === 2`) before the initial scrape runs.
+   */
   const { calendarWeeks, allOpenSlots, hasLiveAvailability } = useMemo(() => {
     const hasLive = Object.keys(courtAvailability).length > 0;
     const days = [];
@@ -401,6 +485,14 @@ export default function App() {
   // --------------------------------------------------------------------------
   // 4. GROUP TALLY & TOP RANKED SLOTS COMPUTATION
   // --------------------------------------------------------------------------
+
+  /**
+   * Aggregates `yes` (◯), `maybe` (△), and `no` (✕) responses per open slot.
+   * Scoring weights `yes` = 100 pts and `maybe` = 10 pts, and flags:
+   * - `isSweetSpot`: 6–8 confirmed players (ideal single half-court rotation)
+   * - `isDoubleCourt`: 9+ confirmed players (recommends booking both 1/2A & 1/2B)
+   * - `isTopPick`: Highest-scoring slot(s) across the 14-day window
+   */
   const slotTallies = useMemo(() => {
     const tallyMap = {};
     let bestScore = 0;
@@ -444,6 +536,7 @@ export default function App() {
     return tallyMap;
   }, [allOpenSlots, votes]);
 
+  /** Top 5 highest-scoring open slots that have at least one `yes` or `maybe` vote. */
   const rankedTopSlots = useMemo(() => {
     return Object.values(slotTallies)
       .filter((s) => s.yesCount > 0 || s.maybeCount > 0)
@@ -454,6 +547,14 @@ export default function App() {
   // --------------------------------------------------------------------------
   // 5. INTERACTIVE CELL CYCLING & VOTER FORM ACTIONS
   // --------------------------------------------------------------------------
+
+  /**
+   * Handles clicks on an open calendar cell:
+   * - In `'heatmap'` mode: opens the voter breakdown modal (`setInspectSlot`).
+   * - In `'vote'` mode: cycles the user's response (`unselected -> yes -> maybe -> no -> unselected`).
+   *
+   * @param {string} slotKey - Slot identifier (`YYYY-MM-DD_HH:00-HH:00`).
+   */
   const handleCycleSlot = (slotKey) => {
     if (!slotTallies[slotKey]) return; // Ignore blocked/closed cells
 
@@ -473,6 +574,11 @@ export default function App() {
     });
   };
 
+  /**
+   * Bulk-fills or clears all open slots within the currently active week tab.
+   *
+   * @param {'yes' | 'maybe' | 'clear'} val - Target state for open slots in the current week.
+   */
   const handleQuickFillWeek = (val) => {
     const currentWeek = calendarWeeks[activeWeekIdx];
     setResponses((prev) => {
@@ -505,6 +611,10 @@ export default function App() {
     }
   };
 
+  /**
+   * Marks all open Student Prime slots across both weeks (weekday evenings 18:00+
+   * plus all day on weekends and national holidays) as `yes` (◯).
+   */
   const handleQuickFillPrime = () => {
     setResponses((prev) => {
       const next = { ...prev };
@@ -518,6 +628,7 @@ export default function App() {
     triggerToast('Marked all Student Prime slots (18:00+ & Holidays/Weekends) ◯!');
   };
 
+  /** Resets voter form inputs and exits edit mode. */
   const resetVoterForm = () => {
     setVoterName('');
     setVoterNote('');
@@ -525,6 +636,12 @@ export default function App() {
     setEditingVoteId(null);
   };
 
+  /**
+   * Populates the voter form with an existing member's vote record for editing
+   * and smoothly scrolls back to the top action bar.
+   *
+   * @param {object} vote - Row object from `public.calendar_votes`.
+   */
   const handleSelectVoterToEdit = (vote) => {
     setEditingVoteId(vote.id);
     setVoterName(vote.name || '');
@@ -535,10 +652,16 @@ export default function App() {
     triggerToast(`Editing ${vote.name}'s calendar votes`);
   };
 
+  /**
+   * Validates and submits a new or updated player vote to `public.calendar_votes`.
+   *
+   * @param {React.FormEvent} e
+   */
   const handleSubmitVote = async (e) => {
     e.preventDefault();
-    const trimmedName = voterName.trim();
+    const trimmedName = voterName.trim().replace(/\s+/g, ' ');
     if (!trimmedName) {
+      setVoterName('');
       triggerToast('Please enter your name / 名前を入力してください');
       return;
     }
@@ -586,6 +709,9 @@ export default function App() {
     }
   };
 
+  /**
+   * Deletes the selected player's vote record from `public.calendar_votes` after confirmation.
+   */
   const handleConfirmDeleteVote = async () => {
     if (!voteToDelete) return;
     try {
@@ -609,7 +735,11 @@ export default function App() {
     }
   };
 
-  // Share text generator for LINE / Instagram
+  // --------------------------------------------------------------------------
+  // 6. LINE / INSTAGRAM INVITE SUMMARY & CLIPBOARD HELPERS
+  // --------------------------------------------------------------------------
+
+  /** Builds a formatted Japanese/English poll summary with Top 5 slots for sharing. */
   const shareSummaryText = useMemo(() => {
     const lines = [
       '🏓 岡大dinks | 瀬戸町総合運動公園体育館',
@@ -638,6 +768,7 @@ export default function App() {
     return lines.join('\n');
   }, [rankedTopSlots, votes.length]);
 
+  /** Legacy textarea fallback for copying invite text when `navigator.clipboard` is unavailable. */
   const fallbackCopy = () => {
     const ta = document.createElement('textarea');
     ta.value = shareSummaryText;
@@ -650,6 +781,7 @@ export default function App() {
     setTimeout(() => setCopiedShare(false), 2500);
   };
 
+  /** Copies `shareSummaryText` to the system clipboard with visual feedback. */
   const handleCopyShareText = () => {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard
@@ -670,6 +802,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#eef2f6] text-slate-900 pb-16 font-sans selection:bg-lime-300 selection:text-slate-950">
+      {/* Floating Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-[#1B365D] text-white px-4 py-3 rounded-2xl shadow-2xl border border-lime-400/60 flex items-center gap-2.5 text-xs sm:text-sm font-bold max-w-[92vw]">
           <Check className="w-4 h-4 shrink-0 text-lime-300" />
@@ -677,7 +810,7 @@ export default function App() {
         </div>
       )}
 
-      {/* HEADER */}
+      {/* HEADER: Venue title, yoyacool sync status badge, and Share modal trigger */}
       <header className="bg-[#1B365D] text-white shadow-md border-b-4 border-[#2B547E]">
         <div className="max-w-6xl mx-auto px-3.5 sm:px-6 py-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -742,7 +875,7 @@ export default function App() {
           </div>
         )}
 
-        {/* 1. VOTER ACTION BAR */}
+        {/* 1. VOTER ACTION BAR: Name/note form, quick-fill buttons, and existing voter pills */}
         <section
           ref={voterBarRef}
           className={`rounded-2xl shadow-sm border-2 transition overflow-hidden ${
@@ -797,8 +930,11 @@ export default function App() {
                 <input
                   type="text"
                   required
+                  pattern=".*\S+.*"
+                  title="空白のみの入力はできません / Name cannot be blank or spaces only"
                   value={voterName}
-                  onChange={(e) => setVoterName(e.target.value)}
+                  onChange={(e) => setVoterName(e.target.value.replace(/^\s+/, ''))}
+                  onBlur={(e) => setVoterName(e.target.value.trim())}
                   placeholder="例: Kenji / Sarah"
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:border-[#1B365D] focus:ring-2 focus:ring-[#1B365D]/20 outline-none text-sm font-bold"
                 />
@@ -903,8 +1039,9 @@ export default function App() {
           </form>
         </section>
 
-        {/* 2. YOYACOOL-STYLE WEEK NAVIGATION & VIEW MODE BAR */}
+        {/* 2. YOYACOOL-STYLE WEEK NAVIGATION & 1-HOUR AVAILABILITY MATRIX */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-300 overflow-hidden">
+          {/* Week Prev / Next Header */}
           <div className="bg-[#1B365D] px-3 py-2.5 flex flex-wrap items-center justify-between gap-2 text-white">
             <button
               type="button"
@@ -940,6 +1077,7 @@ export default function App() {
             </button>
           </div>
 
+          {/* Week Tabs, Student Prime Filter, & Vote/Heatmap Mode Switcher */}
           <div className="bg-[#f4f6f9] px-3 py-2.5 border-b border-slate-300 flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-1.5">
               {calendarWeeks.map((w, idx) => (
@@ -1001,6 +1139,7 @@ export default function App() {
             </div>
           </div>
 
+          {/* Symbol & Court Status Legend */}
           <div className="px-3.5 py-2 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="inline-flex items-center gap-1 font-bold text-emerald-700">
@@ -1041,6 +1180,7 @@ export default function App() {
             </span>
           </div>
 
+          {/* Horizontal-Scrollable Schedule Matrix with Sticky Date Column */}
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-center">
               <thead>
@@ -1283,6 +1423,7 @@ export default function App() {
 
         {/* 3. TOP RANKED 1-HOUR SLOTS & PLAYER COMMENTS */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          {/* Top 5 Ranked Slots Card */}
           <section className="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 bg-[#1B365D] text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1369,6 +1510,7 @@ export default function App() {
             </div>
           </section>
 
+          {/* Member Notes / Comments Card */}
           <section className="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 bg-[#264673] text-white flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-lime-300" />
@@ -1409,6 +1551,7 @@ export default function App() {
           </section>
         </div>
 
+        {/* Venue Access & Indoor Shoe Reminder Footer */}
         <footer className="bg-white border border-slate-200 rounded-2xl p-3.5 text-[11px] sm:text-xs text-slate-600 flex items-start gap-2.5">
           <Info className="w-4 h-4 text-[#1B365D] shrink-0 mt-0.5" />
           <div className="space-y-0.5">
@@ -1416,17 +1559,17 @@ export default function App() {
               瀬戸町総合運動公園体育館 (サブアリーナ 1/2面A・1/2面B) メモ:
             </p>
             <p>
-              • JR山陽本線「瀬戸駅」からアクセス可能（岡山駅から約16〜20分）。大学5限終了後（17:20）でも
+              - JR山陽本線「瀬戸駅」からアクセス可能（岡山駅から約16〜20分）。大学5限終了後（17:20）でも
               <strong>18:00–21:00</strong>の各1時間枠なら余裕を持って集合できます。
             </p>
             <p>
-              • 体育館内は<strong>室内専用シューズ（ノンマーキング）必須</strong>です。
+              - 体育館内は<strong>室内専用シューズ（ノンマーキング）必須</strong>です。
             </p>
           </div>
         </footer>
       </main>
 
-      {/* MODAL 1: SLOT BREAKDOWN INSPECTOR */}
+      {/* MODAL 1: SLOT BREAKDOWN INSPECTOR (Shows who voted ◯ / △ / ✕ for a slot) */}
       {inspectSlot && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
@@ -1534,7 +1677,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL 2: SHARE INVITE TEXT */}
+      {/* MODAL 2: SHARE INVITE TEXT (Copy-paste summary for LINE / Instagram) */}
       {showShareModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
@@ -1586,7 +1729,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL 3: CONFIRM DELETE */}
+      {/* MODAL 3: CONFIRM DELETE PLAYER VOTE */}
       {voteToDelete && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4">
