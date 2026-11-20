@@ -2,8 +2,8 @@ name: Sync Court Availability
 
 on:
   schedule:
-    # Runs every hour from 10:00 to 22:00 JST (01:00 to 13:00 UTC)
-    - cron: '0 1-13 * * *'
+    # Runs at 07:00 JST (22:00 UTC) and hourly from 10:00 to 22:00 JST (01:00 to 13:00 UTC)
+    - cron: '0 22,1-13 * * *'
   workflow_dispatch:
 
 defaults:
@@ -13,6 +13,8 @@ defaults:
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -30,8 +32,15 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Scrape yoyacool availability
+      - name: Scrape yoyacool availability (Seto Gym)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/scrape-availability.js
+
+      - name: Sync Spacepad availability (Fukuda Park & Mizushima Gym)
+        if: always()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/scrape-spacepad.js
