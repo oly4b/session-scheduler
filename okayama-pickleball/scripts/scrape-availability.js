@@ -25,9 +25,9 @@ function getJstYear() {
   return new Date(now.getTime() + 9 * 60 * 60 * 1000).getUTCFullYear();
 }
 
-function buildTargetUrl() {
-  const startDate = getJstDateString(0);
-  const endDate = getJstDateString(13);
+function buildTargetUrl(startOffset = 0) {
+  const startDate = getJstDateString(startOffset);
+  const endDate = getJstDateString(startOffset + 13); // yoyacool renders 14-day blocks
   const params = new URLSearchParams({
     ptn: '3',
     d: startDate,
@@ -54,9 +54,6 @@ function resolveDateKey(text) {
 }
 
 async function run() {
-  const url = buildTargetUrl();
-  console.log(`Fetching: ${url}`);
-
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({
     locale: 'ja-JP',
@@ -65,111 +62,117 @@ async function run() {
   });
 
   try {
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
-    await page.waitForSelector('.AvailabilityFrameSet_frame', { timeout: 20000 });
-
-    // Scroll down in steps to force any virtual/lazy-rendered rows (e.g. 12/03 & 1/2面B) to mount
-    await page.evaluate(async () => {
-      for (let y = 0; y <= document.body.scrollHeight; y += 600) {
-        window.scrollTo(0, y);
-        await new Promise((r) => setTimeout(r, 150));
-      }
-      window.scrollTo(0, 0);
-    });
-    await page.waitForTimeout(1000);
-
-    // Collect rows from ALL visible availability tables on the page
-    const allTablesRows = await page.evaluate(() => {
-      const normalize = (s) =>
-        (s || '')
-          .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
-          .replace(/ /g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-
-      const visibleTables = Array.from(document.querySelectorAll('table')).filter(
-        (t) => t.offsetParent !== null && normalize(t.innerText).includes('サブアリーナ')
-      );
-
-      return visibleTables.map((table) =>
-        Array.from(table.querySelectorAll('tr')).map((tr) => {
-          const rowText = normalize(tr.innerText);
-          const cells = Array.from(tr.querySelectorAll('th, td'));
-          const frames = Array.from(tr.querySelectorAll('.AvailabilityFrameSet_frame')).map((el) =>
-            normalize(el.innerText)
-          );
-
-          return {
-            rowText,
-            firstCellText: cells[0] ? normalize(cells[0].innerText) : '',
-            frames,
-          };
-        })
-      );
-    });
-
     const recordsMap = new Map();
 
-    for (const tableRows of allTablesRows) {
-      let currentCourt = null;
+    // Fetch two consecutive 14-day blocks: Days 0–13 (Weeks 1–2) and Days 14–27 (Weeks 3–4)
+    for (const startOffset of [0, 14]) {
+      const url = buildTargetUrl(startOffset);
+      console.log(`Fetching block (offset +${startOffset}d): ${url}`);
 
-      for (const row of tableRows) {
-        const hasDate = /\d{1,2}月\d{1,2}日/.test(row.firstCellText);
+      await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
+      await page.waitForSelector('.AvailabilityFrameSet_frame', { timeout: 20000 });
 
-        // Section banner rows have "サブアリーナ" + court label, and NO date
-        if (!hasDate && row.rowText.includes('サブアリーナ')) {
-          const courtMatch = row.rowText.match(/1\/2\s*面?\s*([AB])/i);
-          if (courtMatch) {
-            currentCourt = `1/2面${courtMatch[1].toUpperCase()}`;
-          } else {
-            currentCourt = null;
-          }
-          continue;
+      // Scroll down in steps to force any virtual/lazy-rendered rows to mount
+      await page.evaluate(async () => {
+        for (let y = 0; y <= document.body.scrollHeight; y += 600) {
+          window.scrollTo(0, y);
+          await new Promise((r) => setTimeout(r, 150));
         }
+        window.scrollTo(0, 0);
+      });
+      await page.waitForTimeout(1000);
 
-        if (!hasDate || !ALLOWED_COURTS.has(currentCourt)) continue;
+      // Collect rows from ALL visible availability tables on the page
+      const allTablesRows = await page.evaluate(() => {
+        const normalize = (s) =>
+          (s || '')
+            .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+            .replace(/ /g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
 
-        const slotDate = resolveDateKey(row.firstCellText);
-        if (!slotDate || row.frames.length === 0) continue;
+        const visibleTables = Array.from(document.querySelectorAll('table')).filter(
+          (t) => t.offsetParent !== null && normalize(t.innerText).includes('サブアリーナ')
+        );
 
-        for (const frameText of row.frames) {
-          const hourMatch = frameText.match(/(\d{1,2})時から(\d{1,2})時/);
-          if (!hourMatch) continue;
+        return visibleTables.map((table) =>
+          Array.from(table.querySelectorAll('tr')).map((tr) => {
+            const rowText = normalize(tr.innerText);
+            const cells = Array.from(tr.querySelectorAll('th, td'));
+            const frames = Array.from(tr.querySelectorAll('.AvailabilityFrameSet_frame')).map((el) =>
+              normalize(el.innerText)
+            );
 
-          const startHour = Number(hourMatch[1]);
-          const endHour = Number(hourMatch[2]);
-          if (!ALLOWED_START_HOURS.has(startHour)) continue;
+            return {
+              rowText,
+              firstCellText: cells[0] ? normalize(cells[0].innerText) : '',
+              frames,
+            };
+          })
+        );
+      });
 
-          let status = 'booked';
-          if (
-            frameText.includes('trip_origin') ||
-            frameText.includes('空き状況のみ') ||
-            frameText.includes('空きあり') ||
-            frameText.includes('○')
-          ) {
-            status = 'open';
-          } else if (
-            frameText.includes('hotel') ||
-            frameText.includes('休館') ||
-            frameText.includes('保守')
-          ) {
-            status = 'closed';
+      for (const tableRows of allTablesRows) {
+        let currentCourt = null;
+
+        for (const row of tableRows) {
+          const hasDate = /\d{1,2}月\d{1,2}日/.test(row.firstCellText);
+
+          // Section banner rows have "サブアリーナ" + court label, and NO date
+          if (!hasDate && row.rowText.includes('サブアリーナ')) {
+            const courtMatch = row.rowText.match(/1\/2\s*面?\s*([AB])/i);
+            if (courtMatch) {
+              currentCourt = `1/2面${courtMatch[1].toUpperCase()}`;
+            } else {
+              currentCourt = null;
+            }
+            continue;
           }
 
-          const timeRange = `${String(startHour).padStart(2, '0')}:00-${String(endHour).padStart(
-            2,
-            '0'
-          )}:00`;
-          const slotKey = `${slotDate}_${currentCourt}_${timeRange}`;
+          if (!hasDate || !ALLOWED_COURTS.has(currentCourt)) continue;
 
-          recordsMap.set(slotKey, {
-            slot_key: slotKey,
-            slot_date: slotDate,
-            time_range: timeRange,
-            court_detail: currentCourt,
-            status,
-            updated_at: new Date().toISOString(),
-          });
+          const slotDate = resolveDateKey(row.firstCellText);
+          if (!slotDate || row.frames.length === 0) continue;
+
+          for (const frameText of row.frames) {
+            const hourMatch = frameText.match(/(\d{1,2})時から(\d{1,2})時/);
+            if (!hourMatch) continue;
+
+            const startHour = Number(hourMatch[1]);
+            const endHour = Number(hourMatch[2]);
+            if (!ALLOWED_START_HOURS.has(startHour)) continue;
+
+            let status = 'booked';
+            if (
+              frameText.includes('trip_origin') ||
+              frameText.includes('空き状況のみ') ||
+              frameText.includes('空きあり') ||
+              frameText.includes('○')
+            ) {
+              status = 'open';
+            } else if (
+              frameText.includes('hotel') ||
+              frameText.includes('休館') ||
+              frameText.includes('保守')
+            ) {
+              status = 'closed';
+            }
+
+            const timeRange = `${String(startHour).padStart(2, '0')}:00-${String(endHour).padStart(
+              2,
+              '0'
+            )}:00`;
+            const slotKey = `${slotDate}_${currentCourt}_${timeRange}`;
+
+            recordsMap.set(slotKey, {
+              slot_key: slotKey,
+              slot_date: slotDate,
+              time_range: timeRange,
+              court_detail: currentCourt,
+              status,
+              updated_at: new Date().toISOString(),
+            });
+          }
         }
       }
     }
@@ -188,7 +191,7 @@ async function run() {
       process.exit(0);
     }
 
-    // 1. Remove past dates so the table stays capped at ~252 rows
+    // 1. Remove past dates so the table stays capped at ~504 rows (28 days)
     const { error: deleteError } = await supabase
       .from('court_availability')
       .delete()
@@ -198,7 +201,7 @@ async function run() {
       console.error('Supabase prune error:', deleteError);
     }
 
-    // 2. Upsert the current 14-day window
+    // 2. Upsert the current 28-day (4-week) window
     const { error } = await supabase
       .from('court_availability')
       .upsert(records, { onConflict: 'slot_key' });
@@ -208,7 +211,7 @@ async function run() {
       process.exit(1);
     }
 
-    console.log('Successfully synced 1/2面A and 1/2面B availability to Supabase.');
+    console.log('Successfully synced 4 weeks (28 days) of 1/2面A and 1/2面B availability to Supabase.');
   } finally {
     await browser.close();
   }

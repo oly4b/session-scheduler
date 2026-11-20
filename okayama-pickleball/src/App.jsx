@@ -357,7 +357,7 @@ export default function App() {
     const hasLive = Object.keys(courtAvailability).length > 0;
     const days = [];
 
-    for (let offset = 0; offset < 14; offset += 1) {
+    for (let offset = 0; offset < 28; offset += 1) {
       const meta = getJstDayMeta(offset);
       const isWeekendOrHoliday =
         meta.dayType === 'saturday' ||
@@ -434,6 +434,8 @@ export default function App() {
 
     const week1Days = days.slice(0, 7);
     const week2Days = days.slice(7, 14);
+    const week3Days = days.slice(14, 21);
+    const week4Days = days.slice(21, 28);
 
     const weeks = [
       {
@@ -447,6 +449,18 @@ export default function App() {
         shortTitle: `Week 2: ${week2Days[0].shortDate}–${week2Days[6].shortDate}`,
         rangeLabel: `${week2Days[0].year}年 ${week2Days[0].jpDate}(${week2Days[0].dow}) 〜 ${week2Days[6].jpDate}(${week2Days[6].dow})`,
         days: week2Days
+      },
+      {
+        id: 'week3',
+        shortTitle: `Week 3: ${week3Days[0].shortDate}–${week3Days[6].shortDate}`,
+        rangeLabel: `${week3Days[0].year}年 ${week3Days[0].jpDate}(${week3Days[0].dow}) 〜 ${week3Days[6].jpDate}(${week3Days[6].dow})`,
+        days: week3Days
+      },
+      {
+        id: 'week4',
+        shortTitle: `Week 4: ${week4Days[0].shortDate}–${week4Days[6].shortDate}`,
+        rangeLabel: `${week4Days[0].year}年 ${week4Days[0].jpDate}(${week4Days[0].dow}) 〜 ${week4Days[6].jpDate}(${week4Days[6].dow})`,
+        days: week4Days
       }
     ];
 
