@@ -1,9 +1,8 @@
 /**
- * @fileoverview Okayama Pickleball Session Scheduler (`岡大dinks`) — 3-Venue Unified Edition
- * Coordinates group pickleball sessions across:
- *   1. Seto Athletic Park Gymnasium Sub-Arena (`瀬戸` — yoyacool `1/2面A・B`)
- *   2. Shimada Mirai Arena Mizushima / Fukuda Park (`福田` — Spacepad `1/3面(1)–(3)`)
- *   3. Mizushima Gymnasium (`水島` — Spacepad `1/4面(1)–(4)`)
+ * @fileoverview Okayama Pickleball Session Scheduler (`岡大dinks`) — Scalable Multi-Venue Edition
+ * Coordinates group pickleball sessions across Okayama & Kurashiki gymnasiums and outdoor hardcourts.
+ * Evaluates venue-level availability, highlights 2-hour continuous blocks closest to 19:00–20:00,
+ * ranks Top 3 recommended courts per slot, and computes Top 5 consecutive 2-hour block bookings.
  */
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -23,61 +22,35 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
-  BedDouble,
   Eye,
   Sparkles,
   Grid,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  Award
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
+import { VENUES } from './config/venues';
 
 // ============================================================================
-// CONSTANTS, VENUE METADATA & JST CALENDAR UTILITIES
+// CONSTANTS & JST CALENDAR UTILITIES
 // ============================================================================
 
 const TIME_BLOCKS = [
-  { id: '12:00-13:00', label: '12:00–13:00', shortLabel: '12:00', isStudentPrime: false },
-  { id: '13:00-14:00', label: '13:00–14:00', shortLabel: '13:00', isStudentPrime: false },
-  { id: '14:00-15:00', label: '14:00–15:00', shortLabel: '14:00', isStudentPrime: false },
-  { id: '15:00-16:00', label: '15:00–16:00', shortLabel: '15:00', isStudentPrime: false },
-  { id: '16:00-17:00', label: '16:00–17:00', shortLabel: '16:00', isStudentPrime: false },
-  { id: '17:00-18:00', label: '17:00–18:00', shortLabel: '17:00', isStudentPrime: false },
-  { id: '18:00-19:00', label: '18:00–19:00', shortLabel: '18:00', isStudentPrime: true },
-  { id: '19:00-20:00', label: '19:00–20:00', shortLabel: '19:00', isStudentPrime: true },
-  { id: '20:00-21:00', label: '20:00–21:00', shortLabel: '20:00', isStudentPrime: true }
+  { id: '12:00-13:00', startHour: 12, label: '12:00–13:00', shortLabel: '12:00', isStudentPrime: false },
+  { id: '13:00-14:00', startHour: 13, label: '13:00–14:00', shortLabel: '13:00', isStudentPrime: false },
+  { id: '14:00-15:00', startHour: 14, label: '14:00–15:00', shortLabel: '14:00', isStudentPrime: false },
+  { id: '15:00-16:00', startHour: 15, label: '15:00–16:00', shortLabel: '15:00', isStudentPrime: false },
+  { id: '16:00-17:00', startHour: 16, label: '16:00–17:00', shortLabel: '16:00', isStudentPrime: false },
+  { id: '17:00-18:00', startHour: 17, label: '17:00–18:00', shortLabel: '17:00', isStudentPrime: false },
+  { id: '18:00-19:00', startHour: 18, label: '18:00–19:00', shortLabel: '18:00', isStudentPrime: true },
+  { id: '19:00-20:00', startHour: 19, label: '19:00–20:00', shortLabel: '19:00', isStudentPrime: true },
+  { id: '20:00-21:00', startHour: 20, label: '20:00–21:00', shortLabel: '20:00', isStudentPrime: true },
+  { id: '21:00-22:00', startHour: 21, label: '21:00–22:00', shortLabel: '21:00', isStudentPrime: true }
 ];
 
-const VENUES = {
-  seto: {
-    id: 'seto',
-    badgePrefix: '瀬戸',
-    shortName: '瀬戸町総合運動公園体育館',
-    subTitle: 'サブアリーナ 1/2面A・B',
-    mapUrl:
-      'https://www.google.com/maps/search/?api=1&query=%E7%80%AC%E6%88%B8%E7%94%BA%E7%B7%8F%E5%90%88%E9%81%8B%E5%8B%95%E5%85%AC%E5%9C%92%E4%BD%93%E8%82%B2%E9%A4%A8',
-    bookingUrl:
-      'https://yoyacool.e-harp.jp/okayamacity/FacilityAvailability/Index/331007/0031?ptn=3&rc=141&rc2w=141'
-  },
-  fukuda: {
-    id: 'fukuda',
-    badgePrefix: '福田',
-    shortName: 'シマダみらいアリーナ水島（福田公園）',
-    subTitle: '1/3面(1)・(2)・(3)',
-    mapUrl: 'https://maps.app.goo.gl/XiqAWzqDudww3Z1aA',
-    bookingUrl:
-      'https://booking.spacepad.jp/provider/50833/spaces/itjbcjdbdle4-tgj/rooms/pxMub8xjITrSyqBW'
-  },
-  mizushima: {
-    id: 'mizushima',
-    badgePrefix: '水島',
-    shortName: '水島体育館',
-    subTitle: '1/4面(1)・(2)・(3)・(4)',
-    mapUrl: 'https://maps.app.goo.gl/oFoRMkbfNLMs7eHM9',
-    bookingUrl:
-      'https://booking.spacepad.jp/provider/50833/spaces/w2xrdrqqmbh-yo2u/rooms/vo_5DKw8ofQonMDL'
-  }
-};
+const VENUE_BY_ID = Object.fromEntries(VENUES.map((v) => [v.id, v]));
+const ACTIVE_VENUE_IDS = new Set(VENUES.map((v) => v.id));
 
 const JP_DOW = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -96,6 +69,68 @@ const JP_HOLIDAYS = new Set([
 ]);
 
 const RESPONSE_PRIORITY = { yes: 3, maybe: 2, no: 1 };
+
+function getVenueFacilityTier(venue) {
+  if (venue.courtType === 'indoor') return 3; // 1st: Indoor gym
+  if (venue.hasLights) return 2; // 2nd: Outdoor with lights
+  return 1; // 3rd: Outdoor without lights
+}
+
+/**
+ * Ranks candidate venues (max 3) by:
+ * 1. Adjacent open timeslot(s) at the same venue
+ * 2. Indoor > Outdoor (lit) > Outdoor (no lights)
+ * 3. Closest distance to JR Okayama Station
+ */
+function rankRecommendedVenues(candidateVenues, dateKey, targetHours, openVenuesBySlot, limit = 3) {
+  const minHour = Math.min(...targetHours);
+  const maxHour = Math.max(...targetHours);
+  const prevHour = minHour - 1;
+  const nextHour = maxHour + 1;
+
+  const prevIds =
+    prevHour >= 12
+      ? openVenuesBySlot[`${dateKey}_${String(prevHour).padStart(2, '0')}:00-${String(prevHour + 1).padStart(2, '0')}:00`] || new Set()
+      : new Set();
+  const nextIds =
+    nextHour <= 21
+      ? openVenuesBySlot[`${dateKey}_${String(nextHour).padStart(2, '0')}:00-${String(nextHour + 1).padStart(2, '0')}:00`] || new Set()
+      : new Set();
+
+  return candidateVenues
+    .map((v) => {
+      const hasPrev = prevIds.has(v.id);
+      const hasNext = nextIds.has(v.id);
+      const adjacentCount = (hasPrev ? 1 : 0) + (hasNext ? 1 : 0);
+
+      let continuousSpan = null;
+      if (hasPrev && hasNext) {
+        continuousSpan = `${prevHour}:00–${nextHour + 1}:00 連続空き`;
+      } else if (hasPrev) {
+        continuousSpan = `${prevHour}:00–${maxHour + 1}:00 連続空き`;
+      } else if (hasNext) {
+        continuousSpan = `${minHour}:00–${nextHour + 1}:00 連続空き`;
+      }
+
+      return {
+        ...v,
+        hasAdjacent: adjacentCount > 0,
+        adjacentCount,
+        continuousSpan,
+        facilityTier: getVenueFacilityTier(v)
+      };
+    })
+    .sort((a, b) => {
+      // 1. Prioritize adjacent open timeslot at the same venue
+      if (b.hasAdjacent !== a.hasAdjacent) return Number(b.hasAdjacent) - Number(a.hasAdjacent);
+      if (b.adjacentCount !== a.adjacentCount) return b.adjacentCount - a.adjacentCount;
+      // 2. Indoor > Outdoor (lit) > Outdoor (no lights)
+      if (b.facilityTier !== a.facilityTier) return b.facilityTier - a.facilityTier;
+      // 3. Closest to JR Okayama Station
+      return (a.distanceKm ?? 99) - (b.distanceKm ?? 99);
+    })
+    .slice(0, limit);
+}
 
 function getJstDayMeta(offsetDays) {
   const now = new Date();
@@ -153,111 +188,6 @@ function normalizeResponsesMap(rawResponses) {
   return normalized;
 }
 
-function getCombinedSlotInfo(courtAvailability, dateStr, slotId, hasAnyLive) {
-  const info = courtAvailability[`${dateStr}_${slotId}`];
-
-  // 1. Seto Athletic Park Gymnasium (`瀬戸`)
-  let setoOpen = false;
-  let setoClosed = false;
-  let setoShort = '予約済';
-  let setoStyle = 'bg-slate-100 text-slate-400 border-slate-200';
-
-  if (info && (info.A || info.B)) {
-    const aOpen = info.A === 'open';
-    const bOpen = info.B === 'open';
-    setoClosed = info.A === 'closed' && info.B === 'closed';
-
-    if (aOpen && bOpen) {
-      setoOpen = true;
-      setoShort = 'A・B';
-      setoStyle = 'bg-lime-100 text-lime-800 border-lime-300';
-    } else if (aOpen || bOpen) {
-      setoOpen = true;
-      setoShort = aOpen ? 'A' : 'B';
-      setoStyle = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-    } else if (setoClosed) {
-      setoShort = '休館';
-      setoStyle = 'bg-slate-200 text-slate-600 border-slate-300';
-    } else {
-      setoShort = '予約済';
-      setoStyle = 'bg-rose-50/80 text-rose-500 border-rose-200/80';
-    }
-  } else if (!hasAnyLive) {
-    setoOpen = true;
-    setoShort = 'A・B';
-    setoStyle = 'bg-lime-100 text-lime-800 border-lime-300';
-  }
-
-  // 2. Shimada Mirai Arena Mizushima / Fukuda Park (`福田`)
-  let fukudaOpen = false;
-  let fukudaShort = '予約済';
-  let fukudaStyle = 'bg-slate-100 text-slate-400 border-slate-200';
-
-  if (info && (info.sp1 || info.sp2 || info.sp3)) {
-    const openCourts = [
-      info.sp1 === 'open' && '1',
-      info.sp2 === 'open' && '2',
-      info.sp3 === 'open' && '3'
-    ].filter(Boolean);
-
-    if (openCourts.length > 0) {
-      fukudaOpen = true;
-      fukudaShort = openCourts.join('・');
-      fukudaStyle =
-        openCourts.length >= 2
-          ? 'bg-sky-100 text-sky-900 border-sky-300'
-          : 'bg-cyan-50 text-cyan-800 border-cyan-200';
-    } else {
-      fukudaShort = '予約済';
-      fukudaStyle = 'bg-rose-50/80 text-rose-500 border-rose-200/80';
-    }
-  }
-
-  // 3. Mizushima Gymnasium (`水島`)
-  let mizushimaOpen = false;
-  let mizushimaShort = '予約済';
-  let mizushimaStyle = 'bg-slate-100 text-slate-400 border-slate-200';
-
-  if (info && (info.mg1 || info.mg2 || info.mg3 || info.mg4)) {
-    const openCourts = [
-      info.mg1 === 'open' && '1',
-      info.mg2 === 'open' && '2',
-      info.mg3 === 'open' && '3',
-      info.mg4 === 'open' && '4'
-    ].filter(Boolean);
-
-    if (openCourts.length > 0) {
-      mizushimaOpen = true;
-      mizushimaShort = openCourts.join('・');
-      mizushimaStyle =
-        openCourts.length >= 2
-          ? 'bg-violet-100 text-violet-900 border-violet-300'
-          : 'bg-purple-50 text-purple-800 border-purple-200';
-    } else {
-      mizushimaShort = '予約済';
-      mizushimaStyle = 'bg-rose-50/80 text-rose-500 border-rose-200/80';
-    }
-  }
-
-  const openVenueParts = [
-    setoOpen && `瀬戸 ${setoShort}`,
-    fukudaOpen && `福田 ${fukudaShort}`,
-    mizushimaOpen && `水島 ${mizushimaShort}`
-  ].filter(Boolean);
-
-  return {
-    isOpen: setoOpen || fukudaOpen || mizushimaOpen,
-    setoOpen,
-    setoClosed,
-    fukudaOpen,
-    mizushimaOpen,
-    setoBadge: { text: `瀬戸 ${setoShort}`, className: setoStyle },
-    fukudaBadge: { text: `福田 ${fukudaShort}`, className: fukudaStyle },
-    mizushimaBadge: { text: `水島 ${mizushimaShort}`, className: mizushimaStyle },
-    summaryText: openVenueParts.join(' / ')
-  };
-}
-
 function PickleballIcon({ className = 'w-7 h-7' }) {
   return (
     <svg
@@ -291,12 +221,14 @@ export default function App() {
   const [loadingVotes, setLoadingVotes] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [votes, setVotes] = useState([]);
-  const [courtAvailability, setCourtAvailability] = useState({});
-  const [lastSyncedAt, setLastSyncedAt] = useState({ seto: '', spacepad: '' });
+  // Map of `${dateKey}_${timeRange}` -> Set<venueId>
+  const [openVenuesBySlot, setOpenVenuesBySlot] = useState({});
+  const [lastSyncedAt, setLastSyncedAt] = useState({ yoyacool: '', spacepad: '' });
 
-  // Week Navigation, Venue Filter & Grid Display Modes
+  // Week Navigation, Area/Venue Filter & Grid Display Modes
   const [activeWeekIdx, setActiveWeekIdx] = useState(0);
-  const [venueFilter, setVenueFilter] = useState('all'); // 'all' | 'seto' | 'fukuda' | 'mizushima'
+  const [areaFilter, setAreaFilter] = useState('all'); // 'all' | 'okayama' | 'kurashiki'
+  const [venueFilter, setVenueFilter] = useState('all'); // 'all' | venue.id
   const [gridViewMode, setGridViewMode] = useState('vote'); // 'vote' | 'heatmap'
   const [highlightPrimeOnly, setHighlightPrimeOnly] = useState(false);
 
@@ -323,8 +255,14 @@ export default function App() {
     }, 3200);
   };
 
+  // Filtered venue dropdown options based on selected area
+  const visibleVenues = useMemo(() => {
+    if (areaFilter === 'all') return VENUES;
+    return VENUES.filter((v) => v.area === areaFilter);
+  }, [areaFilter]);
+
   // --------------------------------------------------------------------------
-  // 1. FETCH VOTES & PARALLEL 3-VENUE AVAILABILITY FROM SUPABASE
+  // 1. FETCH VOTES & OPEN-ONLY VENUE AVAILABILITY FROM SUPABASE
   // --------------------------------------------------------------------------
 
   const fetchVotes = useCallback(async () => {
@@ -344,88 +282,50 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    async function fetchAvailability() {
+    async function fetchOpenAvailability() {
       const minDate = getJstDayMeta(0).dateKey;
+      const pageSize = 1000;
+      let from = 0;
+      let allRows = [];
 
-      // Four parallel queries keep each response <= 756 rows (well below PostgREST's 1,000-row cap)
-      const [setoRes, fukudaRes, mizushima12Res, mizushima34Res] = await Promise.all([
-        supabase
+      // Fetching only `status = 'open'` keeps payload tiny across all 13+ venues
+      while (true) {
+        const { data, error } = await supabase
           .from('court_availability')
-          .select('slot_date, time_range, court_detail, status, updated_at')
-          .in('court_detail', ['1/2面A', '1/2面B'])
+          .select('slot_date, time_range, court_detail, updated_at')
+          .eq('status', 'open')
           .gte('slot_date', minDate)
-          .limit(1000),
-        supabase
-          .from('court_availability')
-          .select('slot_date, time_range, court_detail, status, updated_at')
-          .in('court_detail', [
-            'spacepad_1/3(1)',
-            'spacepad_1/3(2)',
-            'spacepad_1/3(3)'
-          ])
-          .gte('slot_date', minDate)
-          .limit(1000),
-        supabase
-          .from('court_availability')
-          .select('slot_date, time_range, court_detail, status, updated_at')
-          .in('court_detail', ['mizushima_gym_1/4(1)', 'mizushima_gym_1/4(2)'])
-          .gte('slot_date', minDate)
-          .limit(1000),
-        supabase
-          .from('court_availability')
-          .select('slot_date, time_range, court_detail, status, updated_at')
-          .in('court_detail', ['mizushima_gym_1/4(3)', 'mizushima_gym_1/4(4)'])
-          .gte('slot_date', minDate)
-          .limit(1000)
-      ]);
+          .range(from, from + pageSize - 1);
 
-      const data = [
-        ...(setoRes.data || []),
-        ...(fukudaRes.data || []),
-        ...(mizushima12Res.data || []),
-        ...(mizushima34Res.data || [])
-      ];
-      if (data.length === 0) return;
+        if (error || !data || data.length === 0) break;
+        allRows = allRows.concat(data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
 
-      const map = {};
-      let latestSeto = '';
+      if (allRows.length === 0) return;
+
+      const slotMap = {};
+      let latestYoyacool = '';
       let latestSpacepad = '';
 
-      for (const row of data) {
-        const key = `${row.slot_date}_${row.time_range}`;
-        if (!map[key]) map[key] = {};
+      for (const row of allRows) {
+        const venueId = row.court_detail;
+        if (!ACTIVE_VENUE_IDS.has(venueId)) continue;
 
-        if (row.court_detail === '1/2面A') {
-          map[key].A = row.status;
-          if (row.updated_at && row.updated_at > latestSeto) latestSeto = row.updated_at;
-        } else if (row.court_detail === '1/2面B') {
-          map[key].B = row.status;
-          if (row.updated_at && row.updated_at > latestSeto) latestSeto = row.updated_at;
-        } else if (row.court_detail === 'spacepad_1/3(1)') {
-          map[key].sp1 = row.status;
-          if (row.updated_at && row.updated_at > latestSpacepad) latestSpacepad = row.updated_at;
-        } else if (row.court_detail === 'spacepad_1/3(2)') {
-          map[key].sp2 = row.status;
-          if (row.updated_at && row.updated_at > latestSpacepad) latestSpacepad = row.updated_at;
-        } else if (row.court_detail === 'spacepad_1/3(3)') {
-          map[key].sp3 = row.status;
-          if (row.updated_at && row.updated_at > latestSpacepad) latestSpacepad = row.updated_at;
-        } else if (row.court_detail === 'mizushima_gym_1/4(1)') {
-          map[key].mg1 = row.status;
-          if (row.updated_at && row.updated_at > latestSpacepad) latestSpacepad = row.updated_at;
-        } else if (row.court_detail === 'mizushima_gym_1/4(2)') {
-          map[key].mg2 = row.status;
-          if (row.updated_at && row.updated_at > latestSpacepad) latestSpacepad = row.updated_at;
-        } else if (row.court_detail === 'mizushima_gym_1/4(3)') {
-          map[key].mg3 = row.status;
-          if (row.updated_at && row.updated_at > latestSpacepad) latestSpacepad = row.updated_at;
-        } else if (row.court_detail === 'mizushima_gym_1/4(4)') {
-          map[key].mg4 = row.status;
-          if (row.updated_at && row.updated_at > latestSpacepad) latestSpacepad = row.updated_at;
+        const key = `${row.slot_date}_${row.time_range}`;
+        if (!slotMap[key]) slotMap[key] = new Set();
+        slotMap[key].add(venueId);
+
+        const src = VENUE_BY_ID[venueId]?.source;
+        if (src === 'yoyacool' && row.updated_at && row.updated_at > latestYoyacool) {
+          latestYoyacool = row.updated_at;
+        } else if (src === 'spacepad' && row.updated_at && row.updated_at > latestSpacepad) {
+          latestSpacepad = row.updated_at;
         }
       }
 
-      setCourtAvailability(map);
+      setOpenVenuesBySlot(slotMap);
 
       const fmtJst = (iso) =>
         iso
@@ -439,13 +339,13 @@ export default function App() {
           : '';
 
       setLastSyncedAt({
-        seto: fmtJst(latestSeto),
+        yoyacool: fmtJst(latestYoyacool),
         spacepad: fmtJst(latestSpacepad)
       });
     }
 
     fetchVotes();
-    fetchAvailability();
+    fetchOpenAvailability();
 
     const channel = supabase
       .channel('calendar-votes-realtime')
@@ -464,11 +364,36 @@ export default function App() {
   }, [fetchVotes]);
 
   // --------------------------------------------------------------------------
-  // 2. BUILD UNIFIED 28-DAY (4-WEEK) CALENDAR ACROSS ALL 3 VENUES
+  // 2. BUILD UNIFIED 28-DAY (4-WEEK) CALENDAR
   // --------------------------------------------------------------------------
 
+  const matchesFilter = useCallback(
+    (openVenueIds) => {
+      if (venueFilter !== 'all') {
+        return openVenueIds.has(venueFilter);
+      }
+      if (areaFilter !== 'all') {
+        for (const id of openVenueIds) {
+          if (VENUE_BY_ID[id]?.area === areaFilter) return true;
+        }
+        return false;
+      }
+      return openVenueIds.size > 0;
+    },
+    [areaFilter, venueFilter]
+  );
+
+  const filterVenueList = useCallback(
+    (venues) => {
+      if (venueFilter !== 'all') return venues.filter((v) => v.id === venueFilter);
+      if (areaFilter !== 'all') return venues.filter((v) => v.area === areaFilter);
+      return venues;
+    },
+    [areaFilter, venueFilter]
+  );
+
   const { calendarWeeks, allOpenSlots, hasLiveAvailability } = useMemo(() => {
-    const hasLive = Object.keys(courtAvailability).length > 0;
+    const hasLive = Object.keys(openVenuesBySlot).length > 0;
     const days = [];
 
     for (let offset = 0; offset < 28; offset += 1) {
@@ -479,30 +404,29 @@ export default function App() {
         meta.dayType === 'holiday';
 
       const slots = {};
-      let allUnavailableCount = 0;
+      let closedCount = 0;
 
       TIME_BLOCKS.forEach((block) => {
+        const key = `${meta.dateKey}_${block.id}`;
         const studentPrime = isWeekendOrHoliday || block.isStudentPrime;
-        const combined = getCombinedSlotInfo(
-          courtAvailability,
-          meta.dateKey,
-          block.id,
-          hasLive
-        );
+        const openIds = openVenuesBySlot[key] || new Set();
+        const openVenues = VENUES.filter((v) => openIds.has(v.id));
+        const isOpen = openVenues.length > 0;
 
-        if (!combined.isOpen) {
-          allUnavailableCount += 1;
-        }
+        if (!isOpen) closedCount += 1;
 
         slots[block.id] = {
-          ...combined,
+          isOpen,
+          openVenues,
+          openVenueIds: openIds,
+          summaryText: openVenues.map((v) => v.shortName).join(' / '),
           studentPrime
         };
       });
 
       days.push({
         ...meta,
-        allBooked: allUnavailableCount === TIME_BLOCKS.length,
+        allBooked: closedCount === TIME_BLOCKS.length,
         slots
       });
     }
@@ -532,11 +456,11 @@ export default function App() {
               holiday: day.holiday || '',
               dayType: day.dayType,
               blockId: block.id,
+              startHour: block.startHour,
               timeLabel: block.label,
-              setoOpen: cell.setoOpen,
-              fukudaOpen: cell.fukudaOpen,
-              mizushimaOpen: cell.mizushimaOpen,
-              court: cell.summaryText,
+              openVenues: cell.openVenues,
+              openVenueIds: cell.openVenueIds,
+              venueSummary: cell.summaryText,
               studentPrime: Boolean(cell.studentPrime)
             });
           }
@@ -549,10 +473,95 @@ export default function App() {
       allOpenSlots: openSlots,
       hasLiveAvailability: hasLive
     };
-  }, [courtAvailability]);
+  }, [openVenuesBySlot]);
+
+  // Highlight consecutive 2-hour blocks per day, prioritizing those closest to 19:00–20:00
+  const twoHourHighlightMap = useMemo(() => {
+    const cellMeta = {};
+
+    calendarWeeks.forEach((week) => {
+      week.days.forEach((day) => {
+        const candidates = [];
+
+        for (let i = 0; i < TIME_BLOCKS.length - 1; i += 1) {
+          const b1 = TIME_BLOCKS[i];
+          const b2 = TIME_BLOCKS[i + 1];
+          const key1 = `${day.dateKey}_${b1.id}`;
+          const key2 = `${day.dateKey}_${b2.id}`;
+
+          const ids1 = openVenuesBySlot[key1] || new Set();
+          const ids2 = openVenuesBySlot[key2] || new Set();
+
+          const shared = VENUES.filter((v) => ids1.has(v.id) && ids2.has(v.id));
+          const filtered = filterVenueList(shared);
+          if (filtered.length === 0) continue;
+
+          // 0 if the 2-hour block directly includes 19:00–20:00 (18:00–20:00 or 19:00–21:00)
+          const distFrom19 =
+            b1.startHour === 19 || b2.startHour === 19
+              ? 0
+              : Math.min(Math.abs(b1.startHour - 19), Math.abs(b2.startHour - 19));
+
+          const topVenue = rankRecommendedVenues(
+            filtered,
+            day.dateKey,
+            [b1.startHour, b2.startHour],
+            openVenuesBySlot,
+            1
+          )[0];
+
+          candidates.push({
+            key1,
+            key2,
+            spanLabel: `${b1.shortLabel}–${String(b2.startHour + 1).padStart(2, '0')}:00`,
+            distFrom19,
+            facilityTier: topVenue?.facilityTier ?? 0,
+            distanceKm: topVenue?.distanceKm ?? 99,
+            topVenueName: topVenue?.shortName || ''
+          });
+        }
+
+        if (candidates.length === 0) return;
+
+        // Sort: 1) Closest to 19:00–20:00, 2) Indoor > Outdoor Lit > Unlit, 3) Closest to Okayama Stn
+        candidates.sort((a, b) => {
+          if (a.distFrom19 !== b.distFrom19) return a.distFrom19 - b.distFrom19;
+          if (b.facilityTier !== a.facilityTier) return b.facilityTier - a.facilityTier;
+          return a.distanceKm - b.distanceKm;
+        });
+
+        // Mark all secondary 2-hour continuous cells first
+        for (const c of candidates) {
+          for (const k of [c.key1, c.key2]) {
+            if (!cellMeta[k]) {
+              cellMeta[k] = {
+                isTwoHourPart: true,
+                isPriorityTwoHour: false,
+                spanLabel: c.spanLabel,
+                topVenueName: c.topVenueName
+              };
+            }
+          }
+        }
+
+        // Promote the #1 closest-to-19:00 2-hour block on this day
+        const best = candidates[0];
+        for (const k of [best.key1, best.key2]) {
+          cellMeta[k] = {
+            isTwoHourPart: true,
+            isPriorityTwoHour: true,
+            spanLabel: best.spanLabel,
+            topVenueName: best.topVenueName
+          };
+        }
+      });
+    });
+
+    return cellMeta;
+  }, [calendarWeeks, openVenuesBySlot, filterVenueList]);
 
   // --------------------------------------------------------------------------
-  // 3. GROUP TALLY & TOP RANKED SLOTS COMPUTATION
+  // 3. 1-HOUR TALLIES (WITH TOP 3 RECOMMENDED VENUES) & TOP 5 2-HOUR BLOCKS
   // --------------------------------------------------------------------------
 
   const slotTallies = useMemo(() => {
@@ -576,8 +585,18 @@ export default function App() {
         bestScore = score;
       }
 
+      const filteredOpenVenues = filterVenueList(slot.openVenues);
+      const recommendedVenues = rankRecommendedVenues(
+        filteredOpenVenues.length > 0 ? filteredOpenVenues : slot.openVenues,
+        slot.dateKey,
+        [slot.startHour],
+        openVenuesBySlot,
+        3
+      );
+
       tallyMap[slot.slotKey] = {
         ...slot,
+        isTwoHourBlock: false,
         yesPlayers,
         maybePlayers,
         noPlayers,
@@ -585,6 +604,7 @@ export default function App() {
         maybeCount: maybePlayers.length,
         noCount: noPlayers.length,
         score,
+        recommendedVenues,
         isSweetSpot: yesPlayers.length >= 6 && yesPlayers.length <= 8,
         isDoubleCourt: yesPlayers.length >= 9
       };
@@ -596,20 +616,103 @@ export default function App() {
     });
 
     return tallyMap;
-  }, [allOpenSlots, votes]);
+  }, [allOpenSlots, votes, filterVenueList, openVenuesBySlot]);
 
-  const rankedTopSlots = useMemo(() => {
-    return Object.values(slotTallies)
-      .filter((s) => {
-        if (s.yesCount === 0 && s.maybeCount === 0) return false;
-        if (venueFilter === 'seto') return s.setoOpen;
-        if (venueFilter === 'fukuda') return s.fukudaOpen;
-        if (venueFilter === 'mizushima') return s.mizushimaOpen;
-        return true;
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
-  }, [slotTallies, venueFilter]);
+  // Consecutive 2-Hour Block Rankings (Top 5)
+  const rankedTwoHourBlocks = useMemo(() => {
+    const blocks = [];
+
+    calendarWeeks.forEach((week) => {
+      week.days.forEach((day) => {
+        for (let i = 0; i < TIME_BLOCKS.length - 1; i += 1) {
+          const b1 = TIME_BLOCKS[i];
+          const b2 = TIME_BLOCKS[i + 1];
+          const slotKey1 = `${day.dateKey}_${b1.id}`;
+          const slotKey2 = `${day.dateKey}_${b2.id}`;
+
+          const openIds1 = openVenuesBySlot[slotKey1] || new Set();
+          const openIds2 = openVenuesBySlot[slotKey2] || new Set();
+
+          // Venues open for BOTH consecutive hours
+          const sharedVenues = VENUES.filter(
+            (v) => openIds1.has(v.id) && openIds2.has(v.id)
+          );
+          const filteredShared = filterVenueList(sharedVenues);
+          if (filteredShared.length === 0) continue;
+
+          const bothYesPlayers = [];
+          const flexBothPlayers = [];
+          const partialYesPlayers = [];
+          const noPlayers = [];
+
+          votes.forEach((v) => {
+            const c1 = getMergedVoterChoice(v.responses, slotKey1);
+            const c2 = getMergedVoterChoice(v.responses, slotKey2);
+
+            if (c1 === 'yes' && c2 === 'yes') {
+              bothYesPlayers.push(v);
+            } else if (
+              (c1 === 'yes' || c1 === 'maybe') &&
+              (c2 === 'yes' || c2 === 'maybe')
+            ) {
+              flexBothPlayers.push(v);
+            } else if (c1 === 'yes' || c2 === 'yes') {
+              partialYesPlayers.push(v);
+            } else if (c1 === 'no' || c2 === 'no') {
+              noPlayers.push(v);
+            }
+          });
+
+          if (
+            bothYesPlayers.length === 0 &&
+            flexBothPlayers.length === 0 &&
+            partialYesPlayers.length === 0
+          ) {
+            continue;
+          }
+
+          const score =
+            bothYesPlayers.length * 1000 +
+            flexBothPlayers.length * 100 +
+            partialYesPlayers.length * 10;
+
+          const recommendedVenues = rankRecommendedVenues(
+            filteredShared,
+            day.dateKey,
+            [b1.startHour, b2.startHour],
+            openVenuesBySlot,
+            3
+          );
+
+          blocks.push({
+            slotKey: `${day.dateKey}_${b1.id}__2h`,
+            slotKey1,
+            slotKey2,
+            isTwoHourBlock: true,
+            dateKey: day.dateKey,
+            jpDate: day.jpDate,
+            dow: day.dow,
+            holiday: day.holiday || '',
+            timeLabel: `${b1.shortLabel}–${String(b2.startHour + 1).padStart(2, '0')}:00 (2時間)`,
+            openVenues: filteredShared,
+            recommendedVenues,
+            venueSummary: recommendedVenues.map((v) => v.shortName).join(' / '),
+            yesPlayers: bothYesPlayers,
+            maybePlayers: [...flexBothPlayers, ...partialYesPlayers],
+            noPlayers,
+            bothYesCount: bothYesPlayers.length,
+            flexBothCount: flexBothPlayers.length,
+            partialYesCount: partialYesPlayers.length,
+            score,
+            isSweetSpot: bothYesPlayers.length >= 6 && bothYesPlayers.length <= 8,
+            isDoubleCourt: bothYesPlayers.length >= 9
+          });
+        }
+      });
+    });
+
+    return blocks.sort((a, b) => b.score - a.score).slice(0, 5);
+  }, [calendarWeeks, openVenuesBySlot, filterVenueList, votes]);
 
   // --------------------------------------------------------------------------
   // 4. INTERACTIVE CELL CYCLING & VOTER FORM ACTIONS
@@ -642,9 +745,7 @@ export default function App() {
         TIME_BLOCKS.forEach((block) => {
           const cell = day.slots[block.id];
           if (!cell || !cell.isOpen) return;
-          if (venueFilter === 'seto' && !cell.setoOpen) return;
-          if (venueFilter === 'fukuda' && !cell.fukudaOpen) return;
-          if (venueFilter === 'mizushima' && !cell.mizushimaOpen) return;
+          if (!matchesFilter(cell.openVenueIds)) return;
 
           const key = `${day.dateKey}_${block.id}`;
           if (val === 'clear') {
@@ -673,14 +774,25 @@ export default function App() {
       const next = { ...prev };
       allOpenSlots.forEach((slot) => {
         if (!slot.studentPrime) return;
-        if (venueFilter === 'seto' && !slot.setoOpen) return;
-        if (venueFilter === 'fukuda' && !slot.fukudaOpen) return;
-        if (venueFilter === 'mizushima' && !slot.mizushimaOpen) return;
+        if (!matchesFilter(slot.openVenueIds)) return;
         next[slot.slotKey] = 'yes';
       });
       return next;
     });
     triggerToast('Marked all Student Prime slots (18:00+ & Holidays/Weekends) ◯!');
+  };
+
+  const handleQuickFillPriorityTwoHour = () => {
+    setResponses((prev) => {
+      const next = { ...prev };
+      allOpenSlots.forEach((slot) => {
+        if (!twoHourHighlightMap[slot.slotKey]?.isPriorityTwoHour) return;
+        if (!matchesFilter(slot.openVenueIds)) return;
+        next[slot.slotKey] = 'yes';
+      });
+      return next;
+    });
+    triggerToast('Marked all recommended 2-hour continuous blocks (★ 2h連続) ◯!');
   };
 
   const resetVoterForm = () => {
@@ -777,38 +889,42 @@ export default function App() {
   };
 
   // --------------------------------------------------------------------------
-  // 5. LINE / INSTAGRAM INVITE SUMMARY & CLIPBOARD HELPERS
+  // 5. SNS INVITE SUMMARY (Top 2-Hour Blocks + Recommended Venue Map Links)
   // --------------------------------------------------------------------------
 
   const shareSummaryText = useMemo(() => {
     const lines = [
-      '🏓 岡大dinks | 日程調整 (瀬戸・福田・水島 3会場統合)',
-      '📅 1-Hour Slot Poll (12:00–21:00 JST):',
+      `🏓 岡大dinks | 合同セッション日程調整 (${VENUES.length}会場統合)`,
+      '📅 Recommended 2-Hour Blocks (12:00–22:00 JST):',
       ''
     ];
 
-    if (rankedTopSlots.length > 0) {
-      lines.push('🏆 Top Ranked 1-Hr Slots / 現在の人気枠:');
-      rankedTopSlots.slice(0, 5).forEach((s, idx) => {
-        const hol = s.holiday ? `(${s.holiday})` : '';
+    const featuredVenues = new Map();
+
+    if (rankedTwoHourBlocks.length > 0) {
+      lines.push('🏆 Top Ranked 2-Hr Blocks / おすすめ2時間枠:');
+      rankedTwoHourBlocks.forEach((b, idx) => {
+        const hol = b.holiday ? `(${b.holiday})` : '';
+        const topCourt = b.recommendedVenues[0];
         lines.push(
-          `${idx + 1}. ${s.jpDate}(${s.dow})${hol} ${s.timeLabel} — ◯${s.yesCount} / △${s.maybeCount} [${s.court}]`
+          `${idx + 1}. ${b.jpDate}(${b.dow})${hol} ${b.timeLabel} — 2h◯${b.bothYesCount} / 調整可${b.flexBothCount + b.partialYesCount} [第一候補: ${topCourt?.shortName || b.venueSummary}]`
         );
+        b.recommendedVenues.forEach((v) => featuredVenues.set(v.id, v));
       });
       lines.push('');
     } else {
-      lines.push('まだ投票がありません — リンクから参加できる時間帯を選んでください！', '');
+      lines.push('まだ2時間連続の投票がありません — リンクから参加できる時間帯を選んでください！', '');
     }
 
-    lines.push(
-      `👥 Total Voted: ${votes.length} players`,
-      `📍 瀬戸町総合運動公園体育館: ${VENUES.seto.mapUrl}`,
-      `📍 シマダみらいアリーナ水島: ${VENUES.fukuda.mapUrl}`,
-      `📍 水島体育館: ${VENUES.mizushima.mapUrl}`,
-      '👟 Clean indoor shoes required (室内履き必須)'
-    );
+    lines.push(`👥 Total Voted: ${votes.length} players`);
+    const venuesToList =
+      featuredVenues.size > 0 ? Array.from(featuredVenues.values()) : VENUES.slice(0, 5);
+    venuesToList.forEach((v) => {
+      lines.push(`📍 ${v.fullName}: ${v.mapUrl}`);
+    });
+    lines.push('👟 体育館は室内履き必須 / 屋外コートはテニス・ハードコート用シューズ推奨');
     return lines.join('\n');
-  }, [rankedTopSlots, votes.length]);
+  }, [rankedTwoHourBlocks, votes.length]);
 
   const fallbackCopy = () => {
     const ta = document.createElement('textarea');
@@ -839,6 +955,8 @@ export default function App() {
 
   const currentWeek = calendarWeeks[activeWeekIdx];
   const selectedSlotCount = Object.keys(responses).length;
+  const okayamaCount = VENUES.filter((v) => v.area === 'okayama').length;
+  const kurashikiCount = VENUES.filter((v) => v.area === 'kurashiki').length;
 
   return (
     <div className="min-h-screen bg-[#eef2f6] text-slate-900 pb-16 font-sans selection:bg-lime-300 selection:text-slate-950">
@@ -850,7 +968,7 @@ export default function App() {
         </div>
       )}
 
-      {/* HEADER: 3-Venue Map Links, Sync Status & Share Button */}
+      {/* HEADER */}
       <header className="bg-[#1B365D] text-white shadow-md border-b-4 border-[#2B547E]">
         <div className="max-w-6xl mx-auto px-3.5 sm:px-6 py-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -861,13 +979,13 @@ export default function App() {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="px-2 py-0.5 rounded bg-lime-400 text-[#1B365D] text-[11px] font-extrabold tracking-tight">
-                    3会場統合 空き状況 &amp; 日程調整
+                    {VENUES.length}会場統合 空き状況 &amp; 日程調整
                   </span>
                   {hasLiveAvailability ? (
                     <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-white/10 text-[10px] text-lime-200 font-semibold">
                       <RefreshCw className="w-2.5 h-2.5" />
                       <span>
-                        yoyacool({lastSyncedAt.seto || '同期済'}) / Spacepad(
+                        yoyacool({lastSyncedAt.yoyacool || '同期済'}) / Spacepad(
                         {lastSyncedAt.spacepad || '同期済'})
                       </span>
                     </span>
@@ -882,46 +1000,12 @@ export default function App() {
                   岡大dinks 合同セッション日程調整
                 </h1>
 
-                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] sm:text-xs text-sky-200 mt-1">
-                  <a
-                    href={VENUES.seto.mapUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 underline decoration-lime-300/60 hover:text-lime-300 transition"
-                  >
-                    <MapPin className="w-3 h-3 text-lime-300 shrink-0" />
-                    <span>
-                      {VENUES.seto.shortName} ({VENUES.seto.subTitle})
-                    </span>
-                    <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
-                  <span className="text-white/30">|</span>
-                  <a
-                    href={VENUES.fukuda.mapUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 underline decoration-sky-300/60 hover:text-lime-300 transition"
-                  >
-                    <MapPin className="w-3 h-3 text-sky-300 shrink-0" />
-                    <span>
-                      {VENUES.fukuda.shortName} ({VENUES.fukuda.subTitle})
-                    </span>
-                    <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
-                  <span className="text-white/30">|</span>
-                  <a
-                    href={VENUES.mizushima.mapUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 underline decoration-violet-300/60 hover:text-lime-300 transition"
-                  >
-                    <MapPin className="w-3 h-3 text-violet-300 shrink-0" />
-                    <span>
-                      {VENUES.mizushima.shortName} ({VENUES.mizushima.subTitle})
-                    </span>
-                    <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
-                </div>
+                <p className="text-[11px] sm:text-xs text-sky-200 flex items-center gap-1.5 mt-1">
+                  <MapPin className="w-3.5 h-3.5 text-lime-300 shrink-0" />
+                  <span>
+                    対象施設 ({VENUES.length}会場): 岡山市 ({okayamaCount}施設) ・ 倉敷市 ({kurashikiCount}施設)
+                  </span>
+                </p>
               </div>
             </div>
 
@@ -969,7 +1053,7 @@ export default function App() {
               <span>
                 {editingVoteId
                   ? `編集中 (Editing): ${voterName}`
-                  : 'STEP 1: 名前を入力して参加できる時間帯をタップ (1回の入力で3会場に反映)'}
+                  : `STEP 1: 名前を入力して参加できる時間帯をタップ (1回の入力で${VENUES.length}会場に反映)`}
               </span>
             </div>
             {editingVoteId && (
@@ -1015,13 +1099,13 @@ export default function App() {
 
               <div className="sm:col-span-5">
                 <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
-                  メモ / Note (希望会場・ラケット貸出・交通手段など)
+                  メモ / Note (希望エリア・屋内/屋外・パドル貸出など)
                 </label>
                 <input
                   type="text"
                   value={voterNote}
                   onChange={(e) => setVoterNote(e.target.value)}
-                  placeholder="例: どこでもOK / パドル借りたいです"
+                  placeholder="例: 岡山市内希望 / どこでもOK / パドル借りたいです"
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:border-[#1B365D] focus:ring-2 focus:ring-[#1B365D]/20 outline-none text-sm"
                 />
               </div>
@@ -1073,6 +1157,13 @@ export default function App() {
                 </button>
                 <button
                   type="button"
+                  onClick={handleQuickFillPriorityTwoHour}
+                  className="px-2.5 py-1 rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-950 font-extrabold text-xs border border-indigo-300 cursor-pointer"
+                >
+                  ★ 2h連続のみ ◯
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleQuickFillWeek('clear')}
                   className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-300 cursor-pointer"
                 >
@@ -1112,7 +1203,7 @@ export default function App() {
           </form>
         </section>
 
-        {/* 2. WEEK NAVIGATION & UNIFIED 3-VENUE AVAILABILITY MATRIX */}
+        {/* 2. WEEK NAVIGATION & CLEAN SCALABLE 1-HOUR MATRIX */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-300 overflow-hidden">
           <div className="bg-[#1B365D] px-3 py-2.5 flex flex-wrap items-center justify-between gap-2 text-white">
             <button
@@ -1127,7 +1218,7 @@ export default function App() {
 
             <div className="text-center">
               <div className="inline-block px-2 py-0.5 rounded bg-rose-700 text-white text-[10px] font-extrabold tracking-wider mb-0.5">
-                瀬戸・福田・水島 3会場統合1時間枠 (12:00–21:00)
+                1時間枠スケジュール (12:00–22:00)
               </div>
               <div className="text-sm sm:text-base font-extrabold tracking-tight text-white">
                 {currentWeek.rangeLabel}
@@ -1149,7 +1240,7 @@ export default function App() {
             </button>
           </div>
 
-          {/* Week Tabs, 3-Venue Filter, Student Prime Filter, & Vote/Heatmap Switcher */}
+          {/* Week Tabs, Scalable Area+Venue Dropdown Filter, Student Prime, & View Mode */}
           <div className="bg-[#f4f6f9] px-3 py-2.5 border-b border-slate-300 flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-1.5">
               {calendarWeeks.map((w, idx) => (
@@ -1169,52 +1260,68 @@ export default function App() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex rounded-xl bg-slate-200 p-0.5 border border-slate-300 text-xs font-extrabold">
-                <button
-                  type="button"
-                  onClick={() => setVenueFilter('all')}
-                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
-                    venueFilter === 'all'
-                      ? 'bg-white text-[#1B365D] shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  全会場
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVenueFilter('seto')}
-                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
-                    venueFilter === 'seto'
-                      ? 'bg-lime-400 text-[#1B365D] shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  瀬戸空き
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVenueFilter('fukuda')}
-                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
-                    venueFilter === 'fukuda'
-                      ? 'bg-sky-300 text-[#1B365D] shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  福田空き
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVenueFilter('mizushima')}
-                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
-                    venueFilter === 'mizushima'
-                      ? 'bg-violet-300 text-[#1B365D] shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  水島空き
-                </button>
-              </div>
+              {okayamaCount > 0 && kurashikiCount > 0 && (
+                <div className="inline-flex rounded-xl bg-slate-200 p-0.5 border border-slate-300 text-xs font-extrabold">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAreaFilter('all');
+                      setVenueFilter('all');
+                    }}
+                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                      areaFilter === 'all'
+                        ? 'bg-white text-[#1B365D] shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    全エリア
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAreaFilter('okayama');
+                      setVenueFilter('all');
+                    }}
+                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                      areaFilter === 'okayama'
+                        ? 'bg-lime-400 text-[#1B365D] shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    岡山市
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAreaFilter('kurashiki');
+                      setVenueFilter('all');
+                    }}
+                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                      areaFilter === 'kurashiki'
+                        ? 'bg-sky-300 text-[#1B365D] shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    倉敷市
+                  </button>
+                </div>
+              )}
+
+              <select
+                aria-label="会場フィルター"
+                value={venueFilter}
+                onChange={(e) => setVenueFilter(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 text-xs font-extrabold text-[#1B365D] focus:border-[#1B365D] outline-none cursor-pointer"
+              >
+                <option value="all">
+                  会場: すべて ({visibleVenues.length}施設)
+                </option>
+                {visibleVenues.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.shortName} ({v.courtType === 'outdoor' ? '屋外' : '屋内'})
+                  </option>
+                ))}
+              </select>
 
               <button
                 type="button"
@@ -1258,7 +1365,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Symbol & 3-Venue Badge Legend */}
+          {/* Minimal Symbol Legend */}
           <div className="px-3.5 py-2 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="inline-flex items-center gap-1 font-bold text-emerald-700">
@@ -1279,29 +1386,27 @@ export default function App() {
                 </span>
                 不可
               </span>
-              <span className="inline-flex items-center gap-1">
-                <span className="px-1.5 py-0.5 rounded bg-lime-100 border border-lime-300 text-lime-800 font-bold text-[10px]">
-                  瀬戸 A・B
+              <span className="inline-flex items-center gap-1 text-slate-500">
+                <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-bold text-[10px]">
+                  満員
                 </span>
-                瀬戸サブアリーナ
+                全会場予約済 (選択不可)
               </span>
-              <span className="inline-flex items-center gap-1">
-                <span className="px-1.5 py-0.5 rounded bg-sky-100 border border-sky-300 text-sky-900 font-bold text-[10px]">
-                  福田 1・2・3
+              <span className="inline-flex items-center gap-1 font-bold text-indigo-800">
+                <span className="px-1.5 py-0.5 rounded bg-indigo-100 border border-indigo-400 text-indigo-900 font-extrabold text-[10px]">
+                  ★ 2h連続
                 </span>
-                福田公園体育館
+                19:00前後おすすめ2時間枠
               </span>
-              <span className="inline-flex items-center gap-1">
-                <span className="px-1.5 py-0.5 rounded bg-violet-100 border border-violet-300 text-violet-900 font-bold text-[10px]">
-                  水島 1・2・3・4
+              <span className="inline-flex items-center gap-1 text-slate-600">
+                <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 font-bold text-[10px]">
+                  2h可
                 </span>
-                水島体育館
+                その他2時間連続空き
               </span>
             </div>
             <span className="font-bold text-[#1B365D]">
-              {gridViewMode === 'vote'
-                ? '※ 3会場のいずれかが空いていれば投票可能'
-                : '※ 枠をタップで投票メンバー詳細を表示'}
+              ※ 下部の「◯/△」タップでおすすめ予約候補TOP3と投票メンバーを表示
             </span>
           </div>
 
@@ -1310,13 +1415,13 @@ export default function App() {
             <table className="w-full border-collapse text-center">
               <thead>
                 <tr className="bg-[#eef3f8] border-b-2 border-slate-300 text-slate-800">
-                  <th className="sticky left-0 z-20 bg-[#dce5f0] py-2.5 px-2.5 min-w-[116px] sm:min-w-[136px] text-left text-xs font-extrabold text-[#1B365D] border-r-2 border-slate-300">
+                  <th className="sticky left-0 z-20 bg-[#dce5f0] py-2.5 px-2.5 min-w-[116px] sm:min-w-[132px] text-left text-xs font-extrabold text-[#1B365D] border-r-2 border-slate-300">
                     日付 / 曜日
                   </th>
                   {TIME_BLOCKS.map((block) => (
                     <th
                       key={block.id}
-                      className="py-2 px-1.5 min-w-[104px] sm:min-w-[118px] border-r border-slate-300 last:border-r-0"
+                      className="py-2 px-1.5 min-w-[84px] sm:min-w-[94px] border-r border-slate-300 last:border-r-0"
                     >
                       <div className="text-[11px] sm:text-xs font-extrabold text-[#1B365D]">
                         {block.label}
@@ -1363,9 +1468,11 @@ export default function App() {
                             </span>
                           )}
                         </div>
-                        <span className="block text-[10px] text-slate-500 mt-0.5">
-                          {day.allBooked ? '全会場満員/休館' : '瀬戸・福田・水島'}
-                        </span>
+                        {day.allBooked && (
+                          <span className="inline-block mt-0.5 text-[10px] font-bold text-slate-400">
+                            空きなし
+                          </span>
+                        )}
                       </td>
 
                       {TIME_BLOCKS.map((block) => {
@@ -1375,35 +1482,15 @@ export default function App() {
                           return (
                             <td
                               key={block.id}
-                              className="bg-[#e5e7eb] py-2 px-1 align-middle select-none cursor-not-allowed"
+                              className="bg-[#e5e7eb] py-3 px-1 align-middle select-none cursor-not-allowed"
                             >
-                              <div className="flex flex-col items-center justify-center gap-1 text-slate-400">
-                                {cellData?.setoClosed ? (
-                                  <BedDouble className="w-3.5 h-3.5" />
-                                ) : (
-                                  <span className="text-xs font-extrabold leading-none">
-                                    ✕
-                                  </span>
-                                )}
-                                {cellData && (
-                                  <div className="flex flex-col gap-0.5 w-full px-1">
-                                    <span
-                                      className={`text-[9px] font-semibold px-1 py-0.5 rounded border leading-none truncate ${cellData.setoBadge.className}`}
-                                    >
-                                      {cellData.setoBadge.text}
-                                    </span>
-                                    <span
-                                      className={`text-[9px] font-semibold px-1 py-0.5 rounded border leading-none truncate ${cellData.fukudaBadge.className}`}
-                                    >
-                                      {cellData.fukudaBadge.text}
-                                    </span>
-                                    <span
-                                      className={`text-[9px] font-semibold px-1 py-0.5 rounded border leading-none truncate ${cellData.mizushimaBadge.className}`}
-                                    >
-                                      {cellData.mizushimaBadge.text}
-                                    </span>
-                                  </div>
-                                )}
+                              <div className="flex flex-col items-center justify-center gap-0.5 text-slate-400">
+                                <span className="text-xs font-extrabold leading-none">
+                                  ✕
+                                </span>
+                                <span className="text-[10px] font-medium">
+                                  満員
+                                </span>
                               </div>
                             </td>
                           );
@@ -1411,6 +1498,7 @@ export default function App() {
 
                         const slotKey = `${day.dateKey}_${block.id}`;
                         const myChoice = responses[slotKey];
+                        const twoHourInfo = twoHourHighlightMap[slotKey];
                         const tally = slotTallies[slotKey] || {
                           yesCount: 0,
                           maybeCount: 0,
@@ -1421,13 +1509,13 @@ export default function App() {
 
                         const isDimmedByPrime =
                           highlightPrimeOnly && !cellData.studentPrime;
-                        const isDimmedByVenue =
-                          (venueFilter === 'seto' && !cellData.setoOpen) ||
-                          (venueFilter === 'fukuda' && !cellData.fukudaOpen) ||
-                          (venueFilter === 'mizushima' && !cellData.mizushimaOpen);
+                        const isDimmedByVenue = !matchesFilter(cellData.openVenueIds);
                         const isDimmed = isDimmedByPrime || isDimmedByVenue;
 
-                        let heatmapBg = 'bg-white hover:bg-sky-50';
+                        let heatmapBg = twoHourInfo?.isPriorityTwoHour
+                          ? 'bg-indigo-50/70 hover:bg-indigo-100/70'
+                          : 'bg-white hover:bg-sky-50';
+
                         if (gridViewMode === 'heatmap') {
                           if (tally.yesCount >= 6) {
                             heatmapBg =
@@ -1448,50 +1536,68 @@ export default function App() {
                           heatmapBg = 'bg-rose-50/80 hover:bg-rose-100/70';
                         }
 
+                        const highlightRing = tally.isTopPick
+                          ? 'ring-2 ring-inset ring-amber-400'
+                          : twoHourInfo?.isPriorityTwoHour
+                          ? 'ring-2 ring-inset ring-indigo-400'
+                          : '';
+
                         return (
                           <td
                             key={block.id}
                             className={`p-1.5 align-middle transition ${heatmapBg} ${
-                              isDimmed ? 'opacity-30' : ''
-                            } ${
-                              tally.isTopPick
-                                ? 'ring-2 ring-inset ring-amber-400'
-                                : ''
-                            }`}
+                              isDimmed ? 'opacity-25' : ''
+                            } ${highlightRing}`}
                           >
                             <div className="flex flex-col items-center justify-between gap-1">
+                              {twoHourInfo?.isPriorityTwoHour ? (
+                                <span
+                                  className="px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[9px] font-extrabold tracking-tight leading-none whitespace-nowrap"
+                                  title={`19:00前後おすすめ2時間連続枠: ${twoHourInfo.spanLabel} (${twoHourInfo.topVenueName})`}
+                                >
+                                  ★ 2h連続
+                                </span>
+                              ) : twoHourInfo?.isTwoHourPart ? (
+                                <span
+                                  className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 text-[9px] font-bold leading-none whitespace-nowrap"
+                                  title={`2時間連続空きあり: ${twoHourInfo.spanLabel} (${twoHourInfo.topVenueName})`}
+                                >
+                                  2h可
+                                </span>
+                              ) : null}
+
                               <button
                                 type="button"
                                 onClick={() => handleCycleSlot(slotKey)}
                                 className="w-full py-0.5 px-0.5 rounded-xl flex flex-col items-center justify-center transition active:scale-95 cursor-pointer"
-                                title={`${day.jpDate}(${day.dow}) ${block.label} [${cellData.summaryText}]`}
+                                title={`${day.jpDate}(${day.dow}) ${block.label} • 空き会場: ${cellData.summaryText}`}
                               >
                                 {gridViewMode === 'vote' ? (
                                   <>
                                     {myChoice === 'yes' && (
-                                      <span className="w-6 h-6 rounded-full bg-emerald-600 text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
+                                      <span className="w-7 h-7 rounded-full bg-emerald-600 text-white font-extrabold text-sm flex items-center justify-center shadow-xs">
                                         ◯
                                       </span>
                                     )}
                                     {myChoice === 'maybe' && (
-                                      <span className="w-6 h-6 rounded-full bg-amber-500 text-white font-extrabold text-[11px] flex items-center justify-center shadow-xs">
+                                      <span className="w-7 h-7 rounded-full bg-amber-500 text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
                                         △
                                       </span>
                                     )}
                                     {myChoice === 'no' && (
-                                      <span className="w-6 h-6 rounded-full bg-rose-600 text-white font-extrabold text-[11px] flex items-center justify-center shadow-xs">
+                                      <span className="w-7 h-7 rounded-full bg-rose-600 text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
                                         ✕
                                       </span>
                                     )}
                                     {!myChoice && (
-                                      <span className="w-6 h-6 rounded-full border-2 border-dashed border-[#1B365D]/40 text-[#1B365D] font-extrabold text-xs flex items-center justify-center bg-white">
+                                      <span className="w-7 h-7 rounded-full border-2 border-dashed border-[#1B365D]/40 text-[#1B365D] font-extrabold text-sm flex items-center justify-center bg-white">
                                         ◯
                                       </span>
                                     )}
                                   </>
                                 ) : (
                                   <div className="py-0.5">
-                                    <div className="text-xs font-extrabold text-[#1B365D]">
+                                    <div className="text-xs sm:text-sm font-extrabold text-[#1B365D]">
                                       ◯ {tally.yesCount}
                                     </div>
                                     <div className="text-[10px] font-bold text-amber-700">
@@ -1499,32 +1605,13 @@ export default function App() {
                                     </div>
                                   </div>
                                 )}
-
-                                {/* Stacked 3-Venue Availability Badges */}
-                                <div className="mt-1 flex flex-col gap-0.5 w-full">
-                                  <span
-                                    className={`text-[9px] font-semibold px-1 py-0.5 rounded border leading-none whitespace-nowrap ${cellData.setoBadge.className}`}
-                                  >
-                                    {cellData.setoBadge.text}
-                                  </span>
-                                  <span
-                                    className={`text-[9px] font-semibold px-1 py-0.5 rounded border leading-none whitespace-nowrap ${cellData.fukudaBadge.className}`}
-                                  >
-                                    {cellData.fukudaBadge.text}
-                                  </span>
-                                  <span
-                                    className={`text-[9px] font-semibold px-1 py-0.5 rounded border leading-none whitespace-nowrap ${cellData.mizushimaBadge.className}`}
-                                  >
-                                    {cellData.mizushimaBadge.text}
-                                  </span>
-                                </div>
                               </button>
 
                               <button
                                 type="button"
                                 onClick={() => setInspectSlot(tally)}
                                 className="w-full py-0.5 px-1 rounded bg-slate-100/90 hover:bg-[#1B365D] hover:text-white text-[10px] font-extrabold text-slate-700 flex items-center justify-center gap-1 border border-slate-200 transition cursor-pointer"
-                                title="誰が投票したか見る (View Breakdown)"
+                                title={`おすすめ会場と投票詳細 (${cellData.summaryText})`}
                               >
                                 <span className="text-emerald-700">
                                   ◯{tally.yesCount}
@@ -1545,18 +1632,18 @@ export default function App() {
           </div>
         </section>
 
-        {/* 3. TOP RANKED 1-HOUR SLOTS & PLAYER COMMENTS */}
+        {/* 3. TOP 5 RECOMMENDED 2-HOUR BLOCKS & PLAYER COMMENTS */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <section className="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 bg-[#1B365D] text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Trophy className="w-4 h-4 text-lime-300" />
                 <h2 className="font-extrabold text-xs sm:text-sm">
-                  人気ランキング TOP 5 (3会場統合)
+                  おすすめ2時間枠 TOP 5 (連続空き会場)
                 </h2>
               </div>
               <span className="text-[11px] text-sky-200">
-                6–8名で1面が最適
+                2時間連続で予約可能な枠
               </span>
             </div>
 
@@ -1565,27 +1652,27 @@ export default function App() {
                 <p className="text-xs text-slate-500 py-4 text-center">
                   集計データを読み込み中...
                 </p>
-              ) : rankedTopSlots.length === 0 ? (
+              ) : rankedTwoHourBlocks.length === 0 ? (
                 <div className="text-center py-6 text-xs text-slate-500 space-y-1">
                   <p className="font-bold text-slate-700">
-                    投票はまだありません
+                    2時間連続の投票はまだありません
                   </p>
                   <p>
-                    上のカレンダーで空き枠（◯）をタップして投票すると、人気の日時と空き会場が自動ランキングされます！
+                    上のカレンダーで連続する2時間枠（◯）をタップすると、同じ会場で2時間取れるおすすめ枠が自動ランキングされます！
                   </p>
                 </div>
               ) : (
-                rankedTopSlots.map((slot, index) => (
+                rankedTwoHourBlocks.map((block, index) => (
                   <div
-                    key={slot.slotKey}
-                    onClick={() => setInspectSlot(slot)}
+                    key={block.slotKey}
+                    onClick={() => setInspectSlot(block)}
                     className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 transition cursor-pointer ${
                       index === 0
                         ? 'bg-lime-50/90 border-lime-400'
                         : 'bg-slate-50 hover:bg-slate-100 border-slate-200'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
                       <span
                         className={`w-6 h-6 rounded-full text-xs font-extrabold flex items-center justify-center shrink-0 ${
                           index === 0
@@ -1595,39 +1682,46 @@ export default function App() {
                       >
                         {index + 1}
                       </span>
-                      <div>
+                      <div className="min-w-0">
                         <div className="text-xs sm:text-sm font-extrabold text-slate-900">
-                          {slot.jpDate}({slot.dow})
-                          {slot.holiday ? `・${slot.holiday}` : ''}{' '}
+                          {block.jpDate}({block.dow})
+                          {block.holiday ? `・${block.holiday}` : ''}{' '}
                           <span className="text-[#1B365D]">
-                            {slot.timeLabel}
+                            {block.timeLabel}
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-600 flex flex-wrap items-center gap-2 mt-0.5">
+                        <div className="text-[11px] text-slate-600 flex flex-wrap items-center gap-1.5 mt-0.5">
                           <span className="font-bold text-[#1B365D]">
-                            空き: {slot.court}
+                            第1候補: {block.recommendedVenues[0]?.shortName}
                           </span>
-                          {slot.isSweetSpot && (
+                          {block.recommendedVenues.length > 1 && (
+                            <span className="text-slate-500">
+                              (他 {block.recommendedVenues.slice(1).map((v) => v.shortName).join('・')})
+                            </span>
+                          )}
+                          {block.isSweetSpot && (
                             <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-extrabold text-[10px]">
                               🎯 6–8名ベスト人数
                             </span>
                           )}
-                          {slot.isDoubleCourt && (
+                          {block.isDoubleCourt && (
                             <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-900 font-extrabold text-[10px]">
-                              🔥 9名以上 (2面予約推奨)
+                              🔥 9名以上 (2面推奨)
                             </span>
                           )}
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <span className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 font-extrabold text-xs border border-emerald-300">
-                        ◯ {slot.yesCount}
+                        2h◯ {block.bothYesCount}
                       </span>
-                      <span className="px-2 py-1 rounded-lg bg-amber-100 text-amber-900 font-bold text-xs border border-amber-300">
-                        △ {slot.maybeCount}
-                      </span>
+                      {block.flexBothCount + block.partialYesCount > 0 && (
+                        <span className="px-2 py-1 rounded-lg bg-amber-100 text-amber-900 font-bold text-xs border border-amber-300">
+                          △/1h {block.flexBothCount + block.partialYesCount}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))
@@ -1675,88 +1769,66 @@ export default function App() {
           </section>
         </div>
 
-        {/* 3-Venue Access & Indoor Shoe Reminder Footer */}
-        <footer className="bg-white border border-slate-200 rounded-2xl p-3.5 text-[11px] sm:text-xs text-slate-600 flex items-start gap-2.5">
-          <Info className="w-4 h-4 text-[#1B365D] shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <p>
-              <a
-                href={VENUES.seto.mapUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-extrabold text-[#1B365D] underline inline-flex items-center gap-1"
+        {/* Venue Directory & Footwear Reminder Footer */}
+        <footer className="bg-white border border-slate-200 rounded-2xl p-3.5 text-[11px] sm:text-xs text-slate-600 space-y-2.5">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <span className="font-extrabold text-slate-800 inline-flex items-center gap-1.5">
+              <Info className="w-4 h-4 text-[#1B365D]" />
+              <span>対象施設・予約ページ一覧 ({VENUES.length}会場)</span>
+            </span>
+            <span>
+              体育館は<strong>室内専用シューズ必須</strong>・屋外ハードコートは<strong>テニス/コートシューズ推奨</strong>です。
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {VENUES.map((v) => (
+              <div
+                key={v.id}
+                className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
               >
-                <span>{VENUES.seto.shortName}</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-              ：最新の空き状況の確認・予約確定は{' '}
-              <a
-                href={VENUES.seto.bookingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[#1B365D] font-bold underline"
-              >
-                岡山市施設予約サービス（yoyacool）
-              </a>{' '}
-              から行ってください。
-            </p>
-            <p>
-              <a
-                href={VENUES.fukuda.mapUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-extrabold text-[#1B365D] underline inline-flex items-center gap-1"
-              >
-                <span>{VENUES.fukuda.shortName}</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-              ：予約確定は{' '}
-              <a
-                href={VENUES.fukuda.bookingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[#1B365D] font-bold underline"
-              >
-                Spacepad（福田公園）予約ページ
-              </a>{' '}
-              から行ってください。
-            </p>
-            <p>
-              <a
-                href={VENUES.mizushima.mapUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-extrabold text-[#1B365D] underline inline-flex items-center gap-1"
-              >
-                <span>{VENUES.mizushima.shortName}</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-              ：予約確定は{' '}
-              <a
-                href={VENUES.mizushima.bookingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[#1B365D] font-bold underline"
-              >
-                Spacepad（水島体育館）予約ページ
-              </a>{' '}
-              から行ってください。
-            </p>
-            <p>
-              全会場とも<strong>室内専用シューズ（ノンマーキング）必須</strong>です。
-            </p>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold shrink-0 ${
+                      v.courtType === 'outdoor'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-sky-100 text-sky-800'
+                    }`}
+                  >
+                    {v.courtType === 'outdoor' ? '屋外' : '屋内'}
+                  </span>
+                  <a
+                    href={v.mapUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-bold text-slate-800 hover:text-[#1B365D] underline truncate"
+                  >
+                    {v.fullName}
+                  </a>
+                </div>
+                <a
+                  href={v.bookingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-0.5 text-[#1B365D] font-extrabold underline shrink-0"
+                >
+                  <span>予約</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            ))}
           </div>
         </footer>
       </main>
 
-      {/* MODAL 1: SLOT BREAKDOWN INSPECTOR */}
+      {/* MODAL 1: SLOT BREAKDOWN INSPECTOR (Top 3 Recommended Courts + Voters) */}
       {inspectSlot && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
             <div className="px-4 py-3.5 bg-[#1B365D] text-white flex items-center justify-between">
               <div>
                 <div className="text-[11px] text-lime-300 font-bold">
-                  空き会場: {inspectSlot.court}
+                  おすすめ予約候補 &amp; 投票メンバー詳細
                 </div>
                 <h3 className="font-extrabold text-sm sm:text-base">
                   {inspectSlot.jpDate}({inspectSlot.dow}){' '}
@@ -1772,10 +1844,89 @@ export default function App() {
               </button>
             </div>
 
-            <div className="p-4 space-y-3 text-xs">
+            <div className="p-4 space-y-3 text-xs max-h-[82vh] overflow-y-auto">
+              {/* Top 3 Recommended Venues */}
+              <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-[#1B365D] inline-flex items-center gap-1">
+                    <Award className="w-4 h-4 text-amber-500" />
+                    <span>
+                      おすすめ予約候補 TOP {inspectSlot.recommendedVenues?.length || 0}
+                    </span>
+                  </span>
+                  <span className="text-[10px] text-slate-500">
+                    全{inspectSlot.openVenues?.length || 0}施設空き
+                  </span>
+                </div>
+
+                {inspectSlot.recommendedVenues?.map((v, idx) => (
+                  <div
+                    key={v.id}
+                    className={`p-2 rounded-lg border flex items-center justify-between gap-2 ${
+                      idx === 0
+                        ? 'bg-white border-lime-400 shadow-2xs'
+                        : 'bg-white/80 border-slate-200'
+                    }`}
+                  >
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`w-4 h-4 rounded-full text-[10px] font-extrabold flex items-center justify-center shrink-0 ${
+                            idx === 0
+                              ? 'bg-[#1B365D] text-lime-300'
+                              : 'bg-slate-200 text-slate-700'
+                          }`}
+                        >
+                          {idx + 1}
+                        </span>
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold shrink-0 ${
+                            v.courtType === 'outdoor'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-sky-100 text-sky-800'
+                          }`}
+                        >
+                          {v.courtType === 'outdoor'
+                            ? v.hasLights
+                              ? '屋外・照明'
+                              : '屋外'
+                            : '屋内'}
+                        </span>
+                        <span className="font-extrabold text-slate-900 truncate">
+                          {v.fullName}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 pl-5 text-[10px]">
+                        {v.continuousSpan && (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
+                            ★ {v.continuousSpan}
+                          </span>
+                        )}
+                        <span className="text-slate-500">
+                          岡山駅から約{v.distanceKm}km
+                        </span>
+                      </div>
+                    </div>
+
+                    <a
+                      href={v.bookingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-0.5 px-2 py-1 rounded bg-[#1B365D] text-lime-300 font-extrabold text-[11px] hover:bg-[#274b7d] shrink-0"
+                    >
+                      <span>予約</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                ))}
+              </div>
+
               <div>
                 <div className="font-extrabold text-emerald-700 mb-1">
-                  ◯ 参加OK ({inspectSlot.yesPlayers.length}名):
+                  {inspectSlot.isTwoHourBlock
+                    ? `◯ 2時間とも参加OK (${inspectSlot.yesPlayers.length}名):`
+                    : `◯ 参加OK (${inspectSlot.yesPlayers.length}名):`}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {inspectSlot.yesPlayers.length === 0 ? (
@@ -1795,7 +1946,9 @@ export default function App() {
 
               <div>
                 <div className="font-extrabold text-amber-700 mb-1">
-                  △ 調整可 ({inspectSlot.maybePlayers.length}名):
+                  {inspectSlot.isTwoHourBlock
+                    ? `△ 調整可 / 1時間のみ参加可 (${inspectSlot.maybePlayers.length}名):`
+                    : `△ 調整可 (${inspectSlot.maybePlayers.length}名):`}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {inspectSlot.maybePlayers.length === 0 ? (
@@ -1834,20 +1987,26 @@ export default function App() {
               </div>
 
               <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleCycleSlot(inspectSlot.slotKey);
-                    setInspectSlot(null);
-                  }}
-                  className="px-3.5 py-2 rounded-xl bg-emerald-700 text-white font-extrabold hover:bg-emerald-600 cursor-pointer"
-                >
-                  自分の回答を切替 (◯/△/✕)
-                </button>
+                {!inspectSlot.isTwoHourBlock ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleCycleSlot(inspectSlot.slotKey);
+                      setInspectSlot(null);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-700 text-white font-extrabold hover:bg-emerald-600 cursor-pointer"
+                  >
+                    自分の回答を切替 (◯/△/✕)
+                  </button>
+                ) : (
+                  <span className="text-[11px] text-slate-500">
+                    ※ 各1時間枠の回答は上のカレンダーから変更できます
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => setInspectSlot(null)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer"
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer ml-auto"
                 >
                   閉じる
                 </button>

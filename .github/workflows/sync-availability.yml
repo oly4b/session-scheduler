@@ -2,13 +2,21 @@ name: Sync Court Availability
 
 on:
   schedule:
-    # Runs hourly from around 11:30 to 21:30 JST (02:30 to 13:30 UTC) and at 06:30 JST (21:30 UTC)
+    # Runs hourly from 11:28 to 21:28 JST (02:28–12:28 UTC) and at 06:28 JST (21:28 UTC)
     - cron: '28 2-12,21 * * *'
   workflow_dispatch:
+
+concurrency:
+  group: sync-court-availability
+  cancel-in-progress: true
 
 defaults:
   run:
     working-directory: okayama-pickleball
+
+env:
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
 jobs:
   scrape:
@@ -22,7 +30,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: okayama-pickleball/package-lock.json
 
@@ -32,15 +40,9 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Scrape yoyacool availability (Seto Gym)
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: node scripts/scrape-availability.js
+      - name: Sync yoyacool availability (Okayama City)
+        run: node scripts/scrape-yoyacool.js
 
-      - name: Sync Spacepad availability (Fukuda Park & Mizushima Gym)
+      - name: Sync Spacepad availability (Kurashiki City)
         if: always()
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/scrape-spacepad.js
