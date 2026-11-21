@@ -992,38 +992,42 @@ export default function App() {
   // --------------------------------------------------------------------------
 
   const shareSummaryText = useMemo(() => {
-    const lines = [
-      `🏓 岡大dinks | 合同セッション日程調整 (${VENUES.length}会場統合)`,
-      '📅 Recommended 2-Hour Blocks (12:00–22:00 JST):',
-      ''
-    ];
-
-    const featuredVenues = new Map();
-
-    if (rankedTwoHourBlocks.length > 0) {
-      lines.push('🏆 Top Ranked 2-Hr Blocks / おすすめ2時間枠:');
-      rankedTwoHourBlocks.forEach((b, idx) => {
-        const hol = b.holiday ? `(${b.holiday})` : '';
-        const topCourt = b.recommendedVenues[0];
-        lines.push(
-          `${idx + 1}. ${b.jpDate}(${b.dow})${hol} ${b.timeLabel} — 2h◯${b.bothYesCount} / 調整可${b.flexBothCount + b.partialYesCount} [第一候補: ${topCourt?.shortName || b.venueSummary}]`
-        );
-        b.recommendedVenues.forEach((v) => featuredVenues.set(v.id, v));
-      });
-      lines.push('');
-    } else {
-      lines.push('まだ2時間連続の投票がありません — リンクから参加できる時間帯を選んでください！', '');
+    if (rankedTwoHourBlocks.length === 0) {
+      return [
+        '🏓 岡大dinks | 次回セッション日程調整',
+        'まだ2時間連続の投票がありません — リンクから参加できる時間帯を選んでください！',
+        window.location.href
+      ].join('\n');
     }
 
-    lines.push(`👥 Total Voted: ${activeVotes.length} players`);
-    const venuesToList =
-      featuredVenues.size > 0 ? Array.from(featuredVenues.values()) : VENUES.slice(0, 5);
-    venuesToList.forEach((v) => {
-      lines.push(`📍 ${v.fullName}: ${v.mapUrl}`);
-    });
-    lines.push('👟 体育館は室内履き必須 / 屋外コートはテニス・ハードコート用シューズ推奨');
-    return lines.join('\n');
-  }, [rankedTwoHourBlocks, activeVotes.length]);
+    // Pick top choice; if tied on score, prefer the closest date & preferred evening hour
+    const bestBlock = [...rankedTwoHourBlocks].sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.dateKey.localeCompare(b.dateKey);
+    })[0];
+
+    const topVenue = bestBlock.recommendedVenues[0];
+    const hol = bestBlock.holiday ? `(${bestBlock.holiday})` : '';
+    const footwearNote =
+      topVenue?.courtType === 'outdoor'
+        ? '👟 屋外コートのためテニス・ハードコート用シューズ推奨'
+        : '👟 体育館のため室内専用シューズ必須';
+
+    return [
+      '🏓 岡大dinks | 次回セッション案内',
+      `📅 日時: ${bestBlock.jpDate}(${bestBlock.dow})${hol} ${bestBlock.timeLabel}`,
+      `🏟 会場: ${topVenue?.fullName || bestBlock.venueSummary}`,
+      `👥 参加予定: ◯${bestBlock.bothYesCount}名${
+        bestBlock.flexBothCount + bestBlock.partialYesCount > 0
+          ? ` (調整可 ${bestBlock.flexBothCount + bestBlock.partialYesCount}名)`
+          : ''
+      }`,
+      topVenue?.mapUrl ? `📍 Map: ${topVenue.mapUrl}` : null,
+      footwearNote
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }, [rankedTwoHourBlocks]);
 
   const fallbackCopy = () => {
     const ta = document.createElement('textarea');
