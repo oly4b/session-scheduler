@@ -2,8 +2,8 @@ name: Sync Court Availability
 
 on:
   schedule:
-    # Runs at 07:00 JST (22:00 UTC) and hourly from 10:00 to 22:00 JST (01:00 to 13:00 UTC)
-    - cron: '0 22,1-13 * * *'
+    # Runs hourly from 10:00 to 22:00 JST (01:00 to 13:00 UTC) and at 07:00 JST (22:00 UTC)
+    - cron: '0 1-13,22 * * *'
   workflow_dispatch:
 
 defaults:
