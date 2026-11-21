@@ -27,7 +27,8 @@ import {
   Grid,
   RefreshCw,
   ExternalLink,
-  Award
+  Award,
+  UserCheck
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { VENUES } from './config/venues';
@@ -121,12 +122,9 @@ function rankRecommendedVenues(candidateVenues, dateKey, targetHours, openVenues
       };
     })
     .sort((a, b) => {
-      // 1. Prioritize adjacent open timeslot at the same venue
       if (b.hasAdjacent !== a.hasAdjacent) return Number(b.hasAdjacent) - Number(a.hasAdjacent);
       if (b.adjacentCount !== a.adjacentCount) return b.adjacentCount - a.adjacentCount;
-      // 2. Indoor > Outdoor (lit) > Outdoor (no lights)
       if (b.facilityTier !== a.facilityTier) return b.facilityTier - a.facilityTier;
-      // 3. Closest to JR Okayama Station
       return (a.distanceKm ?? 99) - (b.distanceKm ?? 99);
     })
     .slice(0, limit);
@@ -232,15 +230,17 @@ export default function App() {
   const [gridViewMode, setGridViewMode] = useState('vote'); // 'vote' | 'heatmap'
   const [highlightPrimeOnly, setHighlightPrimeOnly] = useState(false);
 
-  // Voter Input & Edit State
+  // Voter Input, View-Only Inspection & Edit State
   const [voterName, setVoterName] = useState('');
   const [voterNote, setVoterNote] = useState('');
   const [responses, setResponses] = useState({});
   const [editingVoteId, setEditingVoteId] = useState(null);
+  const [viewingVote, setViewingVote] = useState(null); // Read-only player inspection
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Modals & Toast Notifications
   const [inspectSlot, setInspectSlot] = useState(null);
+  const [showEditPickerModal, setShowEditPickerModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [voteToDelete, setVoteToDelete] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
@@ -260,6 +260,11 @@ export default function App() {
     if (areaFilter === 'all') return VENUES;
     return VENUES.filter((v) => v.area === areaFilter);
   }, [areaFilter]);
+
+  const viewingResponsesMap = useMemo(() => {
+    if (!viewingVote) return null;
+    return normalizeResponsesMap(viewingVote.responses);
+  }, [viewingVote]);
 
   // --------------------------------------------------------------------------
   // 1. FETCH VOTES & OPEN-ONLY VENUE AVAILABILITY FROM SUPABASE
@@ -288,7 +293,6 @@ export default function App() {
       let from = 0;
       let allRows = [];
 
-      // Fetching only `status = 'open'` keeps payload tiny across all 13+ venues
       while (true) {
         const { data, error } = await supabase
           .from('court_availability')
@@ -496,7 +500,6 @@ export default function App() {
           const filtered = filterVenueList(shared);
           if (filtered.length === 0) continue;
 
-          // 0 if the 2-hour block directly includes 19:00–20:00 (18:00–20:00 or 19:00–21:00)
           const distFrom19 =
             b1.startHour === 19 || b2.startHour === 19
               ? 0
@@ -523,14 +526,12 @@ export default function App() {
 
         if (candidates.length === 0) return;
 
-        // Sort: 1) Closest to 19:00–20:00, 2) Indoor > Outdoor Lit > Unlit, 3) Closest to Okayama Stn
         candidates.sort((a, b) => {
           if (a.distFrom19 !== b.distFrom19) return a.distFrom19 - b.distFrom19;
           if (b.facilityTier !== a.facilityTier) return b.facilityTier - a.facilityTier;
           return a.distanceKm - b.distanceKm;
         });
 
-        // Mark all secondary 2-hour continuous cells first
         for (const c of candidates) {
           for (const k of [c.key1, c.key2]) {
             if (!cellMeta[k]) {
@@ -544,7 +545,6 @@ export default function App() {
           }
         }
 
-        // Promote the #1 closest-to-19:00 2-hour block on this day
         const best = candidates[0];
         for (const k of [best.key1, best.key2]) {
           cellMeta[k] = {
@@ -618,7 +618,6 @@ export default function App() {
     return tallyMap;
   }, [allOpenSlots, votes, filterVenueList, openVenuesBySlot]);
 
-  // Consecutive 2-Hour Block Rankings (Top 5)
   const rankedTwoHourBlocks = useMemo(() => {
     const blocks = [];
 
@@ -633,7 +632,6 @@ export default function App() {
           const openIds1 = openVenuesBySlot[slotKey1] || new Set();
           const openIds2 = openVenuesBySlot[slotKey2] || new Set();
 
-          // Venues open for BOTH consecutive hours
           const sharedVenues = VENUES.filter(
             (v) => openIds1.has(v.id) && openIds2.has(v.id)
           );
@@ -715,11 +713,17 @@ export default function App() {
   }, [calendarWeeks, openVenuesBySlot, filterVenueList, votes]);
 
   // --------------------------------------------------------------------------
-  // 4. INTERACTIVE CELL CYCLING & VOTER FORM ACTIONS
+  // 4. INTERACTIVE CELL CYCLING, VIEW-ONLY INSPECTION & VOTER FORM ACTIONS
   // --------------------------------------------------------------------------
 
   const handleCycleSlot = (slotKey) => {
     if (!slotTallies[slotKey]) return;
+
+    // In View-Only mode or Heatmap mode, tapping opens the slot inspector instead of mutating votes
+    if (viewingVote) {
+      triggerToast(`閲覧モード中 (${viewingVote.name}) — 変更するには「編集する」を押してください`);
+      return;
+    }
 
     if (gridViewMode === 'heatmap') {
       setInspectSlot(slotTallies[slotKey]);
@@ -738,6 +742,11 @@ export default function App() {
   };
 
   const handleQuickFillWeek = (val) => {
+    if (viewingVote) {
+      triggerToast(`閲覧モード中です。「この回答を編集する」を押すと一括入力できます`);
+      return;
+    }
+
     const currentWeek = calendarWeeks[activeWeekIdx];
     setResponses((prev) => {
       const next = { ...prev };
@@ -770,6 +779,11 @@ export default function App() {
   };
 
   const handleQuickFillPrime = () => {
+    if (viewingVote) {
+      triggerToast(`閲覧モード中です。「この回答を編集する」を押すと一括入力できます`);
+      return;
+    }
+
     setResponses((prev) => {
       const next = { ...prev };
       allOpenSlots.forEach((slot) => {
@@ -783,6 +797,11 @@ export default function App() {
   };
 
   const handleQuickFillPriorityTwoHour = () => {
+    if (viewingVote) {
+      triggerToast(`閲覧モード中です。「この回答を編集する」を押すと一括入力できます`);
+      return;
+    }
+
     setResponses((prev) => {
       const next = { ...prev };
       allOpenSlots.forEach((slot) => {
@@ -800,16 +819,29 @@ export default function App() {
     setVoterNote('');
     setResponses({});
     setEditingVoteId(null);
+    setViewingVote(null);
   };
 
+  // Opens a voter's calendar in safe READ-ONLY mode first
+  const handleSelectVoterToView = (vote) => {
+    if (editingVoteId === vote.id) return;
+    setEditingVoteId(null);
+    setViewingVote(vote);
+    setGridViewMode('vote');
+    triggerToast(`閲覧モード: ${vote.name} さんの回答を表示中（誤タップ防止）`);
+  };
+
+  // Explicitly enters EDIT mode for a chosen voter
   const handleSelectVoterToEdit = (vote) => {
+    setViewingVote(null);
     setEditingVoteId(vote.id);
     setVoterName(vote.name || '');
     setVoterNote(vote.note || '');
     setResponses(normalizeResponsesMap(vote.responses));
     setGridViewMode('vote');
+    setShowEditPickerModal(false);
     voterBarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    triggerToast(`Editing ${vote.name}'s calendar votes`);
+    triggerToast(`編集モード: ${vote.name} さんの回答を変更できます`);
   };
 
   const handleSubmitVote = async (e) => {
@@ -875,7 +907,7 @@ export default function App() {
 
       if (error) throw error;
 
-      if (editingVoteId === voteToDelete.id) {
+      if (editingVoteId === voteToDelete.id || viewingVote?.id === voteToDelete.id) {
         resetVoterForm();
       }
       await fetchVotes();
@@ -958,6 +990,12 @@ export default function App() {
   const okayamaCount = VENUES.filter((v) => v.area === 'okayama').length;
   const kurashikiCount = VENUES.filter((v) => v.area === 'kurashiki').length;
 
+  // Show "既存の回答を編集" when not editing and either name or slots are empty
+  const showEditExistingButton =
+    !editingVoteId &&
+    votes.length > 0 &&
+    (!voterName.trim() || selectedSlotCount === 0);
+
   return (
     <div className="min-h-screen bg-[#eef2f6] text-slate-900 pb-16 font-sans selection:bg-lime-300 selection:text-slate-950">
       {/* Floating Toast Notification */}
@@ -1038,6 +1076,8 @@ export default function App() {
           className={`rounded-2xl shadow-sm border-2 transition overflow-hidden ${
             editingVoteId
               ? 'bg-amber-50/90 border-amber-400'
+              : viewingVote
+              ? 'bg-sky-50/90 border-sky-400'
               : 'bg-white border-[#1B365D]/20'
           }`}
         >
@@ -1045,17 +1085,26 @@ export default function App() {
             className={`px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold ${
               editingVoteId
                 ? 'bg-amber-200/80 text-amber-950'
+                : viewingVote
+                ? 'bg-sky-700 text-white'
                 : 'bg-[#264673] text-white'
             }`}
           >
             <div className="flex items-center gap-2">
-              <Edit3 className="w-3.5 h-3.5 text-lime-300" />
+              {viewingVote ? (
+                <Eye className="w-3.5 h-3.5 text-lime-300" />
+              ) : (
+                <Edit3 className="w-3.5 h-3.5 text-lime-300" />
+              )}
               <span>
                 {editingVoteId
                   ? `編集中 (Editing): ${voterName}`
+                  : viewingVote
+                  ? `閲覧モード (View-Only): ${viewingVote.name} さんの回答を確認中`
                   : `STEP 1: 名前を入力して参加できる時間帯をタップ (1回の入力で${VENUES.length}会場に反映)`}
               </span>
             </div>
+
             {editingVoteId && (
               <div className="flex items-center gap-2">
                 <button
@@ -1076,6 +1125,25 @@ export default function App() {
                 </button>
               </div>
             )}
+
+            {viewingVote && !editingVoteId && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSelectVoterToEdit(viewingVote)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-amber-400 text-slate-950 hover:bg-amber-300 cursor-pointer"
+                >
+                  <Edit3 className="w-3 h-3" /> この回答を編集する
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewingVote(null)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white text-slate-800 hover:bg-slate-100 cursor-pointer"
+                >
+                  <X className="w-3 h-3" /> 閲覧終了
+                </button>
+              </div>
+            )}
           </div>
 
           <form onSubmit={handleSubmitVote} className="p-3.5 sm:p-4 space-y-3">
@@ -1090,7 +1158,10 @@ export default function App() {
                   pattern=".*\S+.*"
                   title="空白のみの入力はできません / Name cannot be blank or spaces only"
                   value={voterName}
-                  onChange={(e) => setVoterName(e.target.value.replace(/^\s+/, ''))}
+                  onChange={(e) => {
+                    if (viewingVote) setViewingVote(null);
+                    setVoterName(e.target.value.replace(/^\s+/, ''));
+                  }}
                   onBlur={(e) => setVoterName(e.target.value.trim())}
                   placeholder="例: Kenji / Sarah"
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:border-[#1B365D] focus:ring-2 focus:ring-[#1B365D]/20 outline-none text-sm font-bold"
@@ -1104,27 +1175,41 @@ export default function App() {
                 <input
                   type="text"
                   value={voterNote}
-                  onChange={(e) => setVoterNote(e.target.value)}
+                  onChange={(e) => {
+                    if (viewingVote) setViewingVote(null);
+                    setVoterNote(e.target.value);
+                  }}
                   placeholder="例: 岡山市内希望 / どこでもOK / パドル借りたいです"
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:border-[#1B365D] focus:ring-2 focus:ring-[#1B365D]/20 outline-none text-sm"
                 />
               </div>
 
               <div className="sm:col-span-3 flex items-end">
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-2.5 px-4 rounded-xl bg-[#1B365D] hover:bg-[#274b7d] active:scale-[0.99] text-lime-300 font-extrabold text-xs sm:text-sm shadow transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>
-                    {isSubmitting
-                      ? '送信中...'
-                      : editingVoteId
-                      ? '回答を更新する'
-                      : `回答を登録 (${selectedSlotCount}枠)`}
-                  </span>
-                </button>
+                {showEditExistingButton ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPickerModal(true)}
+                    className="w-full py-2.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-[0.99] text-slate-950 font-extrabold text-xs sm:text-sm shadow border border-amber-500 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <UserCheck className="w-4 h-4" />
+                    <span>既存の回答を編集</span>
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full py-2.5 px-4 rounded-xl bg-[#1B365D] hover:bg-[#274b7d] active:scale-[0.99] text-lime-300 font-extrabold text-xs sm:text-sm shadow transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>
+                      {isSubmitting
+                        ? '送信中...'
+                        : editingVoteId
+                        ? '回答を更新する'
+                        : `回答を登録 (${selectedSlotCount}枠)`}
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1174,29 +1259,45 @@ export default function App() {
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
                   <Users className="w-3.5 h-3.5 text-[#1B365D]" />
-                  回答済 ({votes.length}名):
+                  回答済 ({votes.length}名・クリックで閲覧):
                 </span>
                 {votes.length === 0 ? (
                   <span className="text-[11px] text-slate-400 italic">
                     まだ回答はありません
                   </span>
                 ) : (
-                  votes.map((v) => (
-                    <button
-                      key={v.id}
-                      type="button"
-                      onClick={() => handleSelectVoterToEdit(v)}
-                      title="クリックして回答を編集"
-                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border transition cursor-pointer ${
-                        editingVoteId === v.id
-                          ? 'bg-amber-400 text-slate-950 border-amber-600'
-                          : 'bg-slate-100 hover:bg-sky-100 text-[#1B365D] border-slate-300'
-                      }`}
-                    >
-                      <span>{v.name}</span>
-                      <Edit3 className="w-2.5 h-2.5 opacity-70" />
-                    </button>
-                  ))
+                  votes.map((v) => {
+                    const isViewing = viewingVote?.id === v.id;
+                    const isEditing = editingVoteId === v.id;
+                    return (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() =>
+                          isViewing ? setViewingVote(null) : handleSelectVoterToView(v)
+                        }
+                        title={
+                          isViewing
+                            ? 'クリックして閲覧モードを閉じる'
+                            : 'クリックして回答を閲覧（誤変更防止）'
+                        }
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border transition cursor-pointer ${
+                          isEditing
+                            ? 'bg-amber-400 text-slate-950 border-amber-600'
+                            : isViewing
+                            ? 'bg-sky-700 text-white border-sky-900 shadow-2xs'
+                            : 'bg-slate-100 hover:bg-sky-100 text-[#1B365D] border-slate-300'
+                        }`}
+                      >
+                        <span>{v.name}</span>
+                        {isEditing ? (
+                          <Edit3 className="w-2.5 h-2.5 opacity-80" />
+                        ) : (
+                          <Eye className="w-2.5 h-2.5 opacity-70" />
+                        )}
+                      </button>
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -1347,7 +1448,7 @@ export default function App() {
                   }`}
                 >
                   <Grid className="w-3.5 h-3.5" />
-                  <span>自分の回答</span>
+                  <span>{viewingVote ? `${viewingVote.name}の回答` : '自分の回答'}</span>
                 </button>
                 <button
                   type="button"
@@ -1497,7 +1598,9 @@ export default function App() {
                         }
 
                         const slotKey = `${day.dateKey}_${block.id}`;
-                        const myChoice = responses[slotKey];
+                        const activeChoice = viewingResponsesMap
+                          ? viewingResponsesMap[slotKey]
+                          : responses[slotKey];
                         const twoHourInfo = twoHourHighlightMap[slotKey];
                         const tally = slotTallies[slotKey] || {
                           yesCount: 0,
@@ -1528,11 +1631,11 @@ export default function App() {
                           } else {
                             heatmapBg = 'bg-slate-50/70 hover:bg-slate-100';
                           }
-                        } else if (myChoice === 'yes') {
+                        } else if (activeChoice === 'yes') {
                           heatmapBg = 'bg-emerald-50/90 hover:bg-emerald-100/80';
-                        } else if (myChoice === 'maybe') {
+                        } else if (activeChoice === 'maybe') {
                           heatmapBg = 'bg-amber-50/90 hover:bg-amber-100/80';
-                        } else if (myChoice === 'no') {
+                        } else if (activeChoice === 'no') {
                           heatmapBg = 'bg-rose-50/80 hover:bg-rose-100/70';
                         }
 
@@ -1545,59 +1648,76 @@ export default function App() {
                         return (
                           <td
                             key={block.id}
-                            className={`p-1.5 align-middle transition ${heatmapBg} ${
+                            className={`p-1.5 align-bottom transition ${heatmapBg} ${
                               isDimmed ? 'opacity-25' : ''
                             } ${highlightRing}`}
                           >
-                            <div className="flex flex-col items-center justify-between gap-1">
-                              {twoHourInfo?.isPriorityTwoHour ? (
-                                <span
-                                  className="px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[9px] font-extrabold tracking-tight leading-none whitespace-nowrap"
-                                  title={`19:00前後おすすめ2時間連続枠: ${twoHourInfo.spanLabel} (${twoHourInfo.topVenueName})`}
-                                >
-                                  ★ 2h連続
-                                </span>
-                              ) : twoHourInfo?.isTwoHourPart ? (
-                                <span
-                                  className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 text-[9px] font-bold leading-none whitespace-nowrap"
-                                  title={`2時間連続空きあり: ${twoHourInfo.spanLabel} (${twoHourInfo.topVenueName})`}
-                                >
-                                  2h可
-                                </span>
-                              ) : null}
+                            <div className="flex flex-col items-center justify-end gap-1 min-h-[76px]">
+                              {/* Fixed-height top badge slot keeps circles & bottom counters uniformly anchored */}
+                              <div className="h-4 flex items-center justify-center">
+                                {twoHourInfo?.isPriorityTwoHour ? (
+                                  <span
+                                    className="px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[9px] font-extrabold tracking-tight leading-none whitespace-nowrap"
+                                    title={`19:00前後おすすめ2時間連続枠: ${twoHourInfo.spanLabel} (${twoHourInfo.topVenueName})`}
+                                  >
+                                    ★ 2h連続
+                                  </span>
+                                ) : twoHourInfo?.isTwoHourPart ? (
+                                  <span
+                                    className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 text-[9px] font-bold leading-none whitespace-nowrap"
+                                    title={`2時間連続空きあり: ${twoHourInfo.spanLabel} (${twoHourInfo.topVenueName})`}
+                                  >
+                                    2h可
+                                  </span>
+                                ) : null}
+                              </div>
 
                               <button
                                 type="button"
                                 onClick={() => handleCycleSlot(slotKey)}
-                                className="w-full py-0.5 px-0.5 rounded-xl flex flex-col items-center justify-center transition active:scale-95 cursor-pointer"
-                                title={`${day.jpDate}(${day.dow}) ${block.label} • 空き会場: ${cellData.summaryText}`}
+                                className={`w-full py-0.5 px-0.5 rounded-xl flex flex-col items-center justify-center transition ${
+                                  viewingVote
+                                    ? 'cursor-default'
+                                    : 'active:scale-95 cursor-pointer'
+                                }`}
+                                title={
+                                  viewingVote
+                                    ? `${viewingVote.name} の回答（閲覧モード）`
+                                    : `${day.jpDate}(${day.dow}) ${block.label} • 空き会場: ${cellData.summaryText}`
+                                }
                               >
                                 {gridViewMode === 'vote' ? (
                                   <>
-                                    {myChoice === 'yes' && (
+                                    {activeChoice === 'yes' && (
                                       <span className="w-7 h-7 rounded-full bg-emerald-600 text-white font-extrabold text-sm flex items-center justify-center shadow-xs">
                                         ◯
                                       </span>
                                     )}
-                                    {myChoice === 'maybe' && (
+                                    {activeChoice === 'maybe' && (
                                       <span className="w-7 h-7 rounded-full bg-amber-500 text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
                                         △
                                       </span>
                                     )}
-                                    {myChoice === 'no' && (
+                                    {activeChoice === 'no' && (
                                       <span className="w-7 h-7 rounded-full bg-rose-600 text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
                                         ✕
                                       </span>
                                     )}
-                                    {!myChoice && (
-                                      <span className="w-7 h-7 rounded-full border-2 border-dashed border-[#1B365D]/40 text-[#1B365D] font-extrabold text-sm flex items-center justify-center bg-white">
-                                        ◯
+                                    {!activeChoice && (
+                                      <span
+                                        className={`w-7 h-7 rounded-full border-2 border-dashed font-extrabold text-sm flex items-center justify-center bg-white ${
+                                          viewingVote
+                                            ? 'border-slate-300 text-slate-300'
+                                            : 'border-[#1B365D]/40 text-[#1B365D]'
+                                        }`}
+                                      >
+                                        {viewingVote ? '–' : '◯'}
                                       </span>
                                     )}
                                   </>
                                 ) : (
-                                  <div className="py-0.5">
-                                    <div className="text-xs sm:text-sm font-extrabold text-[#1B365D]">
+                                  <div className="h-7 flex flex-col items-center justify-center leading-tight">
+                                    <div className="text-xs font-extrabold text-[#1B365D]">
                                       ◯ {tally.yesCount}
                                     </div>
                                     <div className="text-[10px] font-bold text-amber-700">
@@ -1729,15 +1849,20 @@ export default function App() {
             </div>
           </section>
 
-          <section className="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3 bg-[#264673] text-white flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-lime-300" />
-              <h2 className="font-extrabold text-xs sm:text-sm">
-                参加メンバーのコメント (Notes)
-              </h2>
+          <section className="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+            <div className="px-4 py-3 bg-[#264673] text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-lime-300" />
+                <h2 className="font-extrabold text-xs sm:text-sm">
+                  参加メンバーのコメント (Notes)
+                </h2>
+              </div>
+              <span className="text-[11px] text-sky-200">
+                {votes.length}名
+              </span>
             </div>
 
-            <div className="p-3.5 space-y-2 max-h-[290px] overflow-y-auto">
+            <div className="p-3.5 space-y-2 max-h-[430px] overflow-y-auto flex-1">
               {votes.length === 0 ? (
                 <p className="text-xs text-slate-400 italic py-6 text-center">
                   コメントはまだありません
@@ -1746,7 +1871,7 @@ export default function App() {
                 votes.map((v) => (
                   <div
                     key={v.id}
-                    onClick={() => handleSelectVoterToEdit(v)}
+                    onClick={() => handleSelectVoterToView(v)}
                     className="p-2.5 rounded-xl bg-slate-50 hover:bg-sky-50 border border-slate-200 flex items-start justify-between gap-2 cursor-pointer transition"
                   >
                     <div className="min-w-0">
@@ -1761,7 +1886,7 @@ export default function App() {
                         )}
                       </p>
                     </div>
-                    <Edit3 className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                    <Eye className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
                   </div>
                 ))
               )}
@@ -1987,7 +2112,7 @@ export default function App() {
               </div>
 
               <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-200">
-                {!inspectSlot.isTwoHourBlock ? (
+                {!inspectSlot.isTwoHourBlock && !viewingVote ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -2000,7 +2125,9 @@ export default function App() {
                   </button>
                 ) : (
                   <span className="text-[11px] text-slate-500">
-                    ※ 各1時間枠の回答は上のカレンダーから変更できます
+                    {viewingVote
+                      ? `閲覧モード中 (${viewingVote.name})`
+                      : '※ 各1時間枠の回答は上のカレンダーから変更できます'}
                   </span>
                 )}
                 <button
@@ -2016,7 +2143,78 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL 2: SHARE INVITE TEXT */}
+      {/* MODAL 2: SELECT VOTER TO EDIT */}
+      {showEditPickerModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3.5 bg-[#1B365D] text-white flex items-center justify-between">
+              <h3 className="font-extrabold text-sm sm:text-base flex items-center gap-2">
+                <UserCheck className="w-4 h-4 text-lime-300" />
+                編集する回答を選択 (Select Player)
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowEditPickerModal(false)}
+                className="p-1 rounded-lg hover:bg-white/15 text-slate-200 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-2.5 text-xs">
+              <p className="text-slate-600">
+                日程を変更したいメンバーを選んでください：
+              </p>
+
+              <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                {votes.map((v) => {
+                  const count = Object.keys(normalizeResponsesMap(v.responses)).length;
+                  return (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => handleSelectVoterToEdit(v)}
+                      className="w-full p-2.5 rounded-xl bg-slate-50 hover:bg-amber-50 border border-slate-200 hover:border-amber-400 flex items-center justify-between gap-2 text-left transition cursor-pointer"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-extrabold text-slate-900 text-sm">
+                          {v.name}
+                        </div>
+                        {v.note && (
+                          <div className="text-[11px] text-slate-500 truncate">
+                            {v.note}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-bold text-[11px]">
+                          {count}枠回答済
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#1B365D] text-lime-300 font-extrabold">
+                          <Edit3 className="w-3 h-3" />
+                          <span>編集</span>
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="pt-2 flex justify-end border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setShowEditPickerModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer"
+                >
+                  閉じる
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: SHARE INVITE TEXT */}
       {showShareModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
@@ -2068,7 +2266,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL 3: CONFIRM DELETE PLAYER VOTE */}
+      {/* MODAL 4: CONFIRM DELETE PLAYER VOTE */}
       {voteToDelete && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4">
