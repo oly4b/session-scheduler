@@ -479,6 +479,15 @@ export default function App() {
     };
   }, [openVenuesBySlot]);
 
+  // Active voters who have at least 1 vote on a currently open slot
+  const activeVotes = useMemo(() => {
+    const openKeySet = new Set(allOpenSlots.map((s) => s.slotKey));
+    return votes.filter((v) => {
+      const normalized = normalizeResponsesMap(v.responses);
+      return Object.keys(normalized).some((k) => openKeySet.has(k));
+    });
+  }, [votes, allOpenSlots]);
+
   // Highlight consecutive 2-hour blocks per day, prioritizing those closest to 19:00–20:00
   const twoHourHighlightMap = useMemo(() => {
     const cellMeta = {};

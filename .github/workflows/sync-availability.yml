@@ -46,3 +46,7 @@ jobs:
       - name: Sync Spacepad availability (Kurashiki City)
         if: always()
         run: node scripts/scrape-spacepad.js
+
+      - name: Prune booked-out time blocks & 0-vote rows
+        if: success()
+        run: node scripts/run-prune-votes.js
