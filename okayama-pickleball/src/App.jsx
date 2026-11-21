@@ -999,11 +999,11 @@ export default function App() {
   const okayamaCount = VENUES.filter((v) => v.area === 'okayama').length;
   const kurashikiCount = VENUES.filter((v) => v.area === 'kurashiki').length;
 
-  // Show "既存の回答を編集" when not editing and either name or slots are empty
+  // Show "既存の回答を編集" only when not editing AND both name and selected slots are empty
   const showEditExistingButton =
     !editingVoteId &&
     votes.length > 0 &&
-    (!voterName.trim() || selectedSlotCount === 0);
+    (!voterName.trim() && selectedSlotCount === 0);
 
   return (
     <div className="min-h-screen bg-[#eef2f6] text-slate-900 pb-16 font-sans selection:bg-lime-300 selection:text-slate-950">
