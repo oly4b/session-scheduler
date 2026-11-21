@@ -1632,9 +1632,9 @@ export default function App() {
                   }
 
                   return (
-                    <tr key={day.dateKey} className="divide-x divide-slate-300">
+                    <tr key={day.dateKey} className="h-[88px] divide-x divide-slate-300">
                       <td
-                        className={`sticky left-0 z-10 ${dateBgColor} py-2.5 px-2.5 text-left border-r-2 border-slate-300 align-middle`}
+                        className={`sticky left-0 z-10 ${dateBgColor} h-full px-2.5 text-left border-r-2 border-slate-300 align-middle`}
                       >
                         <div className="flex items-center gap-1 flex-wrap">
                           <span
@@ -1664,9 +1664,9 @@ export default function App() {
                               <td
                                 key={block.id}
                                 title="対象施設はすべて予約済み（満員）です"
-                                className="bg-[#e5e7eb] py-3 px-1 align-middle select-none cursor-not-allowed"
+                                className="bg-[#e5e7eb] h-full px-1 align-middle select-none cursor-not-allowed"
                               >
-                                <div className="flex flex-col items-center justify-center gap-0.5 text-slate-500">
+                                <div className="h-full flex flex-col items-center justify-center gap-0.5 text-slate-500">
                                   <span className="text-xs font-extrabold leading-none">
                                     ✕
                                   </span>
@@ -1682,9 +1682,9 @@ export default function App() {
                             <td
                               key={block.id}
                               title="営業時間外・休場または対象外の時間帯です（空きなし）"
-                              className="bg-slate-100/90 py-3 px-1 align-middle select-none cursor-not-allowed"
+                              className="bg-slate-100/90 h-full px-1 align-middle select-none cursor-not-allowed"
                             >
-                              <div className="flex flex-col items-center justify-center gap-0.5 text-slate-400">
+                              <div className="h-full flex flex-col items-center justify-center gap-0.5 text-slate-400">
                                 <span className="text-xs font-bold leading-none">
                                   —
                                 </span>
@@ -1704,9 +1704,9 @@ export default function App() {
                               key={block.id}
                               onClick={() => handleCycleSlot(slotKey)}
                               title="1時間枠は空きがありますが、同一会場で2時間連続になる枠がありません"
-                              className="bg-slate-200/85 py-3 px-1 align-middle select-none cursor-not-allowed"
+                              className="bg-slate-200/85 h-full px-1 align-middle select-none cursor-not-allowed"
                             >
-                              <div className="flex flex-col items-center justify-center gap-0.5 text-slate-500">
+                              <div className="h-full flex flex-col items-center justify-center gap-0.5 text-slate-500">
                                 <span className="text-xs font-extrabold leading-none">
                                   —
                                 </span>
@@ -1770,11 +1770,11 @@ export default function App() {
                         return (
                           <td
                             key={block.id}
-                            className={`p-1.5 align-middle transition ${heatmapBg} ${
+                            className={`p-1.5 h-full align-middle transition ${heatmapBg} ${
                               isDimmed ? 'opacity-25' : ''
                             } ${highlightRing}`}
                           >
-                            <div className="flex flex-col items-center justify-center gap-1.5 min-h-[76px]">
+                            <div className="h-full flex flex-col items-center justify-center gap-1">
                               <button
                                 type="button"
                                 onClick={() => handleCycleSlot(slotKey)}
