@@ -1172,7 +1172,7 @@ export default function App() {
                   ? `編集中 (Editing): ${voterName}`
                   : viewingVote
                   ? `閲覧モード (View-Only): ${viewingVote.name} さんの回答を確認中`
-                  : `STEP 1: 名前を入力して参加できる時間帯をタップ (1回の入力で${VENUES.length}会場に反映)`}
+                  : `名前を入力して参加できる時間帯をタップ (1回の入力で${VENUES.length}会場に反映)`}
               </span>
             </div>
 
