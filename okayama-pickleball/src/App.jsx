@@ -1,7 +1,7 @@
 /**
  * @fileoverview Okayama Pickleball Session Scheduler (`岡大dinks`) — Scalable Multi-Venue Edition
  * Coordinates group pickleball sessions across Okayama & Kurashiki gymnasiums and outdoor hardcourts.
- * Evaluates venue-level availability, highlights 2-hour continuous blocks closest to 19:00–20:00,
+ * Evaluates venue-level availability, prioritizes 19:00–21:00 > 18:00–20:00 > 20:00–22:00 2-hour blocks,
  * ranks Top 3 recommended courts per slot, and computes Top 5 consecutive 2-hour block bookings.
  */
 
@@ -219,8 +219,10 @@ export default function App() {
   const [loadingVotes, setLoadingVotes] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [votes, setVotes] = useState([]);
-  // Map of `${dateKey}_${timeRange}` -> Set<venueId>
+  // Map of `${dateKey}_${timeRange}` -> Set<venueId> for status === 'open'
   const [openVenuesBySlot, setOpenVenuesBySlot] = useState({});
+  // Map of `${dateKey}_${timeRange}` -> Set<venueId> for status === 'booked'
+  const [bookedVenuesBySlot, setBookedVenuesBySlot] = useState({});
   const [lastSyncedAt, setLastSyncedAt] = useState({ yoyacool: '', spacepad: '' });
 
   // Week Navigation, Area/Venue Filter & Grid Display Modes
@@ -267,7 +269,7 @@ export default function App() {
   }, [viewingVote]);
 
   // --------------------------------------------------------------------------
-  // 1. FETCH VOTES & OPEN-ONLY VENUE AVAILABILITY FROM SUPABASE
+  // 1. FETCH VOTES & VENUE AVAILABILITY (open / booked / closed) FROM SUPABASE
   // --------------------------------------------------------------------------
 
   const fetchVotes = useCallback(async () => {
@@ -287,7 +289,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    async function fetchOpenAvailability() {
+    async function fetchAvailability() {
       const minDate = getJstDayMeta(0).dateKey;
       const pageSize = 1000;
       let from = 0;
@@ -296,8 +298,7 @@ export default function App() {
       while (true) {
         const { data, error } = await supabase
           .from('court_availability')
-          .select('slot_date, time_range, court_detail, updated_at')
-          .eq('status', 'open')
+          .select('slot_date, time_range, court_detail, status, updated_at')
           .gte('slot_date', minDate)
           .range(from, from + pageSize - 1);
 
@@ -309,7 +310,8 @@ export default function App() {
 
       if (allRows.length === 0) return;
 
-      const slotMap = {};
+      const openMap = {};
+      const bookedMap = {};
       let latestYoyacool = '';
       let latestSpacepad = '';
 
@@ -318,8 +320,13 @@ export default function App() {
         if (!ACTIVE_VENUE_IDS.has(venueId)) continue;
 
         const key = `${row.slot_date}_${row.time_range}`;
-        if (!slotMap[key]) slotMap[key] = new Set();
-        slotMap[key].add(venueId);
+        if (row.status === 'open') {
+          if (!openMap[key]) openMap[key] = new Set();
+          openMap[key].add(venueId);
+        } else if (row.status === 'booked') {
+          if (!bookedMap[key]) bookedMap[key] = new Set();
+          bookedMap[key].add(venueId);
+        }
 
         const src = VENUE_BY_ID[venueId]?.source;
         if (src === 'yoyacool' && row.updated_at && row.updated_at > latestYoyacool) {
@@ -329,7 +336,8 @@ export default function App() {
         }
       }
 
-      setOpenVenuesBySlot(slotMap);
+      setOpenVenuesBySlot(openMap);
+      setBookedVenuesBySlot(bookedMap);
 
       const fmtJst = (iso) =>
         iso
@@ -349,7 +357,7 @@ export default function App() {
     }
 
     fetchVotes();
-    fetchOpenAvailability();
+    fetchAvailability();
 
     const channel = supabase
       .channel('calendar-votes-realtime')
@@ -397,7 +405,9 @@ export default function App() {
   );
 
   const { calendarWeeks, allOpenSlots, hasLiveAvailability } = useMemo(() => {
-    const hasLive = Object.keys(openVenuesBySlot).length > 0;
+    const hasLive =
+      Object.keys(openVenuesBySlot).length > 0 ||
+      Object.keys(bookedVenuesBySlot).length > 0;
     const days = [];
 
     for (let offset = 0; offset < 28; offset += 1) {
@@ -408,29 +418,39 @@ export default function App() {
         meta.dayType === 'holiday';
 
       const slots = {};
-      let closedCount = 0;
+      let openCount = 0;
 
       TIME_BLOCKS.forEach((block) => {
         const key = `${meta.dateKey}_${block.id}`;
         const studentPrime = isWeekendOrHoliday || block.isStudentPrime;
         const openIds = openVenuesBySlot[key] || new Set();
-        const openVenues = VENUES.filter((v) => openIds.has(v.id));
-        const isOpen = openVenues.length > 0;
+        const bookedIds = bookedVenuesBySlot[key] || new Set();
 
-        if (!isOpen) closedCount += 1;
+        const filteredOpenVenues = filterVenueList(
+          VENUES.filter((v) => openIds.has(v.id))
+        );
+        const filteredBookedVenues = filterVenueList(
+          VENUES.filter((v) => bookedIds.has(v.id))
+        );
+
+        const isOpen = filteredOpenVenues.length > 0;
+        const isFullyBooked = !isOpen && filteredBookedVenues.length > 0;
+
+        if (isOpen) openCount += 1;
 
         slots[block.id] = {
           isOpen,
-          openVenues,
-          openVenueIds: openIds,
-          summaryText: openVenues.map((v) => v.shortName).join(' / '),
+          isFullyBooked,
+          openVenues: filteredOpenVenues,
+          openVenueIds: new Set(filteredOpenVenues.map((v) => v.id)),
+          summaryText: filteredOpenVenues.map((v) => v.shortName).join(' / '),
           studentPrime
         };
       });
 
       days.push({
         ...meta,
-        allBooked: closedCount === TIME_BLOCKS.length,
+        allBooked: openCount === 0,
         slots
       });
     }
@@ -477,7 +497,7 @@ export default function App() {
       allOpenSlots: openSlots,
       hasLiveAvailability: hasLive
     };
-  }, [openVenuesBySlot]);
+  }, [openVenuesBySlot, bookedVenuesBySlot, filterVenueList]);
 
   // Active voters who have at least 1 vote on a currently open slot
   const activeVotes = useMemo(() => {
@@ -571,6 +591,38 @@ export default function App() {
     return cellMeta;
   }, [calendarWeeks, openVenuesBySlot, filterVenueList]);
 
+  // Any slotKey that can participate in at least one consecutive 2-hour game at a shared venue
+  const twoHourEligibleSlotKeys = useMemo(() => {
+    const eligible = new Set();
+
+    calendarWeeks.forEach((week) => {
+      week.days.forEach((day) => {
+        for (let i = 0; i < TIME_BLOCKS.length - 1; i += 1) {
+          const b1 = TIME_BLOCKS[i];
+          const b2 = TIME_BLOCKS[i + 1];
+          const key1 = `${day.dateKey}_${b1.id}`;
+          const key2 = `${day.dateKey}_${b2.id}`;
+
+          const ids1 = openVenuesBySlot[key1] || new Set();
+          const ids2 = openVenuesBySlot[key2] || new Set();
+
+          const shared = VENUES.filter((v) => ids1.has(v.id) && ids2.has(v.id));
+          if (filterVenueList(shared).length > 0) {
+            eligible.add(key1);
+            eligible.add(key2);
+          }
+        }
+      });
+    });
+
+    return eligible;
+  }, [calendarWeeks, openVenuesBySlot, filterVenueList]);
+
+  const isSlotBlockedForTwoHour = useCallback(
+    (slotKey) => !twoHourEligibleSlotKeys.has(slotKey),
+    [twoHourEligibleSlotKeys]
+  );
+
   // --------------------------------------------------------------------------
   // 3. 1-HOUR TALLIES (WITH TOP 3 RECOMMENDED VENUES) & TOP 5 2-HOUR BLOCKS
   // --------------------------------------------------------------------------
@@ -596,9 +648,8 @@ export default function App() {
         bestScore = score;
       }
 
-      const filteredOpenVenues = filterVenueList(slot.openVenues);
       const recommendedVenues = rankRecommendedVenues(
-        filteredOpenVenues.length > 0 ? filteredOpenVenues : slot.openVenues,
+        slot.openVenues,
         slot.dateKey,
         [slot.startHour],
         openVenuesBySlot,
@@ -627,7 +678,7 @@ export default function App() {
     });
 
     return tallyMap;
-  }, [allOpenSlots, votes, filterVenueList, openVenuesBySlot]);
+  }, [allOpenSlots, votes, openVenuesBySlot]);
 
   const rankedTwoHourBlocks = useMemo(() => {
     const blocks = [];
@@ -730,7 +781,11 @@ export default function App() {
   const handleCycleSlot = (slotKey) => {
     if (!slotTallies[slotKey]) return;
 
-    // In View-Only mode or Heatmap mode, tapping opens the slot inspector instead of mutating votes
+    if (isSlotBlockedForTwoHour(slotKey)) {
+      triggerToast('1時間枠のみ空きのため、2時間連続枠の対象外（ロック中）です');
+      return;
+    }
+
     if (viewingVote) {
       triggerToast(`閲覧モード中 (${viewingVote.name}) — 変更するには「編集する」を押してください`);
       return;
@@ -768,6 +823,7 @@ export default function App() {
           if (!matchesFilter(cell.openVenueIds)) return;
 
           const key = `${day.dateKey}_${block.id}`;
+          if (val !== 'clear' && isSlotBlockedForTwoHour(key)) return;
           if (val === 'clear') {
             delete next[key];
           } else {
@@ -800,6 +856,7 @@ export default function App() {
       allOpenSlots.forEach((slot) => {
         if (!slot.studentPrime) return;
         if (!matchesFilter(slot.openVenueIds)) return;
+        if (isSlotBlockedForTwoHour(slot.slotKey)) return;
         next[slot.slotKey] = 'yes';
       });
       return next;
@@ -818,6 +875,7 @@ export default function App() {
       allOpenSlots.forEach((slot) => {
         if (!twoHourHighlightMap[slot.slotKey]?.isPriorityTwoHour) return;
         if (!matchesFilter(slot.openVenueIds)) return;
+        if (isSlotBlockedForTwoHour(slot.slotKey)) return;
         next[slot.slotKey] = 'yes';
       });
       return next;
@@ -833,7 +891,6 @@ export default function App() {
     setViewingVote(null);
   };
 
-  // Opens a voter's calendar in safe READ-ONLY mode first
   const handleSelectVoterToView = (vote) => {
     if (editingVoteId === vote.id) return;
     setEditingVoteId(null);
@@ -842,7 +899,6 @@ export default function App() {
     triggerToast(`閲覧モード: ${vote.name} さんの回答を表示中（誤タップ防止）`);
   };
 
-  // Explicitly enters EDIT mode for a chosen voter
   const handleSelectVoterToEdit = (vote) => {
     setViewingVote(null);
     setEditingVoteId(vote.id);
@@ -959,7 +1015,7 @@ export default function App() {
       lines.push('まだ2時間連続の投票がありません — リンクから参加できる時間帯を選んでください！', '');
     }
 
-    lines.push(`👥 Total Voted: ${votes.length} players`);
+    lines.push(`👥 Total Voted: ${activeVotes.length} players`);
     const venuesToList =
       featuredVenues.size > 0 ? Array.from(featuredVenues.values()) : VENUES.slice(0, 5);
     venuesToList.forEach((v) => {
@@ -967,7 +1023,7 @@ export default function App() {
     });
     lines.push('👟 体育館は室内履き必須 / 屋外コートはテニス・ハードコート用シューズ推奨');
     return lines.join('\n');
-  }, [rankedTwoHourBlocks, votes.length]);
+  }, [rankedTwoHourBlocks, activeVotes.length]);
 
   const fallbackCopy = () => {
     const ta = document.createElement('textarea');
@@ -1001,11 +1057,11 @@ export default function App() {
   const okayamaCount = VENUES.filter((v) => v.area === 'okayama').length;
   const kurashikiCount = VENUES.filter((v) => v.area === 'kurashiki').length;
 
-  // Show "既存の回答を編集" only when not editing AND both name and selected slots are empty
   const showEditExistingButton =
     !editingVoteId &&
-    votes.length > 0 &&
-    (!voterName.trim() && selectedSlotCount === 0);
+    activeVotes.length > 0 &&
+    !voterName.trim() &&
+    selectedSlotCount === 0;
 
   return (
     <div className="min-h-screen bg-[#eef2f6] text-slate-900 pb-16 font-sans selection:bg-lime-300 selection:text-slate-950">
@@ -1270,14 +1326,14 @@ export default function App() {
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
                   <Users className="w-3.5 h-3.5 text-[#1B365D]" />
-                  回答済 ({votes.length}名・クリックで閲覧):
+                  回答済 ({activeVotes.length}名・クリックで閲覧):
                 </span>
-                {votes.length === 0 ? (
+                {activeVotes.length === 0 ? (
                   <span className="text-[11px] text-slate-400 italic">
                     まだ回答はありません
                   </span>
                 ) : (
-                  votes.map((v) => {
+                  activeVotes.map((v) => {
                     const isViewing = viewingVote?.id === v.id;
                     const isEditing = editingVoteId === v.id;
                     return (
@@ -1502,23 +1558,31 @@ export default function App() {
                 <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-bold text-[10px]">
                   満員
                 </span>
-                全会場予約済 (選択不可)
-              </span>
-              <span className="inline-flex items-center gap-1 font-bold text-indigo-800">
-                <span className="px-1.5 py-0.5 rounded bg-indigo-100 border border-indigo-400 text-indigo-900 font-extrabold text-[10px]">
-                  ★ 2h連続
-                </span>
-                19:00前後おすすめ2時間枠
+                全会場予約済
               </span>
               <span className="inline-flex items-center gap-1 text-slate-600">
-                <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 font-bold text-[10px]">
-                  2h可
+                <span className="px-1.5 py-0.5 rounded bg-slate-300/80 text-slate-700 font-bold text-[10px]">
+                  2h不可
                 </span>
-                その他2時間連続空き
+                1hのみ空き (2h連続なし)
+              </span>
+              <span className="inline-flex items-center gap-1 text-slate-500">
+                <span className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 text-slate-500 font-bold text-[10px]">
+                  空きなし
+                </span>
+                営業時間外・休場
+              </span>
+              <span className="inline-flex items-center gap-1 font-bold text-indigo-800">
+                <span className="w-3.5 h-3.5 rounded bg-indigo-50 border-2 border-indigo-400 inline-block" />
+                おすすめ2時間枠
+              </span>
+              <span className="inline-flex items-center gap-1 text-amber-800 font-bold">
+                <span className="w-3.5 h-3.5 rounded bg-amber-100 border border-amber-400 inline-block" />
+                学生向け時間帯 (18:00~)
               </span>
             </div>
             <span className="font-bold text-[#1B365D]">
-              ※ 下部の「◯/△」タップでおすすめ予約候補TOP3と投票メンバーを表示
+              ※ 「詳細」または「◯/△」タップでおすすめ予約候補TOP3と投票メンバーを表示
             </span>
           </div>
 
@@ -1533,16 +1597,20 @@ export default function App() {
                   {TIME_BLOCKS.map((block) => (
                     <th
                       key={block.id}
-                      className="py-2 px-1.5 min-w-[84px] sm:min-w-[94px] border-r border-slate-300 last:border-r-0"
+                      title={
+                        block.isStudentPrime
+                          ? `${block.label}（★ 学生向け枠）`
+                          : block.label
+                      }
+                      className={`py-2.5 px-2 min-w-[78px] sm:min-w-[88px] border-r border-slate-300 last:border-r-0 transition ${
+                        block.isStudentPrime
+                          ? 'bg-amber-100/90 border-b-2 border-b-amber-400'
+                          : ''
+                      }`}
                     >
-                      <div className="text-[11px] sm:text-xs font-extrabold text-[#1B365D]">
-                        {block.label}
+                      <div className="text-xs font-extrabold text-[#1B365D] tracking-wide">
+                        {block.shortLabel} ~
                       </div>
-                      {block.isStudentPrime && (
-                        <div className="text-[10px] font-bold text-amber-700 mt-0.5">
-                          ★ 講義後OK
-                        </div>
-                      )}
                     </th>
                   ))}
                 </tr>
@@ -1591,17 +1659,37 @@ export default function App() {
                         const cellData = day.slots[block.id];
 
                         if (!cellData || !cellData.isOpen) {
+                          if (cellData?.isFullyBooked) {
+                            return (
+                              <td
+                                key={block.id}
+                                title="対象施設はすべて予約済み（満員）です"
+                                className="bg-[#e5e7eb] py-3 px-1 align-middle select-none cursor-not-allowed"
+                              >
+                                <div className="flex flex-col items-center justify-center gap-0.5 text-slate-500">
+                                  <span className="text-xs font-extrabold leading-none">
+                                    ✕
+                                  </span>
+                                  <span className="text-[10px] font-bold">
+                                    満員
+                                  </span>
+                                </div>
+                              </td>
+                            );
+                          }
+
                           return (
                             <td
                               key={block.id}
-                              className="bg-[#e5e7eb] py-3 px-1 align-middle select-none cursor-not-allowed"
+                              title="営業時間外・休場または対象外の時間帯です（空きなし）"
+                              className="bg-slate-100/90 py-3 px-1 align-middle select-none cursor-not-allowed"
                             >
                               <div className="flex flex-col items-center justify-center gap-0.5 text-slate-400">
-                                <span className="text-xs font-extrabold leading-none">
-                                  ✕
+                                <span className="text-xs font-bold leading-none">
+                                  —
                                 </span>
                                 <span className="text-[10px] font-medium">
-                                  満員
+                                  空きなし
                                 </span>
                               </div>
                             </td>
@@ -1609,6 +1697,27 @@ export default function App() {
                         }
 
                         const slotKey = `${day.dateKey}_${block.id}`;
+
+                        if (isSlotBlockedForTwoHour(slotKey)) {
+                          return (
+                            <td
+                              key={block.id}
+                              onClick={() => handleCycleSlot(slotKey)}
+                              title="1時間枠は空きがありますが、同一会場で2時間連続になる枠がありません"
+                              className="bg-slate-200/85 py-3 px-1 align-middle select-none cursor-not-allowed"
+                            >
+                              <div className="flex flex-col items-center justify-center gap-0.5 text-slate-500">
+                                <span className="text-xs font-extrabold leading-none">
+                                  —
+                                </span>
+                                <span className="text-[10px] font-bold">
+                                  2h不可
+                                </span>
+                              </div>
+                            </td>
+                          );
+                        }
+
                         const activeChoice = viewingResponsesMap
                           ? viewingResponsesMap[slotKey]
                           : responses[slotKey];
@@ -1628,6 +1737,8 @@ export default function App() {
 
                         let heatmapBg = twoHourInfo?.isPriorityTwoHour
                           ? 'bg-indigo-50/70 hover:bg-indigo-100/70'
+                          : block.isStudentPrime
+                          ? 'bg-amber-50/45 hover:bg-amber-50/80'
                           : 'bg-white hover:bg-sky-50';
 
                         if (gridViewMode === 'heatmap') {
@@ -1659,30 +1770,11 @@ export default function App() {
                         return (
                           <td
                             key={block.id}
-                            className={`p-1.5 align-bottom transition ${heatmapBg} ${
+                            className={`p-1.5 align-middle transition ${heatmapBg} ${
                               isDimmed ? 'opacity-25' : ''
                             } ${highlightRing}`}
                           >
-                            <div className="flex flex-col items-center justify-end gap-1 min-h-[76px]">
-                              {/* Fixed-height top badge slot keeps circles & bottom counters uniformly anchored */}
-                              <div className="h-4 flex items-center justify-center">
-                                {twoHourInfo?.isPriorityTwoHour ? (
-                                  <span
-                                    className="px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[9px] font-extrabold tracking-tight leading-none whitespace-nowrap"
-                                    title={`19:00前後おすすめ2時間連続枠: ${twoHourInfo.spanLabel} (${twoHourInfo.topVenueName})`}
-                                  >
-                                    ★ 2h連続
-                                  </span>
-                                ) : twoHourInfo?.isTwoHourPart ? (
-                                  <span
-                                    className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 text-[9px] font-bold leading-none whitespace-nowrap"
-                                    title={`2時間連続空きあり: ${twoHourInfo.spanLabel} (${twoHourInfo.topVenueName})`}
-                                  >
-                                    2h可
-                                  </span>
-                                ) : null}
-                              </div>
-
+                            <div className="flex flex-col items-center justify-center gap-1.5 min-h-[76px]">
                               <button
                                 type="button"
                                 onClick={() => handleCycleSlot(slotKey)}
@@ -1694,6 +1786,8 @@ export default function App() {
                                 title={
                                   viewingVote
                                     ? `${viewingVote.name} の回答（閲覧モード）`
+                                    : twoHourInfo?.isPriorityTwoHour
+                                    ? `★ 2時間連続おすすめ枠 (${twoHourInfo.spanLabel} / ${twoHourInfo.topVenueName}) • ${day.jpDate}(${day.dow}) ${block.label} • 空き会場: ${cellData.summaryText}`
                                     : `${day.jpDate}(${day.dow}) ${block.label} • 空き会場: ${cellData.summaryText}`
                                 }
                               >
@@ -1744,12 +1838,18 @@ export default function App() {
                                 className="w-full py-0.5 px-1 rounded bg-slate-100/90 hover:bg-[#1B365D] hover:text-white text-[10px] font-extrabold text-slate-700 flex items-center justify-center gap-1 border border-slate-200 transition cursor-pointer"
                                 title={`おすすめ会場と投票詳細 (${cellData.summaryText})`}
                               >
-                                <span className="text-emerald-700">
-                                  ◯{tally.yesCount}
-                                </span>
-                                <span className="text-amber-600">
-                                  △{tally.maybeCount}
-                                </span>
+                                {gridViewMode === 'heatmap' ? (
+                                  <span>詳細</span>
+                                ) : (
+                                  <>
+                                    <span className="text-emerald-700">
+                                      ◯{tally.yesCount}
+                                    </span>
+                                    <span className="text-amber-600">
+                                      △{tally.maybeCount}
+                                    </span>
+                                  </>
+                                )}
                               </button>
                             </div>
                           </td>
@@ -1869,17 +1969,17 @@ export default function App() {
                 </h2>
               </div>
               <span className="text-[11px] text-sky-200">
-                {votes.length}名
+                {activeVotes.length}名
               </span>
             </div>
 
             <div className="p-3.5 space-y-2 max-h-[430px] overflow-y-auto flex-1">
-              {votes.length === 0 ? (
+              {activeVotes.length === 0 ? (
                 <p className="text-xs text-slate-400 italic py-6 text-center">
                   コメントはまだありません
                 </p>
               ) : (
-                votes.map((v) => (
+                activeVotes.map((v) => (
                   <div
                     key={v.id}
                     onClick={() => handleSelectVoterToView(v)}
@@ -2178,7 +2278,7 @@ export default function App() {
               </p>
 
               <div className="space-y-1.5 max-h-72 overflow-y-auto">
-                {votes.map((v) => {
+                {activeVotes.map((v) => {
                   const count = Object.keys(normalizeResponsesMap(v.responses)).length;
                   return (
                     <button

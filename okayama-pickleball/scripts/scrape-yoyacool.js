@@ -15,11 +15,22 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const YOYACOOL_VENUES = VENUES.filter((v) => v.source === 'yoyacool');
 const ALLOWED_START_HOURS = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
 const ALLOWED_HOURS_SET = new Set(ALLOWED_START_HOURS);
+const UNLIT_OUTDOOR_IDS = new Set(['yoshiigawa_1', 'hyakkengawa_a', 'hyakkengawa_c']);
 const CONCURRENCY = 3;
 
 function getJstDateString(offsetDays = 0) {
   const jstTime = new Date(Date.now() + 9 * 60 * 60 * 1000 + offsetDays * 86400000);
   return jstTime.toISOString().slice(0, 10);
+}
+
+function getEffectiveMaxStartHour(venue) {
+  if (typeof venue.maxStartHour === 'number') {
+    return venue.maxStartHour;
+  }
+  if (UNLIT_OUTDOOR_IDS.has(venue.id) || (venue.courtType === 'outdoor' && venue.hasLights === false)) {
+    return 16; // Last 1-hour block starting at 16:00 (16:00–17:00); closed from 17:00 onward
+  }
+  return 21;
 }
 
 function buildWindowUrl(baseUrl, startDate, endDate) {
@@ -185,7 +196,7 @@ async function scrapeYoyacoolVenue(browser, venue) {
     await page.close();
   }
 
-  const maxHour = venue.maxStartHour ?? 21;
+  const maxHour = getEffectiveMaxStartHour(venue);
   const venueRecords = [];
 
   for (let offset = 0; offset < 28; offset += 1) {
@@ -194,22 +205,29 @@ async function scrapeYoyacoolVenue(browser, venue) {
 
     for (const startHour of ALLOWED_START_HOURS) {
       const timeRange = `${String(startHour).padStart(2, '0')}:00-${String(startHour + 1).padStart(2, '0')}:00`;
-      const isAllowedHour = startHour <= maxHour;
+      const isWithinOperatingHours = startHour <= maxHour;
+
+      let status = 'closed';
+      if (isWithinOperatingHours) {
+        status = openSet.has(startHour) ? 'open' : 'booked';
+      }
 
       venueRecords.push({
         slot_key: `${dateKey}_${venue.id}_${timeRange}`,
         slot_date: dateKey,
         time_range: timeRange,
         court_detail: venue.id,
-        status: isAllowedHour && openSet.has(startHour) ? 'open' : 'booked',
+        status,
         updated_at: new Date().toISOString(),
       });
     }
   }
 
   const openCount = venueRecords.filter((r) => r.status === 'open').length;
+  const bookedCount = venueRecords.filter((r) => r.status === 'booked').length;
+  const closedCount = venueRecords.filter((r) => r.status === 'closed').length;
   console.log(
-    `[${venue.id}] Prepared ${venueRecords.length} venue slots (${openCount} open, ${venueRecords.length - openCount} booked).`
+    `[${venue.id}] Prepared ${venueRecords.length} venue slots (${openCount} open, ${bookedCount} booked, ${closedCount} closed).`
   );
 
   return venueRecords;
