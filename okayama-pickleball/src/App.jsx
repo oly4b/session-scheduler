@@ -488,9 +488,16 @@ export default function App() {
     });
   }, [votes, allOpenSlots]);
 
-  // Highlight consecutive 2-hour blocks per day, prioritizing those closest to 19:00–20:00
+  // Highlight consecutive 2-hour blocks per day, prioritizing 19:00–21:00 > 18:00–20:00 > 20:00–22:00
   const twoHourHighlightMap = useMemo(() => {
     const cellMeta = {};
+
+    const getTwoHourPreferenceRank = (startHour) => {
+      if (startHour === 19) return 0; // 19:00–21:00
+      if (startHour === 18) return 1; // 18:00–20:00
+      if (startHour === 20) return 2; // 20:00–22:00
+      return 3 + Math.abs(startHour - 19);
+    };
 
     calendarWeeks.forEach((week) => {
       week.days.forEach((day) => {
@@ -509,11 +516,6 @@ export default function App() {
           const filtered = filterVenueList(shared);
           if (filtered.length === 0) continue;
 
-          const distFrom19 =
-            b1.startHour === 19 || b2.startHour === 19
-              ? 0
-              : Math.min(Math.abs(b1.startHour - 19), Math.abs(b2.startHour - 19));
-
           const topVenue = rankRecommendedVenues(
             filtered,
             day.dateKey,
@@ -526,7 +528,7 @@ export default function App() {
             key1,
             key2,
             spanLabel: `${b1.shortLabel}–${String(b2.startHour + 1).padStart(2, '0')}:00`,
-            distFrom19,
+            timePrefRank: getTwoHourPreferenceRank(b1.startHour),
             facilityTier: topVenue?.facilityTier ?? 0,
             distanceKm: topVenue?.distanceKm ?? 99,
             topVenueName: topVenue?.shortName || ''
@@ -536,7 +538,7 @@ export default function App() {
         if (candidates.length === 0) return;
 
         candidates.sort((a, b) => {
-          if (a.distFrom19 !== b.distFrom19) return a.distFrom19 - b.distFrom19;
+          if (a.timePrefRank !== b.timePrefRank) return a.timePrefRank - b.timePrefRank;
           if (b.facilityTier !== a.facilityTier) return b.facilityTier - a.facilityTier;
           return a.distanceKm - b.distanceKm;
         });
