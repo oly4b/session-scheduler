@@ -35,6 +35,10 @@ import {
   normalizeResponsesMap,
   rankRecommendedVenues,
 } from './utils/scheduler';
+import {
+  getTodayJstIsoDate,
+  buildConfirmedBookingInvite,
+} from './utils/confirmedInvite';
 
 const AVAILABILITY_PAGE_SIZE = 1000;
 
@@ -99,7 +103,7 @@ const COPY = {
     legendClosedDesc: 'Outside hours / closed',
     legendRec2h: 'Top 2h Block',
     legendPrime: 'Student Prime (18:00~)',
-    legendHint: '※　Tap on "Details" or "◯/△" for top venues & voters',
+    legendHint: '※ Tap on "Details" or "◯/△" for top venues & voters',
     dateColHeader: 'Date / Day',
     allBookedDay: 'No slots',
     bookedTitle: 'All matching venues are booked (Full)',
@@ -277,8 +281,7 @@ const COPY = {
     answeredSlotsCount: (count) => `${count}枠回答済`,
     editAction: '編集',
     shareModalTitle: 'SNS共有テキスト',
-    sharePrompt:
-      'コピーしてSNSグループDMに貼り付けてください：',
+    sharePrompt: 'コピーしてSNSグループDMに貼り付けてください：',
     copiedBtn: 'コピーしました！',
     copyBtn: '案内文をコピー',
     deleteModalTitle: '回答を削除しますか？',
@@ -370,6 +373,14 @@ export default function App() {
   const [inspectSlot, setInspectSlot] = useState(null);
   const [showEditPickerModal, setShowEditPickerModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [shareTab, setShareTab] = useState('poll'); // 'poll' | 'confirmed'
+  const [bookingDate, setBookingDate] = useState(() => getTodayJstIsoDate());
+  const [bookingTime, setBookingTime] = useState('18:00-20:00');
+  const [bookingVenue, setBookingVenue] = useState('');
+  const [bookingMapUrl, setBookingMapUrl] = useState('');
+  const [bookingCourtType, setBookingCourtType] = useState('indoor');
+  const [bookingFormat, setBookingFormat] = useState('ja');
+
   const [voteToDelete, setVoteToDelete] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
   const [copiedShare, setCopiedShare] = useState(false);
@@ -744,7 +755,6 @@ export default function App() {
           `${slot.dateKey}_${String(slot.startHour + 1).padStart(2, '0')}:00-${String(slot.startHour + 2).padStart(2, '0')}:00`
         ];
 
-      // Exclude venues that are only open for 1 hour (2h不可 on their own)
       const twoHourEligibleVenues = slot.openVenues.filter(
         (v) => prevIds?.has(v.id) || nextIds?.has(v.id)
       );
@@ -1127,10 +1137,34 @@ export default function App() {
     ].join('\n');
   }, [rankedTwoHourBlocks, lang]);
 
+  const confirmedBookingText = useMemo(
+    () =>
+      buildConfirmedBookingInvite({
+        origin: window.location.origin,
+        dateIso: bookingDate,
+        timeRangeText: bookingTime,
+        venueName: bookingVenue,
+        mapUrl: bookingMapUrl,
+        courtType: bookingCourtType,
+        format: bookingFormat,
+      }),
+    [
+      bookingDate,
+      bookingTime,
+      bookingVenue,
+      bookingMapUrl,
+      bookingCourtType,
+      bookingFormat,
+    ]
+  );
+
+  const activeShareText =
+    shareTab === 'confirmed' ? confirmedBookingText : shareSummaryText;
+
   const handleCopyShareText = async () => {
     if (navigator.clipboard && window.isSecureContext) {
       try {
-        await navigator.clipboard.writeText(shareSummaryText);
+        await navigator.clipboard.writeText(activeShareText);
         setCopiedShare(true);
         triggerToast(t.toastCopiedShare);
         setTimeout(() => setCopiedShare(false), 2500);
@@ -2495,14 +2529,153 @@ export default function App() {
               </button>
             </div>
 
-            <div className="p-4 space-y-3">
+            <div className="p-4 space-y-3 max-h-[85vh] overflow-y-auto text-xs">
+              <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 font-extrabold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShareTab('poll');
+                    setCopiedShare(false);
+                  }}
+                  className={`py-1.5 rounded-lg transition cursor-pointer ${
+                    shareTab === 'poll'
+                      ? 'bg-[#1B365D] text-lime-300 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {lang === 'ja' ? '日程調整リンク' : 'Poll Top Pick'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShareTab('confirmed');
+                    setCopiedShare(false);
+                  }}
+                  className={`py-1.5 rounded-lg transition cursor-pointer ${
+                    shareTab === 'confirmed'
+                      ? 'bg-[#1B365D] text-lime-300 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {lang === 'ja' ? '予約確定案内' : 'Confirmed Booking'}
+                </button>
+              </div>
+
+              {shareTab === 'confirmed' && (
+                <div className="space-y-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
+                        {lang === 'ja' ? '日付' : 'Date'}
+                      </label>
+                      <input
+                        type="date"
+                        value={bookingDate}
+                        onChange={(e) => setBookingDate(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
+                        {lang === 'ja' ? '時間' : 'Time'}
+                      </label>
+                      <input
+                        type="text"
+                        value={bookingTime}
+                        onChange={(e) => setBookingTime(e.target.value)}
+                        placeholder="18:00-20:00"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold text-slate-800"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
+                      {lang === 'ja' ? '会場名' : 'Venue Name'}
+                    </label>
+                    <input
+                      type="text"
+                      value={bookingVenue}
+                      onChange={(e) => setBookingVenue(e.target.value)}
+                      placeholder={
+                        lang === 'ja'
+                          ? '例: 岡山市立〇〇体育館'
+                          : 'e.g. Municipal Gym / Pitch'
+                      }
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold text-slate-800"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
+                      {lang === 'ja' ? 'Googleマップ リンク' : 'Google Maps Link'}
+                    </label>
+                    <input
+                      type="url"
+                      value={bookingMapUrl}
+                      onChange={(e) => setBookingMapUrl(e.target.value)}
+                      placeholder="https://maps.google.com/?q=..."
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <div className="inline-flex rounded-lg bg-white p-0.5 border border-slate-300 font-extrabold text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setBookingCourtType('indoor')}
+                        className={`px-2 py-1 rounded cursor-pointer ${
+                          bookingCourtType === 'indoor'
+                            ? 'bg-sky-100 text-sky-900'
+                            : 'text-slate-500'
+                        }`}
+                      >
+                        {lang === 'ja' ? '屋内' : 'Indoor'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBookingCourtType('outdoor')}
+                        className={`px-2 py-1 rounded cursor-pointer ${
+                          bookingCourtType === 'outdoor'
+                            ? 'bg-amber-100 text-amber-900'
+                            : 'text-slate-500'
+                        }`}
+                      >
+                        {lang === 'ja' ? '屋外' : 'Outdoor'}
+                      </button>
+                    </div>
+
+                    <div className="inline-flex rounded-lg bg-white p-0.5 border border-slate-300 font-extrabold text-[11px]">
+                      {[
+                        { id: 'ja', label: 'JA' },
+                        { id: 'en', label: 'EN' },
+                        { id: 'bilingual', label: 'JA/EN' },
+                      ].map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setBookingFormat(item.id)}
+                          className={`px-2 py-1 rounded cursor-pointer ${
+                            bookingFormat === item.id
+                              ? 'bg-[#1B365D] text-lime-300'
+                              : 'text-slate-500'
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <p className="text-xs text-slate-600">{t.sharePrompt}</p>
 
               <textarea
                 ref={textareaRef}
                 readOnly
-                rows={12}
-                value={shareSummaryText}
+                rows={11}
+                value={activeShareText}
                 onFocus={(e) => e.target.select()}
                 className="w-full p-3 rounded-xl bg-slate-50 border border-slate-300 text-xs font-mono text-slate-800 focus:outline-none"
               />
