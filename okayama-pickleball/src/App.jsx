@@ -395,7 +395,7 @@ export default function App() {
   const [bookingVenue, setBookingVenue] = useState('');
   const [bookingMapUrl, setBookingMapUrl] = useState('');
   const [bookingCourtType, setBookingCourtType] = useState('indoor');
-  const [bookingFormat, setBookingFormat] = useState('ja');
+  const [bookingFormat, setBookingFormat] = useState('bilingual');
 
   const [voteToDelete, setVoteToDelete] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
