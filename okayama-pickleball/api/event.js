@@ -90,16 +90,16 @@ function sanitizeSafeUrl(rawUrl) {
       return parsed.toString();
     }
   } catch {
-    // Invalid URL
+    return '';
   }
   return '';
 }
 
 function extractVenueFromMapUrl(rawMapUrl) {
-  const safe = sanitizeSafeUrl(rawMapUrl);
-  if (!safe) return '';
+  const safeUrl = sanitizeSafeUrl(rawMapUrl);
+  if (!safeUrl) return '';
   try {
-    const parsed = new URL(safe);
+    const parsed = new URL(safeUrl);
     const queryParam = parsed.searchParams.get('query') || parsed.searchParams.get('q');
     if (queryParam) return queryParam.trim();
 
@@ -108,7 +108,7 @@ function extractVenueFromMapUrl(rawMapUrl) {
       return decodeURIComponent(placeMatch[1].replace(/\+/g, ' ')).trim();
     }
   } catch {
-    // Ignore malformed percent-encoding
+    return '';
   }
   return '';
 }
@@ -122,11 +122,19 @@ function buildGoogleMapsFallbackUrl(query) {
 }
 
 function formatJpDateFromIso(dateStr) {
-  const dt = new Date(`${dateStr}T00:00:00Z`);
-  if (Number.isNaN(dt.getTime())) return dateStr;
-  return `${dt.getUTCMonth() + 1}月${dt.getUTCDate()}日(${DOW_JP[dt.getUTCDay()]})`;
+  const dateObj = new Date(`${dateStr}T00:00:00Z`);
+  if (Number.isNaN(dateObj.getTime())) return dateStr;
+  return (
+    `${dateObj.getUTCMonth() + 1}月${dateObj.getUTCDate()}日` +
+    `(${DOW_JP[dateObj.getUTCDay()]})`
+  );
 }
 
+/**
+ * Handles ICS calendar exports and HTML event landing pages with Open Graph metadata.
+ * @param {import('http').IncomingMessage & { query?: Record<string, string> }} req
+ * @param {import('http').ServerResponse & { status: (code: number) => any }} res
+ */
 export default function handler(req, res) {
   const {
     v = '',
@@ -140,10 +148,10 @@ export default function handler(req, res) {
     sport: rawSport = 'pickleball',
     title: rawTitle = '',
     ics = '',
-  } = req.query;
+  } = req.query || {};
 
   const venueId = String(v || '').trim();
-  const venueRecord = VENUES.find((item) => item.id === venueId) || null;
+  const venueRecord = VENUES.find((entry) => entry.id === venueId) || null;
   const fallbackMeta = VENUE_META_BY_ID[venueId] || null;
 
   const mapVenueFallback = extractVenueFromMapUrl(rawMap);
@@ -156,10 +164,8 @@ export default function handler(req, res) {
     '未定';
 
   const address = venueRecord?.address || fallbackMeta?.address || '';
-  const lat =
-    typeof venueRecord?.lat === 'number' ? venueRecord.lat : fallbackMeta?.lat;
-  const lng =
-    typeof venueRecord?.lng === 'number' ? venueRecord.lng : fallbackMeta?.lng;
+  const lat = typeof venueRecord?.lat === 'number' ? venueRecord.lat : fallbackMeta?.lat;
+  const lng = typeof venueRecord?.lng === 'number' ? venueRecord.lng : fallbackMeta?.lng;
   const hasCoords = typeof lat === 'number' && typeof lng === 'number';
 
   const mapUrl =
@@ -207,8 +213,7 @@ export default function handler(req, res) {
   const nowStamp = `${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`;
 
   const summary =
-    String(rawTitle || '').trim() ||
-    `🏓 岡大dinks ${defaultSportLabel} (${venueName})`;
+    String(rawTitle || '').trim() || `🏓 岡大dinks ${defaultSportLabel} (${venueName})`;
   const descriptionLines = [
     '岡大dinks セッション',
     displayDate ? `日時: ${displayDate} ${startHour}:00–${endHour}:00` : '',
@@ -218,6 +223,7 @@ export default function handler(req, res) {
   ].filter(Boolean);
 
   if (ics === '1') {
+    const uidVenue = encodeURIComponent(venueId || venueName);
     const icsLines = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
@@ -234,7 +240,7 @@ export default function handler(req, res) {
       'END:STANDARD',
       'END:VTIMEZONE',
       'BEGIN:VEVENT',
-      `UID:okadaidinks-${compactDate}-${startHour}-${encodeURIComponent(venueId || venueName)}@okayama-pickleball`,
+      `UID:okadaidinks-${compactDate}-${startHour}-${uidVenue}@okayama-pickleball`,
       `DTSTAMP:${nowStamp}`,
       `DTSTART;TZID=Asia/Tokyo:${startStr}`,
       `DTEND;TZID=Asia/Tokyo:${endStr}`,
@@ -243,7 +249,9 @@ export default function handler(req, res) {
       ...(hasCoords
         ? [
             `GEO:${lat};${lng}`,
-            `X-APPLE-STRUCTURED-LOCATION;VALUE=URI;X-ADDRESS="${escapeIcsText(address || venueName)}";X-TITLE="${escapeIcsText(venueName)}":geo:${lat},${lng}`,
+            `X-APPLE-STRUCTURED-LOCATION;VALUE=URI;X-ADDRESS="${escapeIcsText(
+              address || venueName
+            )}";X-TITLE="${escapeIcsText(venueName)}":geo:${lat},${lng}`,
           ]
         : []),
       `DESCRIPTION:${escapeIcsText(descriptionLines.join('\n'))}`,
@@ -261,7 +269,11 @@ export default function handler(req, res) {
     return;
   }
 
-  const downloadUrl = new URL(req.url, `https://${req.headers.host}`);
+  const originUrl = `https://${req.headers.host}`;
+  const ogImageUrl = `${originUrl}/og-image.png`;
+  const pageDescription = descriptionLines.join(' · ');
+
+  const downloadUrl = new URL(req.url, originUrl);
   downloadUrl.searchParams.set('ics', '1');
 
   const googleCalUrl = new URL('https://calendar.google.com/calendar/render');
@@ -282,6 +294,13 @@ export default function handler(req, res) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(summary)}</title>
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="${escapeHtml(summary)}" />
+  <meta property="og:description" content="${escapeHtml(pageDescription)}" />
+  <meta property="og:image" content="${escapeHtml(ogImageUrl)}" />
+  <meta property="og:url" content="${escapeHtml(`${originUrl}${req.url}`)}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="${escapeHtml(ogImageUrl)}" />
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #eef2f6; color: #0f172a; margin: 0; padding: 20px; display: flex; justify-content: center; }
     .card { max-width: 440px; width: 100%; background: #fff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(15,23,42,.12); border: 1px solid #cbd5e1; }
