@@ -322,6 +322,14 @@ function getTwoHourPreferenceRank(startHour, courtType = 'indoor') {
   return 3 + Math.abs(startHour - 19);
 }
 
+function parseHourValue(timeSlot) {
+  return Number(String(timeSlot || '').slice(0, 2));
+}
+
+function formatHourSlot(hourValue) {
+  return `${String(hourValue).padStart(2, '0')}:00`;
+}
+
 function PickleballIcon({ className = 'w-7 h-7' }) {
   return (
     <svg
@@ -993,18 +1001,23 @@ export default function App() {
 
   const handleStartTimeChange = (nextStart) => {
     const currentEnd = bookingTime.split('-')[1] || '20:00';
-    const startNum = Number(nextStart.slice(0, 2));
-    const endNum = Number(currentEnd.slice(0, 2));
+    const startHour = parseHourValue(nextStart);
+    const endHour = parseHourValue(currentEnd);
     const adjustedEnd =
-      endNum <= startNum
-        ? `${String(Math.min(22, startNum + 1)).padStart(2, '0')}:00`
+      endHour <= startHour
+        ? formatHourSlot(Math.min(22, startHour + 1))
         : currentEnd;
     setBookingTime(`${nextStart}-${adjustedEnd}`);
   };
 
   const handleEndTimeChange = (nextEnd) => {
     const currentStart = bookingTime.split('-')[0] || '18:00';
-    setBookingTime(`${currentStart}-${nextEnd}`);
+    const startHour = parseHourValue(currentStart);
+    const endHour = parseHourValue(nextEnd);
+    const minEndHour = Math.min(22, startHour + 1);
+    const clampedEnd =
+      endHour <= startHour ? formatHourSlot(minEndHour) : nextEnd;
+    setBookingTime(`${currentStart}-${clampedEnd}`);
   };
 
   const handleSubmitVote = async (e) => {
@@ -1195,6 +1208,7 @@ export default function App() {
     !voterName.trim() &&
     selectedSlotCount === 0;
   const [selectedStartHour, selectedEndHour] = bookingTime.split('-');
+  const activeStartHour = parseHourValue(selectedStartHour || '18:00');
 
   return (
     <div className="min-h-screen bg-[#eef2f6] text-slate-900 pb-16 font-sans selection:bg-lime-300 selection:text-slate-950">
@@ -2620,7 +2634,11 @@ export default function App() {
                         className="flex-1 min-w-0 px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs cursor-pointer"
                       >
                         {END_HOUR_OPTIONS.map((slot) => (
-                          <option key={`end-${slot}`} value={slot}>
+                          <option
+                            key={`end-${slot}`}
+                            value={slot}
+                            disabled={parseHourValue(slot) <= activeStartHour}
+                          >
                             {slot}
                           </option>
                         ))}
