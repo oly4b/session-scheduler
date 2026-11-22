@@ -821,13 +821,10 @@ export default function App() {
         : '👟 体育館のため室内専用シューズ必須';
 
     const eventUrl = new URL('/api/event', window.location.origin);
+    if (topVenue?.id) eventUrl.searchParams.set('v', topVenue.id);
     eventUrl.searchParams.set('date', bestBlock.dateKey);
-    eventUrl.searchParams.set('jpDate', jpDateLabel);
     eventUrl.searchParams.set('start', String(startHour));
     eventUrl.searchParams.set('end', String(startHour + 2));
-    eventUrl.searchParams.set('venue', topVenue?.fullName || bestBlock.venueSummary);
-    if (topVenue?.mapUrl) eventUrl.searchParams.set('map', topVenue.mapUrl);
-    eventUrl.searchParams.set('note', footwearNote);
 
     const flexTotal = bestBlock.flexBothCount + bestBlock.partialYesCount;
     const flexLabel = flexTotal > 0 ? ` (調整可 ${flexTotal}名)` : '';
