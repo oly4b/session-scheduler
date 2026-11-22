@@ -22,6 +22,7 @@ import {
   ExternalLink,
   Award,
   UserCheck,
+  Languages,
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { VENUES, VENUE_BY_ID } from './config/venues';
@@ -36,6 +37,264 @@ import {
 } from './utils/scheduler';
 
 const AVAILABILITY_PAGE_SIZE = 1000;
+
+const COPY = {
+  en: {
+    badgeIntegrated: (count) => `${count} Venues · Availability & Poll`,
+    syncedWaiting: '※ Waiting for initial availability scrape',
+    appTitle: 'Okadai dinks Session Scheduler',
+    venuesSummary: (total, okayama, kurashiki) =>
+      `Venues (${total}): Okayama (${okayama}) · Kurashiki (${kurashiki})`,
+    shareToSns: 'Share to SNS',
+    supabaseError:
+      'Supabase connection error: please check your .env and table settings.',
+    editingBanner: (name) => `Editing: ${name}`,
+    viewingBanner: (name) => `View-Only: viewing ${name}'s response`,
+    defaultBanner: (count) =>
+      `Enter your name and tap available slots (1 entry applies across ${count} venues)`,
+    deleteBtn: 'Delete',
+    cancelBtn: 'Cancel',
+    editThisBtn: 'Edit Response',
+    exitViewBtn: 'Exit View',
+    nameLabel: 'Name',
+    namePlaceholder: 'e.g. Kenji / Sarah',
+    nameTitle: 'Name cannot be blank or spaces only',
+    noteLabel: 'Note (preferred area, indoor/outdoor, paddle rental, etc.)',
+    notePlaceholder: 'e.g. Okayama preferred / Anywhere / Need a paddle',
+    editExistingBtn: 'Edit Existing Vote',
+    submittingBtn: 'Saving...',
+    updateVoteBtn: 'Update Vote',
+    submitVoteBtn: (count) => `Submit Vote (${count} slots)`,
+    quickFillLabel: 'Quick-Fill:',
+    weekAllYes: 'Week All ◯',
+    weekAllMaybe: 'Week All △',
+    studentPrimeYes: '★ Student Prime ◯',
+    twoHourPriorityYes: '★ 2h Priority ◯',
+    clearBtn: 'Clear',
+    votedLabel: (count) => `Voted (${count} · tap to view):`,
+    noVotesYet: 'No responses yet',
+    viewToggleTitle: 'Click to toggle view mode',
+    viewModeTitle: 'Click to view response (prevents accidental edits)',
+    editModeTitle: 'Click to edit response',
+    oneHourSubLabel: '1-Hour Schedule (12:00–22:00)',
+    prevWeek: 'Prev',
+    nextWeek: 'Next',
+    allAreas: 'All Areas',
+    okayamaArea: 'Okayama',
+    kurashikiArea: 'Kurashiki',
+    allVenuesOption: (count) => `Venues: All (${count})`,
+    outdoorShort: 'Outdoor',
+    indoorShort: 'Indoor',
+    studentPrimeFilter: '★ Prime',
+    myVoteTab: (name) => (name ? `${name}'s Vote` : 'My Vote'),
+    tallyTab: 'Group Tally',
+    legendYes: 'Available',
+    legendMaybe: 'Maybe',
+    legendNo: 'Unavailable',
+    legendFull: 'Full',
+    legendFullDesc: 'All venues booked',
+    legendNo2h: 'No 2h',
+    legendNo2hDesc: '1h open only (no 2h block)',
+    legendClosed: 'Closed',
+    legendClosedDesc: 'Outside hours / closed',
+    legendRec2h: 'Top 2h Block',
+    legendPrime: 'Student Prime (18:00~)',
+    legendHint: '※　Tap "Details" or "◯/△" for top venues & voters',
+    dateColHeader: 'Date / Day',
+    allBookedDay: 'No slots',
+    bookedTitle: 'All matching venues are booked (Full)',
+    closedTitle: 'Outside operating hours or closed',
+    no2hTitle: 'Only 1 hour open — no continuous 2-hour slot at the same venue',
+    viewingCellTitle: (name) => `${name}'s response (View-Only)`,
+    detailsLabel: 'Details',
+    top5Title: 'Top 5 Recommended 2h Blocks',
+    top5Subtitle: 'Best per day (3+ votes)',
+    loadingVotes: 'Loading tallies...',
+    noRankedBlocksTitle: 'No continuous 2-hour slots with 3+ votes yet',
+    noRankedBlocksDesc:
+      'Once 3+ players mark ◯ or △ across two consecutive hours, the top block per day appears here.',
+    firstChoice: (name) => `1st choice: ${name}`,
+    moreVenues: (count) => `+${count} more`,
+    sweetSpotBadge: '🎯 6–8 sweet spot',
+    doubleCourtBadge: '🔥 9+ (2 courts)',
+    altBlockBadge: '+Alt time',
+    twoHourYesPill: (count) => `2h◯ ${count}`,
+    flexPill: (count) => `△/1h ${count}`,
+    notesTitle: 'Player Notes',
+    playerCountSuffix: (count) => `${count}`,
+    noNotesYet: 'No notes yet',
+    noNoteText: 'No note',
+    directoryTitle: (count) => `Venues & Booking Links (${count})`,
+    footwearNote:
+      'Gyms require indoor-only court shoes; outdoor hard courts recommend tennis/court shoes.',
+    bookLink: 'Book',
+    modalTopTitle: 'Recommended Venues & Voters',
+    altSecondChoice: '2nd Option Today (Alt 2h Block)',
+    seeDetailsBtn: 'Details',
+    recTopHeading: (count) => `Top ${count} Recommended Venues`,
+    openCountLabel: (count) => `${count} open`,
+    outdoorLights: 'Outdoor · Lights',
+    distanceFromOkayama: (km) => `~${km}km from Okayama Sta.`,
+    twoHourYesGroup: (count) => `◯ Available for both hours (${count}):`,
+    oneHourYesGroup: (count) => `◯ Available (${count}):`,
+    twoHourMaybeGroup: (count) => `△ Flexible / 1 hour only (${count}):`,
+    oneHourMaybeGroup: (count) => `△ Flexible (${count}):`,
+    noGroup: (count) => `✕ Unavailable (${count}):`,
+    noneLabel: 'None',
+    cycleSlotBtn: 'Cycle My Vote (◯/△/✕)',
+    modalViewingNote: (name) => `Viewing ${name}'s response`,
+    modalTwoHourNote: 'Change 1-hour votes directly in the grid above',
+    closeBtn: 'Close',
+    pickVoterTitle: 'Select Response to Edit',
+    pickVoterPrompt: 'Choose a member whose availability you want to update:',
+    answeredSlotsCount: (count) => `${count} slots`,
+    editAction: 'Edit',
+    shareModalTitle: 'Share to LINE / Instagram',
+    sharePrompt: 'Copy and paste into LINE OpenChat or Instagram group DM:',
+    copiedBtn: 'Copied!',
+    copyBtn: 'Copy Invite Text',
+    deleteModalTitle: 'Delete response?',
+    deleteModalBody: (name) =>
+      `This will remove ${name}'s submitted availability response.`,
+    confirmDeleteBtn: 'Delete',
+    toastEnterName: 'Please enter your name',
+    toastSelectSlot: 'Tap at least one open calendar slot (◯ / △ / ✕) first!',
+    toastUpdatedVote: (name) => `Updated ${name}'s calendar vote!`,
+    toastSubmittedVote: (name) => `Submitted ${name}'s vote!`,
+    toastSaveError: 'Could not save vote. Check Supabase connection.',
+    toastDeletedVote: (name) => `Removed ${name}'s response.`,
+    toastDeleteError: 'Error removing response.',
+    toastCopiedShare: 'Copied LINE / Instagram invite summary!',
+    toastSelectManual: 'Text selected — press Ctrl/Cmd+C to copy',
+  },
+  ja: {
+    badgeIntegrated: (count) => `${count}会場統合 空き状況 & 日程調整`,
+    syncedWaiting: '※ 初回空き状況スクレイピング待機中',
+    appTitle: '岡大dinks 合同セッション日程調整',
+    venuesSummary: (total, okayama, kurashiki) =>
+      `対象施設 (${total}会場): 岡山市 (${okayama}施設) ・ 倉敷市 (${kurashiki}施設)`,
+    shareToSns: 'Share to SNS',
+    supabaseError: 'Supabase接続エラー: .envとテーブル設定を確認してください。',
+    editingBanner: (name) => `編集中 (Editing): ${name}`,
+    viewingBanner: (name) => `閲覧モード (View-Only): ${name} さんの回答を確認中`,
+    defaultBanner: (count) =>
+      `名前を入力して参加できる時間帯をタップ (1回の入力で${count}会場に反映)`,
+    deleteBtn: '削除',
+    cancelBtn: 'キャンセル',
+    editThisBtn: 'この回答を編集する',
+    exitViewBtn: '閲覧終了',
+    nameLabel: '名前 / Name',
+    namePlaceholder: '例: Kenji / Sarah',
+    nameTitle: '空白のみの入力はできません / Name cannot be blank or spaces only',
+    noteLabel: 'メモ / Note (希望エリア・屋内/屋外・パドル貸出など)',
+    notePlaceholder: '例: 岡山市内希望 / どこでもOK / パドル借りたいです',
+    editExistingBtn: '既存の回答を編集',
+    submittingBtn: '送信中...',
+    updateVoteBtn: '回答を更新する',
+    submitVoteBtn: (count) => `回答を登録 (${count}枠)`,
+    quickFillLabel: '一括入力 (Quick-Fill):',
+    weekAllYes: '今週すべて ◯',
+    weekAllMaybe: '今週すべて △',
+    studentPrimeYes: '★ 学生向け枠のみ ◯',
+    twoHourPriorityYes: '★ 2h連続のみ ◯',
+    clearBtn: 'クリア',
+    votedLabel: (count) => `回答済 (${count}名・クリックで閲覧):`,
+    noVotesYet: 'まだ回答はありません',
+    viewToggleTitle: 'クリックして閲覧モードを閉じる',
+    viewModeTitle: 'クリックして回答を閲覧（誤変更防止）',
+    editModeTitle: '編集中の回答',
+    oneHourSubLabel: '1時間枠スケジュール (12:00–22:00)',
+    prevWeek: '前週',
+    nextWeek: '次週',
+    allAreas: '全エリア',
+    okayamaArea: '岡山市',
+    kurashikiArea: '倉敷市',
+    allVenuesOption: (count) => `会場: すべて (${count}施設)`,
+    outdoorShort: '屋外',
+    indoorShort: '屋内',
+    studentPrimeFilter: '★ 学生枠',
+    myVoteTab: (name) => (name ? `${name}の回答` : '自分の回答'),
+    tallyTab: 'みんなの集計',
+    legendYes: '参加OK',
+    legendMaybe: '調整可',
+    legendNo: '不可',
+    legendFull: '満員',
+    legendFullDesc: '全会場予約済',
+    legendNo2h: '2h不可',
+    legendNo2hDesc: '1hのみ空き (2h連続なし)',
+    legendClosed: '空きなし',
+    legendClosedDesc: '営業時間外・休場',
+    legendRec2h: 'おすすめ2時間枠',
+    legendPrime: '学生向け時間帯 (18:00~)',
+    legendHint: '※ 「詳細」または「◯/△」タップでおすすめ予約候補TOP3と投票メンバーを表示',
+    dateColHeader: '日付 / 曜日',
+    allBookedDay: '空きなし',
+    bookedTitle: '対象施設はすべて予約済み（満員）です',
+    closedTitle: '営業時間外・休場または対象外の時間帯です（空きなし）',
+    no2hTitle: '1時間枠は空きがありますが、同一会場で2時間連続になる枠がありません',
+    viewingCellTitle: (name) => `${name} の回答（閲覧モード）`,
+    detailsLabel: '詳細',
+    top5Title: 'おすすめ2時間枠 TOP 5 (連続空き会場)',
+    top5Subtitle: '日程別ベスト枠 (3名以上)',
+    loadingVotes: '集計データを読み込み中...',
+    noRankedBlocksTitle: '3名以上の投票がある2時間連続枠はまだありません',
+    noRankedBlocksDesc:
+      '上のカレンダーで連続する2時間枠（◯/△）に3名以上集まると、日程ごとのベスト枠が自動ランキングされます！',
+    firstChoice: (name) => `第1候補: ${name}`,
+    moreVenues: (count) => `+他${count}会場`,
+    sweetSpotBadge: '🎯 6–8名ベスト人数',
+    doubleCourtBadge: '🔥 9名以上 (2面推奨)',
+    altBlockBadge: '+別時間帯候補あり',
+    twoHourYesPill: (count) => `2h◯ ${count}`,
+    flexPill: (count) => `△/1h ${count}`,
+    notesTitle: '参加メンバーのコメント (Notes)',
+    playerCountSuffix: (count) => `${count}名`,
+    noNotesYet: 'コメントはまだありません',
+    noNoteText: 'コメントなし',
+    directoryTitle: (count) => `対象施設・予約ページ一覧 (${count}会場)`,
+    footwearNote:
+      '体育館は室内専用シューズ必須・屋外ハードコートはテニス/コートシューズ推奨です。',
+    bookLink: '予約',
+    modalTopTitle: 'おすすめ予約候補 & 投票メンバー詳細',
+    altSecondChoice: '同日の第2候補 (Alternative 2h Block)',
+    seeDetailsBtn: '詳細を見る',
+    recTopHeading: (count) => `おすすめ予約候補 TOP ${count}`,
+    openCountLabel: (count) => `全${count}施設空き`,
+    outdoorLights: '屋外・照明',
+    distanceFromOkayama: (km) => `岡山駅から約${km}km`,
+    twoHourYesGroup: (count) => `◯ 2時間とも参加OK (${count}名):`,
+    oneHourYesGroup: (count) => `◯ 参加OK (${count}名):`,
+    twoHourMaybeGroup: (count) => `△ 調整可 / 1時間のみ参加可 (${count}名):`,
+    oneHourMaybeGroup: (count) => `△ 調整可 (${count}名):`,
+    noGroup: (count) => `✕ 不可 (${count}名):`,
+    noneLabel: 'なし',
+    cycleSlotBtn: '自分の回答を切替 (◯/△/✕)',
+    modalViewingNote: (name) => `閲覧モード中 (${name})`,
+    modalTwoHourNote: '※ 各1時間枠の回答は上のカレンダーから変更できます',
+    closeBtn: '閉じる',
+    pickVoterTitle: '編集する回答を選択 (Select Player)',
+    pickVoterPrompt: '日程を変更したいメンバーを選んでください：',
+    answeredSlotsCount: (count) => `${count}枠回答済`,
+    editAction: '編集',
+    shareModalTitle: 'LINE / Instagram 共有テキスト',
+    sharePrompt:
+      'コピーしてLINEオープンチャットやInstagramグループDMに貼り付けてください：',
+    copiedBtn: 'コピーしました！',
+    copyBtn: '案内文をコピー',
+    deleteModalTitle: '回答を削除しますか？',
+    deleteModalBody: (name) => `${name} さんの投票データを削除します。`,
+    confirmDeleteBtn: '削除する',
+    toastEnterName: 'Please enter your name / 名前を入力してください',
+    toastSelectSlot: 'Tap at least one open calendar slot (◯ / △ / ✕) first!',
+    toastUpdatedVote: (name) => `Updated ${name}'s calendar vote!`,
+    toastSubmittedVote: (name) => `Submitted ${name}'s vote!`,
+    toastSaveError: 'Could not save vote. Check Supabase connection.',
+    toastDeletedVote: (name) => `Removed ${name}'s response.`,
+    toastDeleteError: 'Error removing response.',
+    toastCopiedShare: 'Copied LINE / Instagram invite summary!',
+    toastSelectManual: 'テキストを選択しました — コピーしてください (Ctrl/Cmd+C)',
+  },
+};
 
 function getTwoHourPreferenceRank(startHour, courtType = 'indoor') {
   if (courtType === 'outdoor') {
@@ -81,10 +340,13 @@ function PickleballIcon({ className = 'w-7 h-7' }) {
 
 /**
  * Okayama Pickleball Session Scheduler (`岡大dinks`).
- * Coordinates group scheduling across Okayama and Kurashiki venues with live
- * availability, 2-hour block prioritization, and top-court recommendations.
+ * Defaults to Japanese with an EN/JA toggle so Japanese mode can be cleanly
+ * auto-translated by browsers while protecting fixed time/symbol badges.
  */
 export default function App() {
+  const [lang, setLang] = useState('ja');
+  const t = COPY[lang] || COPY.ja;
+
   const [loadingVotes, setLoadingVotes] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [votes, setVotes] = useState([]);
@@ -114,6 +376,10 @@ export default function App() {
 
   const voterBarRef = useRef(null);
   const textareaRef = useRef(null);
+
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
 
   const triggerToast = useCallback((msg) => {
     setToastMessage(msg);
@@ -156,13 +422,13 @@ export default function App() {
 
     if (error) {
       console.error('Supabase fetch error:', error);
-      setErrorMsg('Supabase接続エラー: .envとテーブル設定を確認してください。');
+      setErrorMsg(t.supabaseError);
     } else {
       setErrorMsg('');
       setVotes(data || []);
     }
     setLoadingVotes(false);
-  }, []);
+  }, [t.supabaseError]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -636,14 +902,12 @@ export default function App() {
     if (!slotTallies[slotKey]) return;
 
     if (!twoHourEligibleSlotKeys.has(slotKey)) {
-      triggerToast('1時間枠のみ空きのため、2時間連続枠の対象外（ロック中）です');
+      triggerToast(t.no2hTitle);
       return;
     }
 
     if (viewingVote) {
-      triggerToast(
-        `閲覧モード中 (${viewingVote.name}) — 変更するには「編集する」を押してください`
-      );
+      triggerToast(t.viewingBanner(viewingVote.name));
       return;
     }
 
@@ -665,7 +929,7 @@ export default function App() {
 
   const applyQuickFill = (predicate, value, successMessage) => {
     if (viewingVote) {
-      triggerToast('閲覧モード中です。「この回答を編集する」を押すと一括入力できます');
+      triggerToast(t.viewingBanner(viewingVote.name));
       return;
     }
 
@@ -689,8 +953,8 @@ export default function App() {
     const currentWeek = calendarWeeks[activeWeekIdx];
     const message =
       val === 'clear'
-        ? `Cleared selections for ${currentWeek.shortTitle}`
-        : `Marked open slots ${val === 'yes' ? '◯' : '△'} for ${currentWeek.shortTitle}`;
+        ? `${t.clearBtn}: ${currentWeek.shortTitle}`
+        : `${currentWeek.shortTitle} (${val === 'yes' ? '◯' : '△'})`;
 
     applyQuickFill((slot) => slot.weekIndex === activeWeekIdx, val, message);
   };
@@ -708,7 +972,7 @@ export default function App() {
     setEditingVoteId(null);
     setViewingVote(vote);
     setGridViewMode('vote');
-    triggerToast(`閲覧モード: ${vote.name} さんの回答を表示中（誤タップ防止）`);
+    triggerToast(t.viewingBanner(vote.name));
   };
 
   const handleSelectVoterToEdit = (vote) => {
@@ -720,7 +984,7 @@ export default function App() {
     setGridViewMode('vote');
     setShowEditPickerModal(false);
     voterBarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    triggerToast(`編集モード: ${vote.name} さんの回答を変更できます`);
+    triggerToast(t.editingBanner(vote.name));
   };
 
   const handleSubmitVote = async (e) => {
@@ -728,13 +992,13 @@ export default function App() {
     const trimmedName = voterName.trim().replace(/\s+/g, ' ');
     if (!trimmedName) {
       setVoterName('');
-      triggerToast('Please enter your name / 名前を入力してください');
+      triggerToast(t.toastEnterName);
       return;
     }
 
     const cleanResponses = normalizeResponsesMap(responses);
     if (Object.keys(cleanResponses).length === 0) {
-      triggerToast('Tap at least one open calendar slot (◯ / △ / ✕) first!');
+      triggerToast(t.toastSelectSlot);
       return;
     }
 
@@ -756,15 +1020,13 @@ export default function App() {
       if (error) throw error;
 
       triggerToast(
-        editingVoteId
-          ? `Updated ${trimmedName}'s calendar vote!`
-          : `Submitted ${trimmedName}'s vote!`
+        editingVoteId ? t.toastUpdatedVote(trimmedName) : t.toastSubmittedVote(trimmedName)
       );
       await fetchVotes();
       resetVoterForm();
     } catch (err) {
       console.error('Supabase save error:', err);
-      triggerToast('Could not save vote. Check Supabase connection.');
+      triggerToast(t.toastSaveError);
     } finally {
       setIsSubmitting(false);
     }
@@ -784,10 +1046,10 @@ export default function App() {
         resetVoterForm();
       }
       await fetchVotes();
-      triggerToast(`Removed ${voteToDelete.name}'s response.`);
+      triggerToast(t.toastDeletedVote(voteToDelete.name));
     } catch (err) {
       console.error('Supabase delete error:', err);
-      triggerToast('Error removing response.');
+      triggerToast(t.toastDeleteError);
     } finally {
       setVoteToDelete(null);
     }
@@ -845,7 +1107,7 @@ export default function App() {
       try {
         await navigator.clipboard.writeText(shareSummaryText);
         setCopiedShare(true);
-        triggerToast('Copied LINE / Instagram invite summary!');
+        triggerToast(t.toastCopiedShare);
         setTimeout(() => setCopiedShare(false), 2500);
         return;
       } catch {
@@ -855,7 +1117,7 @@ export default function App() {
 
     textareaRef.current?.focus();
     textareaRef.current?.select();
-    triggerToast('テキストを選択しました — コピーしてください (Ctrl/Cmd+C)');
+    triggerToast(t.toastSelectManual);
   };
 
   const currentWeek = calendarWeeks[activeWeekIdx];
@@ -879,18 +1141,21 @@ export default function App() {
       <header className="bg-[#1B365D] text-white shadow-md border-b-4 border-[#2B547E]">
         <div className="max-w-6xl mx-auto px-3.5 sm:px-6 py-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <div className="p-2 bg-white/10 rounded-xl border border-white/20 shrink-0">
                 <PickleballIcon className="w-7 h-7" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-2 py-0.5 rounded bg-lime-400 text-[#1B365D] text-[11px] font-extrabold tracking-tight">
-                    {VENUES.length}会場統合 空き状況 &amp; 日程調整
+                  <span className="px-2 py-0.5 rounded bg-lime-400 text-[#1B365D] text-[11px] font-extrabold tracking-tight whitespace-nowrap">
+                    {t.badgeIntegrated(VENUES.length)}
                   </span>
                   {hasLiveAvailability ? (
-                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-white/10 text-[10px] text-lime-200 font-semibold">
-                      <RefreshCw className="w-2.5 h-2.5" />
+                    <span
+                      translate="no"
+                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-white/10 text-[10px] text-lime-200 font-semibold whitespace-nowrap"
+                    >
+                      <RefreshCw className="w-2.5 h-2.5 shrink-0" />
                       <span>
                         yoyacool({lastSyncedAt.yoyacool || '同期済'}) / Spacepad(
                         {lastSyncedAt.spacepad || '同期済'})
@@ -898,33 +1163,64 @@ export default function App() {
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-400/20 text-[10px] text-amber-200 font-semibold">
-                      ※ 初回空き状況スクレイピング待機中
+                      {t.syncedWaiting}
                     </span>
                   )}
                 </div>
 
                 <h1 className="text-base sm:text-xl font-extrabold tracking-tight text-white mt-0.5">
-                  岡大dinks 合同セッション日程調整
+                  {t.appTitle}
                 </h1>
 
                 <p className="text-[11px] sm:text-xs text-sky-200 flex items-center gap-1.5 mt-1">
                   <MapPin className="w-3.5 h-3.5 text-lime-300 shrink-0" />
                   <span>
-                    対象施設 ({VENUES.length}会場): 岡山市 ({okayamaCount}施設) ・
-                    倉敷市 ({kurashikiCount}施設)
+                    {t.venuesSummary(VENUES.length, okayamaCount, kurashikiCount)}
                   </span>
                 </p>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowShareModal(true)}
-              className="self-start sm:self-center inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-lime-400 hover:bg-lime-300 active:scale-95 text-[#1B365D] text-xs sm:text-sm font-extrabold shadow transition cursor-pointer"
-            >
-              <Share2 className="w-4 h-4" />
-              <span>Share to SNS</span>
-            </button>
+            <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+              <div
+                translate="no"
+                className="inline-flex rounded-xl bg-white/10 p-0.5 border border-white/20 text-xs font-extrabold whitespace-nowrap"
+                title="Default is JA; switch to EN for English"
+              >
+                <button
+                  type="button"
+                  onClick={() => setLang('ja')}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition cursor-pointer ${
+                    lang === 'ja'
+                      ? 'bg-lime-400 text-[#1B365D] shadow-xs'
+                      : 'text-sky-100 hover:text-white'
+                  }`}
+                >
+                  <Languages className="w-3.5 h-3.5 shrink-0" />
+                  <span>JA</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLang('en')}
+                  className={`px-2.5 py-1.5 rounded-lg transition cursor-pointer ${
+                    lang === 'en'
+                      ? 'bg-white text-[#1B365D] shadow-xs'
+                      : 'text-sky-100 hover:text-white'
+                  }`}
+                >
+                  EN
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowShareModal(true)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-lime-400 hover:bg-lime-300 active:scale-95 text-[#1B365D] text-xs sm:text-sm font-extrabold shadow transition cursor-pointer whitespace-nowrap"
+              >
+                <Share2 className="w-4 h-4 shrink-0" />
+                <span>{t.shareToSns}</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -958,57 +1254,61 @@ export default function App() {
                   : 'bg-[#264673] text-white'
             }`}
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               {viewingVote ? (
-                <Eye className="w-3.5 h-3.5 text-lime-300" />
+                <Eye className="w-3.5 h-3.5 text-lime-300 shrink-0" />
               ) : (
-                <Edit3 className="w-3.5 h-3.5 text-lime-300" />
+                <Edit3 className="w-3.5 h-3.5 text-lime-300 shrink-0" />
               )}
               <span>
                 {editingVoteId
-                  ? `編集中 (Editing): ${voterName}`
+                  ? t.editingBanner(voterName)
                   : viewingVote
-                    ? `閲覧モード (View-Only): ${viewingVote.name} さんの回答を確認中`
-                    : `名前を入力して参加できる時間帯をタップ (1回の入力で${VENUES.length}会場に反映)`}
+                    ? t.viewingBanner(viewingVote.name)
+                    : t.defaultBanner(VENUES.length)}
               </span>
             </div>
 
             {editingVoteId && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() =>
                     setVoteToDelete({ id: editingVoteId, name: voterName })
                   }
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-rose-600 text-white hover:bg-rose-700 cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-rose-600 text-white hover:bg-rose-700 cursor-pointer whitespace-nowrap"
                 >
-                  <Trash2 className="w-3 h-3" /> 削除
+                  <Trash2 className="w-3 h-3 shrink-0" />
+                  <span>{t.deleteBtn}</span>
                 </button>
                 <button
                   type="button"
                   onClick={resetVoterForm}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white text-slate-800 border border-slate-300 hover:bg-slate-100 cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white text-slate-800 border border-slate-300 hover:bg-slate-100 cursor-pointer whitespace-nowrap"
                 >
-                  <RotateCcw className="w-3 h-3" /> キャンセル
+                  <RotateCcw className="w-3 h-3 shrink-0" />
+                  <span>{t.cancelBtn}</span>
                 </button>
               </div>
             )}
 
             {viewingVote && !editingVoteId && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => handleSelectVoterToEdit(viewingVote)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-amber-400 text-slate-950 hover:bg-amber-300 cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-amber-400 text-slate-950 hover:bg-amber-300 cursor-pointer whitespace-nowrap"
                 >
-                  <Edit3 className="w-3 h-3" /> この回答を編集する
+                  <Edit3 className="w-3 h-3 shrink-0" />
+                  <span>{t.editThisBtn}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewingVote(null)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white text-slate-800 hover:bg-slate-100 cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white text-slate-800 hover:bg-slate-100 cursor-pointer whitespace-nowrap"
                 >
-                  <X className="w-3 h-3" /> 閲覧終了
+                  <X className="w-3 h-3 shrink-0" />
+                  <span>{t.exitViewBtn}</span>
                 </button>
               </div>
             )}
@@ -1018,27 +1318,27 @@ export default function App() {
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
               <div className="sm:col-span-4">
                 <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
-                  名前 / Name <span className="text-rose-600">*</span>
+                  {t.nameLabel} <span className="text-rose-600">*</span>
                 </label>
                 <input
                   type="text"
                   required
                   pattern=".*\S+.*"
-                  title="空白のみの入力はできません / Name cannot be blank or spaces only"
+                  title={t.nameTitle}
                   value={voterName}
                   onChange={(e) => {
                     if (viewingVote) setViewingVote(null);
                     setVoterName(e.target.value.replace(/^\s+/, ''));
                   }}
                   onBlur={(e) => setVoterName(e.target.value.trim())}
-                  placeholder="例: Kenji / Sarah"
+                  placeholder={t.namePlaceholder}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:border-[#1B365D] focus:ring-2 focus:ring-[#1B365D]/20 outline-none text-sm font-bold"
                 />
               </div>
 
               <div className="sm:col-span-5">
                 <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
-                  メモ / Note (希望エリア・屋内/屋外・パドル貸出など)
+                  {t.noteLabel}
                 </label>
                 <input
                   type="text"
@@ -1047,7 +1347,7 @@ export default function App() {
                     if (viewingVote) setViewingVote(null);
                     setVoterNote(e.target.value);
                   }}
-                  placeholder="例: 岡山市内希望 / どこでもOK / パドル借りたいです"
+                  placeholder={t.notePlaceholder}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:border-[#1B365D] focus:ring-2 focus:ring-[#1B365D]/20 outline-none text-sm"
                 />
               </div>
@@ -1057,24 +1357,24 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setShowEditPickerModal(true)}
-                    className="w-full py-2.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-[0.99] text-slate-950 font-extrabold text-xs sm:text-sm shadow border border-amber-500 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="w-full py-2.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-[0.99] text-slate-950 font-extrabold text-xs sm:text-sm shadow border border-amber-500 transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
                   >
-                    <UserCheck className="w-4 h-4" />
-                    <span>既存の回答を編集</span>
+                    <UserCheck className="w-4 h-4 shrink-0" />
+                    <span>{t.editExistingBtn}</span>
                   </button>
                 ) : (
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full py-2.5 px-4 rounded-xl bg-[#1B365D] hover:bg-[#274b7d] active:scale-[0.99] text-lime-300 font-extrabold text-xs sm:text-sm shadow transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    className="w-full py-2.5 px-4 rounded-xl bg-[#1B365D] hover:bg-[#274b7d] active:scale-[0.99] text-lime-300 font-extrabold text-xs sm:text-sm shadow transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
                   >
-                    <Check className="w-4 h-4" />
+                    <Check className="w-4 h-4 shrink-0" />
                     <span>
                       {isSubmitting
-                        ? '送信中...'
+                        ? t.submittingBtn
                         : editingVoteId
-                          ? '回答を更新する'
-                          : `回答を登録 (${selectedSlotCount}枠)`}
+                          ? t.updateVoteBtn
+                          : t.submitVoteBtn(selectedSlotCount)}
                     </span>
                   </button>
                 )}
@@ -1084,22 +1384,22 @@ export default function App() {
             {/* Quick-fill toolbar + Existing Voters Strip */}
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/80">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-bold text-slate-500 mr-1">
-                  一括入力 (Quick-Fill):
+                <span className="text-[11px] font-bold text-slate-500 mr-1 whitespace-nowrap">
+                  {t.quickFillLabel}
                 </span>
                 <button
                   type="button"
                   onClick={() => handleQuickFillWeek('yes')}
-                  className="px-2.5 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-extrabold text-xs border border-emerald-300 cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-extrabold text-xs border border-emerald-300 cursor-pointer whitespace-nowrap"
                 >
-                  今週すべて ◯
+                  {t.weekAllYes}
                 </button>
                 <button
                   type="button"
                   onClick={() => handleQuickFillWeek('maybe')}
-                  className="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold text-xs border border-amber-300 cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold text-xs border border-amber-300 cursor-pointer whitespace-nowrap"
                 >
-                  今週すべて △
+                  {t.weekAllMaybe}
                 </button>
                 <button
                   type="button"
@@ -1107,12 +1407,12 @@ export default function App() {
                     applyQuickFill(
                       (slot) => slot.studentPrime,
                       'yes',
-                      'Marked all Student Prime slots (18:00+ & Holidays/Weekends) ◯!'
+                      t.studentPrimeYes
                     )
                   }
-                  className="px-2.5 py-1 rounded-lg bg-sky-100 hover:bg-sky-200 text-sky-900 font-extrabold text-xs border border-sky-300 cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg bg-sky-100 hover:bg-sky-200 text-sky-900 font-extrabold text-xs border border-sky-300 cursor-pointer whitespace-nowrap"
                 >
-                  ★ 学生向け枠のみ ◯
+                  {t.studentPrimeYes}
                 </button>
                 <button
                   type="button"
@@ -1120,30 +1420,30 @@ export default function App() {
                     applyQuickFill(
                       (slot) => Boolean(twoHourHighlightMap[slot.slotKey]?.isPriorityTwoHour),
                       'yes',
-                      'Marked all recommended 2-hour continuous blocks (★ 2h連続) ◯!'
+                      t.twoHourPriorityYes
                     )
                   }
-                  className="px-2.5 py-1 rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-950 font-extrabold text-xs border border-indigo-300 cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-950 font-extrabold text-xs border border-indigo-300 cursor-pointer whitespace-nowrap"
                 >
-                  ★ 2h連続のみ ◯
+                  {t.twoHourPriorityYes}
                 </button>
                 <button
                   type="button"
                   onClick={() => handleQuickFillWeek('clear')}
-                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-300 cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-300 cursor-pointer whitespace-nowrap"
                 >
-                  クリア
+                  {t.clearBtn}
                 </button>
               </div>
 
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
-                  <Users className="w-3.5 h-3.5 text-[#1B365D]" />
-                  回答済 ({activeVotes.length}名・クリックで閲覧):
+                <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1 whitespace-nowrap">
+                  <Users className="w-3.5 h-3.5 text-[#1B365D] shrink-0" />
+                  <span>{t.votedLabel(activeVotes.length)}</span>
                 </span>
                 {activeVotes.length === 0 ? (
                   <span className="text-[11px] text-slate-400 italic">
-                    まだ回答はありません
+                    {t.noVotesYet}
                   </span>
                 ) : (
                   activeVotes.map((v) => {
@@ -1158,10 +1458,12 @@ export default function App() {
                         }
                         title={
                           isViewing
-                            ? 'クリックして閲覧モードを閉じる'
-                            : 'クリックして回答を閲覧（誤変更防止）'
+                            ? t.viewToggleTitle
+                            : isEditing
+                              ? t.editModeTitle
+                              : t.viewModeTitle
                         }
-                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border transition cursor-pointer ${
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border transition cursor-pointer whitespace-nowrap ${
                           isEditing
                             ? 'bg-amber-400 text-slate-950 border-amber-600'
                             : isViewing
@@ -1169,11 +1471,11 @@ export default function App() {
                               : 'bg-slate-100 hover:bg-sky-100 text-[#1B365D] border-slate-300'
                         }`}
                       >
-                        <span>{v.name}</span>
+                        <span translate="no">{v.name}</span>
                         {isEditing ? (
-                          <Edit3 className="w-2.5 h-2.5 opacity-80" />
+                          <Edit3 className="w-2.5 h-2.5 opacity-80 shrink-0" />
                         ) : (
-                          <Eye className="w-2.5 h-2.5 opacity-70" />
+                          <Eye className="w-2.5 h-2.5 opacity-70 shrink-0" />
                         )}
                       </button>
                     );
@@ -1191,17 +1493,20 @@ export default function App() {
               type="button"
               disabled={activeWeekIdx === 0}
               onClick={() => setActiveWeekIdx((i) => Math.max(0, i - 1))}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#2B547E] hover:bg-[#366799] disabled:opacity-40 disabled:pointer-events-none text-xs font-extrabold border border-white/20 cursor-pointer"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#2B547E] hover:bg-[#366799] disabled:opacity-40 disabled:pointer-events-none text-xs font-extrabold border border-white/20 cursor-pointer whitespace-nowrap shrink-0"
             >
-              <ChevronLeft className="w-4 h-4" />
-              <span>前週 (Prev)</span>
+              <ChevronLeft className="w-4 h-4 shrink-0" />
+              <span>{t.prevWeek}</span>
             </button>
 
-            <div className="text-center">
-              <div className="inline-block px-2 py-0.5 rounded bg-rose-700 text-white text-[10px] font-extrabold tracking-wider mb-0.5">
-                1時間枠スケジュール (12:00–22:00)
+            <div className="text-center min-w-0">
+              <div className="inline-block px-2 py-0.5 rounded bg-rose-700 text-white text-[10px] font-extrabold tracking-wider mb-0.5 whitespace-nowrap">
+                {t.oneHourSubLabel}
               </div>
-              <div className="text-sm sm:text-base font-extrabold tracking-tight text-white">
+              <div
+                translate="no"
+                className="text-sm sm:text-base font-extrabold tracking-tight text-white"
+              >
                 {currentWeek.rangeLabel}
               </div>
             </div>
@@ -1212,10 +1517,10 @@ export default function App() {
               onClick={() =>
                 setActiveWeekIdx((i) => Math.min(calendarWeeks.length - 1, i + 1))
               }
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#2B547E] hover:bg-[#366799] disabled:opacity-40 disabled:pointer-events-none text-xs font-extrabold border border-white/20 cursor-pointer"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#2B547E] hover:bg-[#366799] disabled:opacity-40 disabled:pointer-events-none text-xs font-extrabold border border-white/20 cursor-pointer whitespace-nowrap shrink-0"
             >
-              <span>次週 (Next)</span>
-              <ChevronRight className="w-4 h-4" />
+              <span>{t.nextWeek}</span>
+              <ChevronRight className="w-4 h-4 shrink-0" />
             </button>
           </div>
 
@@ -1226,13 +1531,13 @@ export default function App() {
                   key={w.id}
                   type="button"
                   onClick={() => setActiveWeekIdx(idx)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer border ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer border whitespace-nowrap ${
                     activeWeekIdx === idx
                       ? 'bg-[#1B365D] text-lime-300 border-[#1B365D] shadow-xs'
                       : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                   }`}
                 >
-                  {w.shortTitle}
+                  <span translate="no">{w.shortTitle}</span>
                 </button>
               ))}
             </div>
@@ -1241,9 +1546,9 @@ export default function App() {
               {okayamaCount > 0 && kurashikiCount > 0 && (
                 <div className="inline-flex rounded-xl bg-slate-200 p-0.5 border border-slate-300 text-xs font-extrabold">
                   {[
-                    { id: 'all', label: '全エリア', activeClass: 'bg-white text-[#1B365D]' },
-                    { id: 'okayama', label: '岡山市', activeClass: 'bg-lime-400 text-[#1B365D]' },
-                    { id: 'kurashiki', label: '倉敷市', activeClass: 'bg-sky-300 text-[#1B365D]' },
+                    { id: 'all', label: t.allAreas, activeClass: 'bg-white text-[#1B365D]' },
+                    { id: 'okayama', label: t.okayamaArea, activeClass: 'bg-lime-400 text-[#1B365D]' },
+                    { id: 'kurashiki', label: t.kurashikiArea, activeClass: 'bg-sky-300 text-[#1B365D]' },
                   ].map((area) => (
                     <button
                       key={area.id}
@@ -1252,7 +1557,7 @@ export default function App() {
                         setAreaFilter(area.id);
                         setVenueFilter('all');
                       }}
-                      className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                      className={`px-2.5 py-1 rounded-lg transition cursor-pointer whitespace-nowrap ${
                         areaFilter === area.id
                           ? `${area.activeClass} shadow-xs`
                           : 'text-slate-600 hover:text-slate-900'
@@ -1265,17 +1570,15 @@ export default function App() {
               )}
 
               <select
-                aria-label="会場フィルター"
+                aria-label="Venue filter"
                 value={venueFilter}
                 onChange={(e) => setVenueFilter(e.target.value)}
-                className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 text-xs font-extrabold text-[#1B365D] focus:border-[#1B365D] outline-none cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 text-xs font-extrabold text-[#1B365D] focus:border-[#1B365D] outline-none cursor-pointer max-w-[220px]"
               >
-                <option value="all">
-                  会場: すべて ({visibleVenues.length}施設)
-                </option>
+                <option value="all">{t.allVenuesOption(visibleVenues.length)}</option>
                 {visibleVenues.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {v.shortName} ({v.courtType === 'outdoor' ? '屋外' : '屋内'})
+                    {v.shortName} ({v.courtType === 'outdoor' ? t.outdoorShort : t.indoorShort})
                   </option>
                 ))}
               </select>
@@ -1283,40 +1586,40 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setHighlightPrimeOnly((p) => !p)}
-                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer whitespace-nowrap ${
                   highlightPrimeOnly
                     ? 'bg-amber-100 text-amber-950 border-amber-400'
                     : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
                 }`}
               >
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                <span>★ 学生枠</span>
+                <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span>{t.studentPrimeFilter}</span>
               </button>
 
               <div className="inline-flex rounded-xl bg-slate-200 p-0.5 border border-slate-300">
                 <button
                   type="button"
                   onClick={() => setGridViewMode('vote')}
-                  className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer ${
+                  className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
                     gridViewMode === 'vote'
                       ? 'bg-white text-[#1B365D] shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <Grid className="w-3.5 h-3.5" />
-                  <span>{viewingVote ? `${viewingVote.name}の回答` : '自分の回答'}</span>
+                  <Grid className="w-3.5 h-3.5 shrink-0" />
+                  <span>{t.myVoteTab(viewingVote?.name)}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setGridViewMode('heatmap')}
-                  className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer ${
+                  className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
                     gridViewMode === 'heatmap'
                       ? 'bg-[#1B365D] text-lime-300 shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <Eye className="w-3.5 h-3.5" />
-                  <span>みんなの集計</span>
+                  <Eye className="w-3.5 h-3.5 shrink-0" />
+                  <span>{t.tallyTab}</span>
                 </button>
               </div>
             </div>
@@ -1325,54 +1628,61 @@ export default function App() {
           {/* Symbol Legend */}
           <div className="px-3.5 py-2 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="inline-flex items-center gap-1 font-bold text-emerald-700">
-                <span className="w-4 h-4 rounded-full bg-emerald-100 border border-emerald-400 inline-flex items-center justify-center text-[10px]">
+              <span className="inline-flex items-center gap-1 font-bold text-emerald-700 whitespace-nowrap">
+                <span
+                  translate="no"
+                  className="w-4 h-4 rounded-full bg-emerald-100 border border-emerald-400 inline-flex items-center justify-center text-[10px] shrink-0"
+                >
                   ◯
                 </span>
-                参加OK
+                <span>{t.legendYes}</span>
               </span>
-              <span className="inline-flex items-center gap-1 font-bold text-amber-700">
-                <span className="w-4 h-4 rounded-full bg-amber-100 border border-amber-400 inline-flex items-center justify-center text-[10px]">
+              <span className="inline-flex items-center gap-1 font-bold text-amber-700 whitespace-nowrap">
+                <span
+                  translate="no"
+                  className="w-4 h-4 rounded-full bg-amber-100 border border-amber-400 inline-flex items-center justify-center text-[10px] shrink-0"
+                >
                   △
                 </span>
-                調整可
+                <span>{t.legendMaybe}</span>
               </span>
-              <span className="inline-flex items-center gap-1 font-bold text-rose-700">
-                <span className="w-4 h-4 rounded-full bg-rose-100 border border-rose-400 inline-flex items-center justify-center text-[10px]">
+              <span className="inline-flex items-center gap-1 font-bold text-rose-700 whitespace-nowrap">
+                <span
+                  translate="no"
+                  className="w-4 h-4 rounded-full bg-rose-100 border border-rose-400 inline-flex items-center justify-center text-[10px] shrink-0"
+                >
                   ✕
                 </span>
-                不可
+                <span>{t.legendNo}</span>
               </span>
-              <span className="inline-flex items-center gap-1 text-slate-500">
+              <span className="inline-flex items-center gap-1 text-slate-500 whitespace-nowrap">
                 <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-bold text-[10px]">
-                  満員
+                  {t.legendFull}
                 </span>
-                全会場予約済
+                <span>{t.legendFullDesc}</span>
               </span>
-              <span className="inline-flex items-center gap-1 text-slate-600">
+              <span className="inline-flex items-center gap-1 text-slate-600 whitespace-nowrap">
                 <span className="px-1.5 py-0.5 rounded bg-slate-300/80 text-slate-700 font-bold text-[10px]">
-                  2h不可
+                  {t.legendNo2h}
                 </span>
-                1hのみ空き (2h連続なし)
+                <span>{t.legendNo2hDesc}</span>
               </span>
-              <span className="inline-flex items-center gap-1 text-slate-500">
+              <span className="inline-flex items-center gap-1 text-slate-500 whitespace-nowrap">
                 <span className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 text-slate-500 font-bold text-[10px]">
-                  空きなし
+                  {t.legendClosed}
                 </span>
-                営業時間外・休場
+                <span>{t.legendClosedDesc}</span>
               </span>
-              <span className="inline-flex items-center gap-1 font-bold text-indigo-800">
-                <span className="w-3.5 h-3.5 rounded bg-indigo-50 border-2 border-indigo-400 inline-block" />
-                おすすめ2時間枠
+              <span className="inline-flex items-center gap-1 font-bold text-indigo-800 whitespace-nowrap">
+                <span className="w-3.5 h-3.5 rounded bg-indigo-50 border-2 border-indigo-400 inline-block shrink-0" />
+                <span>{t.legendRec2h}</span>
               </span>
-              <span className="inline-flex items-center gap-1 text-amber-800 font-bold">
-                <span className="w-3.5 h-3.5 rounded bg-amber-100 border border-amber-400 inline-block" />
-                学生向け時間帯 (18:00~)
+              <span className="inline-flex items-center gap-1 text-amber-800 font-bold whitespace-nowrap">
+                <span className="w-3.5 h-3.5 rounded bg-amber-100 border border-amber-400 inline-block shrink-0" />
+                <span>{t.legendPrime}</span>
               </span>
             </div>
-            <span className="font-bold text-[#1B365D]">
-              ※ 「詳細」または「◯/△」タップでおすすめ予約候補TOP3と投票メンバーを表示
-            </span>
+            <span className="font-bold text-[#1B365D]">{t.legendHint}</span>
           </div>
 
           {/* Schedule Matrix Table */}
@@ -1380,25 +1690,24 @@ export default function App() {
             <table className="w-full border-collapse text-center">
               <thead>
                 <tr className="bg-[#eef3f8] border-b-2 border-slate-300 text-slate-800">
-                  <th className="sticky left-0 z-20 bg-[#dce5f0] py-2.5 px-2.5 min-w-[116px] sm:min-w-[132px] text-left text-xs font-extrabold text-[#1B365D] border-r-2 border-slate-300">
-                    日付 / 曜日
+                  <th className="sticky left-0 z-20 bg-[#dce5f0] py-2.5 px-2 min-w-[104px] sm:min-w-[120px] text-left text-xs font-extrabold text-[#1B365D] border-r-2 border-slate-300 whitespace-nowrap">
+                    {t.dateColHeader}
                   </th>
                   {TIME_BLOCKS.map((block) => (
                     <th
                       key={block.id}
-                      title={
-                        block.isStudentPrime
-                          ? `${block.label}（★ 学生向け枠）`
-                          : block.label
-                      }
-                      className={`py-2.5 px-2 min-w-[78px] sm:min-w-[88px] border-r border-slate-300 last:border-r-0 transition ${
+                      title={block.label}
+                      className={`py-2.5 px-1 min-w-[70px] sm:min-w-[82px] border-r border-slate-300 last:border-r-0 transition ${
                         block.isStudentPrime
                           ? 'bg-amber-100/90 border-b-2 border-b-amber-400'
                           : ''
                       }`}
                     >
-                      <div className="text-xs font-extrabold text-[#1B365D] tracking-wide">
-                        {block.shortLabel} ~
+                      <div
+                        translate="no"
+                        className="text-[11px] sm:text-xs font-extrabold text-[#1B365D] tracking-tight whitespace-nowrap"
+                      >
+                        {block.shortLabel}~
                       </div>
                     </th>
                   ))}
@@ -1423,23 +1732,27 @@ export default function App() {
                   return (
                     <tr key={day.dateKey} className="h-[88px] divide-x divide-slate-300">
                       <td
-                        className={`sticky left-0 z-10 ${dateBgColor} h-full px-2.5 text-left border-r-2 border-slate-300 align-middle`}
+                        className={`sticky left-0 z-10 ${dateBgColor} h-full px-2 text-left border-r-2 border-slate-300 align-middle`}
                       >
                         <div className="flex items-center gap-1 flex-wrap">
                           <span
-                            className={`text-xs sm:text-sm font-extrabold underline decoration-slate-300 ${dateTextColor}`}
+                            translate="no"
+                            className={`text-xs sm:text-sm font-extrabold underline decoration-slate-300 whitespace-nowrap ${dateTextColor}`}
                           >
                             {day.jpDate}({day.dow})
                           </span>
                           {day.holiday && (
-                            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-600 text-white text-[10px] font-extrabold">
+                            <span
+                              translate="no"
+                              className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-600 text-white text-[10px] font-extrabold shrink-0"
+                            >
                               {day.holiday}
                             </span>
                           )}
                         </div>
                         {day.allBooked && (
-                          <span className="inline-block mt-0.5 text-[10px] font-bold text-slate-400">
-                            空きなし
+                          <span className="inline-block mt-0.5 text-[10px] font-bold text-slate-400 leading-tight">
+                            {t.allBookedDay}
                           </span>
                         )}
                       </td>
@@ -1452,29 +1765,28 @@ export default function App() {
                           return (
                             <td
                               key={block.id}
-                              title={
-                                isBooked
-                                  ? '対象施設はすべて予約済み（満員）です'
-                                  : '営業時間外・休場または対象外の時間帯です（空きなし）'
-                              }
+                              title={isBooked ? t.bookedTitle : t.closedTitle}
                               className={`${
                                 isBooked ? 'bg-[#e5e7eb]' : 'bg-slate-100/90'
-                              } h-full px-1 align-middle select-none cursor-not-allowed`}
+                              } h-full px-0.5 align-middle select-none cursor-not-allowed`}
                             >
                               <div
-                                className={`h-full flex flex-col items-center justify-center gap-0.5 ${
+                                className={`h-full flex flex-col items-center justify-center gap-0.5 max-w-[78px] mx-auto leading-tight ${
                                   isBooked ? 'text-slate-500' : 'text-slate-400'
                                 }`}
                               >
-                                <span className="text-xs font-extrabold leading-none">
+                                <span
+                                  translate="no"
+                                  className="text-xs font-extrabold leading-none"
+                                >
                                   {isBooked ? '✕' : '—'}
                                 </span>
                                 <span
-                                  className={`text-[10px] ${
+                                  className={`text-[10px] text-center break-words line-clamp-2 ${
                                     isBooked ? 'font-bold' : 'font-medium'
                                   }`}
                                 >
-                                  {isBooked ? '満員' : '空きなし'}
+                                  {isBooked ? t.legendFull : t.legendClosed}
                                 </span>
                               </div>
                             </td>
@@ -1488,14 +1800,19 @@ export default function App() {
                             <td
                               key={block.id}
                               onClick={() => handleCycleSlot(slotKey)}
-                              title="1時間枠は空きがありますが、同一会場で2時間連続になる枠がありません"
-                              className="bg-slate-200/85 h-full px-1 align-middle select-none cursor-not-allowed"
+                              title={t.no2hTitle}
+                              className="bg-slate-200/85 h-full px-0.5 align-middle select-none cursor-not-allowed"
                             >
-                              <div className="h-full flex flex-col items-center justify-center gap-0.5 text-slate-500">
-                                <span className="text-xs font-extrabold leading-none">
+                              <div className="h-full flex flex-col items-center justify-center gap-0.5 text-slate-500 max-w-[78px] mx-auto leading-tight">
+                                <span
+                                  translate="no"
+                                  className="text-xs font-extrabold leading-none"
+                                >
                                   —
                                 </span>
-                                <span className="text-[10px] font-bold">2h不可</span>
+                                <span className="text-[10px] font-bold text-center break-words line-clamp-2">
+                                  {t.legendNo2h}
+                                </span>
                               </div>
                             </td>
                           );
@@ -1549,7 +1866,7 @@ export default function App() {
                         return (
                           <td
                             key={block.id}
-                            className={`p-1.5 h-full align-middle transition ${cellBg} ${
+                            className={`p-1 h-full align-middle transition ${cellBg} ${
                               isDimmed ? 'opacity-25' : ''
                             } ${highlightRing}`}
                           >
@@ -1564,14 +1881,12 @@ export default function App() {
                                 }`}
                                 title={
                                   viewingVote
-                                    ? `${viewingVote.name} の回答（閲覧モード）`
-                                    : twoHourInfo?.isPriorityTwoHour
-                                      ? `★ 2時間連続おすすめ枠 (${twoHourInfo.spanLabel} / ${twoHourInfo.topVenueName}) • ${day.jpDate}(${day.dow}) ${block.label} • 空き会場: ${cellData.summaryText}`
-                                      : `${day.jpDate}(${day.dow}) ${block.label} • 空き会場: ${cellData.summaryText}`
+                                    ? t.viewingCellTitle(viewingVote.name)
+                                    : `${day.jpDate}(${day.dow}) ${block.label} · ${cellData.summaryText}`
                                 }
                               >
                                 {gridViewMode === 'vote' ? (
-                                  <>
+                                  <span translate="no">
                                     {activeChoice === 'yes' && (
                                       <span className="w-7 h-7 rounded-full bg-emerald-600 text-white font-extrabold text-sm flex items-center justify-center shadow-xs">
                                         ◯
@@ -1598,9 +1913,12 @@ export default function App() {
                                         {viewingVote ? '–' : '◯'}
                                       </span>
                                     )}
-                                  </>
+                                  </span>
                                 ) : (
-                                  <div className="h-7 flex flex-col items-center justify-center leading-tight">
+                                  <div
+                                    translate="no"
+                                    className="h-7 flex flex-col items-center justify-center leading-tight whitespace-nowrap"
+                                  >
                                     <div className="text-xs font-extrabold text-[#1B365D]">
                                       ◯ {tally.yesCount}
                                     </div>
@@ -1614,20 +1932,20 @@ export default function App() {
                               <button
                                 type="button"
                                 onClick={() => setInspectSlot(tally)}
-                                className="w-full py-0.5 px-1 rounded bg-slate-100/90 hover:bg-[#1B365D] hover:text-white text-[10px] font-extrabold text-slate-700 flex items-center justify-center gap-1 border border-slate-200 transition cursor-pointer"
-                                title={`おすすめ会場と投票詳細 (${cellData.summaryText})`}
+                                className="w-full py-0.5 px-1 rounded bg-slate-100/90 hover:bg-[#1B365D] hover:text-white text-[10px] font-extrabold text-slate-700 flex items-center justify-center gap-1 border border-slate-200 transition cursor-pointer whitespace-nowrap"
+                                title={cellData.summaryText}
                               >
                                 {gridViewMode === 'heatmap' ? (
-                                  <span>詳細</span>
+                                  <span>{t.detailsLabel}</span>
                                 ) : (
-                                  <>
+                                  <span translate="no" className="inline-flex items-center gap-1">
                                     <span className="text-emerald-700">
                                       ◯{tally.yesCount}
                                     </span>
                                     <span className="text-amber-600">
                                       △{tally.maybeCount}
                                     </span>
-                                  </>
+                                  </span>
                                 )}
                               </button>
                             </div>
@@ -1645,31 +1963,25 @@ export default function App() {
         {/* 3. TOP 5 RECOMMENDED 2-HOUR BLOCKS (INDEPENDENT DATES, >= 3 VOTES) & PLAYER COMMENTS */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <section className="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3 bg-[#1B365D] text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Trophy className="w-4 h-4 text-lime-300" />
-                <h2 className="font-extrabold text-xs sm:text-sm">
-                  おすすめ2時間枠 TOP 5 (連続空き会場)
-                </h2>
+            <div className="px-4 py-3 bg-[#1B365D] text-white flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Trophy className="w-4 h-4 text-lime-300 shrink-0" />
+                <h2 className="font-extrabold text-xs sm:text-sm">{t.top5Title}</h2>
               </div>
-              <span className="text-[11px] text-sky-200">
-                日程別ベスト枠 (3名以上)
+              <span className="text-[11px] text-sky-200 whitespace-nowrap shrink-0">
+                {t.top5Subtitle}
               </span>
             </div>
 
             <div className="p-3.5 space-y-2">
               {loadingVotes ? (
                 <p className="text-xs text-slate-500 py-4 text-center">
-                  集計データを読み込み中...
+                  {t.loadingVotes}
                 </p>
               ) : rankedTwoHourBlocks.length === 0 ? (
                 <div className="text-center py-6 text-xs text-slate-500 space-y-1">
-                  <p className="font-bold text-slate-700">
-                    3名以上の投票がある2時間連続枠はまだありません
-                  </p>
-                  <p>
-                    上のカレンダーで連続する2時間枠（◯/△）に3名以上集まると、日程ごとのベスト枠が自動ランキングされます！
-                  </p>
+                  <p className="font-bold text-slate-700">{t.noRankedBlocksTitle}</p>
+                  <p>{t.noRankedBlocksDesc}</p>
                 </div>
               ) : (
                 rankedTwoHourBlocks.map((block, index) => (
@@ -1682,9 +1994,10 @@ export default function App() {
                         : 'bg-slate-50 hover:bg-slate-100 border-slate-200'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-start sm:items-center gap-2.5 flex-1 min-w-0">
                       <span
-                        className={`w-6 h-6 rounded-full text-xs font-extrabold flex items-center justify-center shrink-0 ${
+                        translate="no"
+                        className={`w-6 h-6 rounded-full text-xs font-extrabold flex items-center justify-center shrink-0 mt-0.5 sm:mt-0 ${
                           index === 0
                             ? 'bg-[#1B365D] text-lime-300'
                             : 'bg-slate-200 text-slate-700'
@@ -1692,34 +2005,41 @@ export default function App() {
                       >
                         {index + 1}
                       </span>
-                      <div className="min-w-0">
-                        <div className="text-xs sm:text-sm font-extrabold text-slate-900">
-                          {block.jpDate}({block.dow})
-                          {block.holiday ? `・${block.holiday}` : ''}{' '}
-                          <span className="text-[#1B365D]">{block.timeLabel}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs sm:text-sm font-extrabold text-slate-900 leading-snug">
+                          <span translate="no">
+                            {block.jpDate}({block.dow})
+                            {block.holiday ? `・${block.holiday}` : ''}
+                          </span>{' '}
+                          <span
+                            translate="no"
+                            className="text-[#1B365D] whitespace-nowrap"
+                          >
+                            {block.timeLabel}
+                          </span>
                         </div>
-                        <div className="text-[11px] text-slate-600 flex flex-wrap items-center gap-1.5 mt-0.5">
+                        <div className="text-[11px] text-slate-600 flex flex-wrap items-center gap-1.5 mt-1">
                           <span className="font-bold text-[#1B365D]">
-                            第1候補: {block.recommendedVenues[0]?.shortName}
+                            {t.firstChoice(block.recommendedVenues[0]?.shortName)}
                           </span>
                           {block.openVenues.length > 1 && (
-                            <span className="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700 font-bold text-[10px]">
-                              +他{block.openVenues.length - 1}会場
+                            <span className="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700 font-bold text-[10px] whitespace-nowrap">
+                              {t.moreVenues(block.openVenues.length - 1)}
                             </span>
                           )}
                           {block.isSweetSpot && (
-                            <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-extrabold text-[10px]">
-                              🎯 6–8名ベスト人数
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-extrabold text-[10px] whitespace-nowrap">
+                              {t.sweetSpotBadge}
                             </span>
                           )}
                           {block.isDoubleCourt && (
-                            <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-900 font-extrabold text-[10px]">
-                              🔥 9名以上 (2面推奨)
+                            <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-900 font-extrabold text-[10px] whitespace-nowrap">
+                              {t.doubleCourtBadge}
                             </span>
                           )}
                           {block.alternativeTwoHourBlock && (
-                            <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold text-[10px]">
-                              +別時間帯候補あり
+                            <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold text-[10px] whitespace-nowrap">
+                              {t.altBlockBadge}
                             </span>
                           )}
                         </div>
@@ -1727,12 +2047,18 @@ export default function App() {
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 font-extrabold text-xs border border-emerald-300">
-                        2h◯ {block.bothYesCount}
+                      <span
+                        translate="no"
+                        className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 font-extrabold text-xs border border-emerald-300 whitespace-nowrap"
+                      >
+                        {t.twoHourYesPill(block.bothYesCount)}
                       </span>
                       {block.flexBothCount + block.partialYesCount > 0 && (
-                        <span className="px-2 py-1 rounded-lg bg-amber-100 text-amber-900 font-bold text-xs border border-amber-300">
-                          △/1h {block.flexBothCount + block.partialYesCount}
+                        <span
+                          translate="no"
+                          className="px-2 py-1 rounded-lg bg-amber-100 text-amber-900 font-bold text-xs border border-amber-300 whitespace-nowrap"
+                        >
+                          {t.flexPill(block.flexBothCount + block.partialYesCount)}
                         </span>
                       )}
                     </div>
@@ -1743,20 +2069,23 @@ export default function App() {
           </section>
 
           <section className="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-            <div className="px-4 py-3 bg-[#264673] text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-lime-300" />
-                <h2 className="font-extrabold text-xs sm:text-sm">
-                  参加メンバーのコメント (Notes)
-                </h2>
+            <div className="px-4 py-3 bg-[#264673] text-white flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <MessageSquare className="w-4 h-4 text-lime-300 shrink-0" />
+                <h2 className="font-extrabold text-xs sm:text-sm">{t.notesTitle}</h2>
               </div>
-              <span className="text-[11px] text-sky-200">{activeVotes.length}名</span>
+              <span
+                translate="no"
+                className="text-[11px] text-sky-200 whitespace-nowrap shrink-0"
+              >
+                {t.playerCountSuffix(activeVotes.length)}
+              </span>
             </div>
 
             <div className="p-3.5 space-y-2 max-h-[430px] overflow-y-auto flex-1">
               {activeVotes.length === 0 ? (
                 <p className="text-xs text-slate-400 italic py-6 text-center">
-                  コメントはまだありません
+                  {t.noNotesYet}
                 </p>
               ) : (
                 activeVotes.map((v) => (
@@ -1766,12 +2095,15 @@ export default function App() {
                     className="p-2.5 rounded-xl bg-slate-50 hover:bg-sky-50 border border-slate-200 flex items-start justify-between gap-2 cursor-pointer transition"
                   >
                     <div className="min-w-0">
-                      <div className="text-xs font-extrabold text-[#1B365D]">
+                      <div
+                        translate="no"
+                        className="text-xs font-extrabold text-[#1B365D]"
+                      >
                         {v.name}
                       </div>
                       <p className="text-xs text-slate-600 mt-0.5 break-words">
                         {v.note || (
-                          <span className="text-slate-400 italic">コメントなし</span>
+                          <span className="text-slate-400 italic">{t.noNoteText}</span>
                         )}
                       </p>
                     </div>
@@ -1787,13 +2119,10 @@ export default function App() {
         <footer className="bg-white border border-slate-200 rounded-2xl p-3.5 text-[11px] sm:text-xs text-slate-600 space-y-2.5">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <span className="font-extrabold text-slate-800 inline-flex items-center gap-1.5">
-              <Info className="w-4 h-4 text-[#1B365D]" />
-              <span>対象施設・予約ページ一覧 ({VENUES.length}会場)</span>
+              <Info className="w-4 h-4 text-[#1B365D] shrink-0" />
+              <span>{t.directoryTitle(VENUES.length)}</span>
             </span>
-            <span>
-              体育館は<strong>室内専用シューズ必須</strong>・屋外ハードコートは
-              <strong>テニス/コートシューズ推奨</strong>です。
-            </span>
+            <span>{t.footwearNote}</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -1804,13 +2133,13 @@ export default function App() {
               >
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold shrink-0 ${
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold shrink-0 whitespace-nowrap ${
                       v.courtType === 'outdoor'
                         ? 'bg-amber-100 text-amber-800'
                         : 'bg-sky-100 text-sky-800'
                     }`}
                   >
-                    {v.courtType === 'outdoor' ? '屋外' : '屋内'}
+                    {v.courtType === 'outdoor' ? t.outdoorShort : t.indoorShort}
                   </span>
                   <a
                     href={v.mapUrl}
@@ -1825,10 +2154,10 @@ export default function App() {
                   href={v.bookingUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-0.5 text-[#1B365D] font-extrabold underline shrink-0"
+                  className="inline-flex items-center gap-0.5 text-[#1B365D] font-extrabold underline shrink-0 whitespace-nowrap"
                 >
-                  <span>予約</span>
-                  <ExternalLink className="w-3 h-3" />
+                  <span>{t.bookLink}</span>
+                  <ExternalLink className="w-3 h-3 shrink-0" />
                 </a>
               </div>
             ))}
@@ -1840,19 +2169,19 @@ export default function App() {
       {inspectSlot && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3.5 bg-[#1B365D] text-white flex items-center justify-between">
-              <div>
+            <div className="px-4 py-3.5 bg-[#1B365D] text-white flex items-center justify-between gap-2">
+              <div className="min-w-0">
                 <div className="text-[11px] text-lime-300 font-bold">
-                  おすすめ予約候補 &amp; 投票メンバー詳細
+                  {t.modalTopTitle}
                 </div>
-                <h3 className="font-extrabold text-sm sm:text-base">
+                <h3 translate="no" className="font-extrabold text-sm sm:text-base">
                   {inspectSlot.jpDate}({inspectSlot.dow}) {inspectSlot.timeLabel}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setInspectSlot(null)}
-                className="p-1 rounded-lg hover:bg-white/15 text-slate-200 cursor-pointer"
+                className="p-1 rounded-lg hover:bg-white/15 text-slate-200 cursor-pointer shrink-0"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1863,15 +2192,18 @@ export default function App() {
                 <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="text-[10px] font-extrabold text-indigo-700">
-                      同日の第2候補 (Alternative 2h Block)
+                      {t.altSecondChoice}
                     </div>
-                    <div className="font-extrabold text-slate-900 truncate">
+                    <div
+                      translate="no"
+                      className="font-extrabold text-slate-900 truncate"
+                    >
                       {inspectSlot.alternativeTwoHourBlock.timeLabel} —{' '}
                       {inspectSlot.alternativeTwoHourBlock.recommendedVenues[0]?.shortName}
                     </div>
-                    <div className="text-[10px] text-slate-600">
-                      2h◯ {inspectSlot.alternativeTwoHourBlock.bothYesCount}名 / 計{' '}
-                      {inspectSlot.alternativeTwoHourBlock.totalVotes}名
+                    <div translate="no" className="text-[10px] text-slate-600">
+                      2h◯ {inspectSlot.alternativeTwoHourBlock.bothYesCount} /{' '}
+                      {inspectSlot.alternativeTwoHourBlock.totalVotes}
                     </div>
                   </div>
                   <button
@@ -1885,23 +2217,21 @@ export default function App() {
                         },
                       })
                     }
-                    className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-[11px] shrink-0 cursor-pointer"
+                    className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-[11px] shrink-0 cursor-pointer whitespace-nowrap"
                   >
-                    詳細を見る
+                    {t.seeDetailsBtn}
                   </button>
                 </div>
               )}
 
               <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="font-extrabold text-[#1B365D] inline-flex items-center gap-1">
-                    <Award className="w-4 h-4 text-amber-500" />
-                    <span>
-                      おすすめ予約候補 TOP {inspectSlot.recommendedVenues?.length || 0}
-                    </span>
+                    <Award className="w-4 h-4 text-amber-500 shrink-0" />
+                    <span>{t.recTopHeading(inspectSlot.recommendedVenues?.length || 0)}</span>
                   </span>
-                  <span className="text-[10px] text-slate-500">
-                    全{inspectSlot.openVenues?.length || 0}施設空き
+                  <span className="text-[10px] text-slate-500 whitespace-nowrap">
+                    {t.openCountLabel(inspectSlot.openVenues?.length || 0)}
                   </span>
                 </div>
 
@@ -1917,6 +2247,7 @@ export default function App() {
                     <div className="min-w-0 space-y-0.5">
                       <div className="flex items-center gap-1.5">
                         <span
+                          translate="no"
                           className={`w-4 h-4 rounded-full text-[10px] font-extrabold flex items-center justify-center shrink-0 ${
                             idx === 0
                               ? 'bg-[#1B365D] text-lime-300'
@@ -1926,7 +2257,7 @@ export default function App() {
                           {idx + 1}
                         </span>
                         <span
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold shrink-0 ${
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold shrink-0 whitespace-nowrap ${
                             v.courtType === 'outdoor'
                               ? 'bg-amber-100 text-amber-800'
                               : 'bg-sky-100 text-sky-800'
@@ -1934,9 +2265,9 @@ export default function App() {
                         >
                           {v.courtType === 'outdoor'
                             ? v.hasLights
-                              ? '屋外・照明'
-                              : '屋外'
-                            : '屋内'}
+                              ? t.outdoorLights
+                              : t.outdoorShort
+                            : t.indoorShort}
                         </span>
                         <span className="font-extrabold text-slate-900 truncate">
                           {v.fullName}
@@ -1945,12 +2276,15 @@ export default function App() {
 
                       <div className="flex flex-wrap items-center gap-1.5 pl-5 text-[10px]">
                         {v.continuousSpan && (
-                          <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
+                          <span
+                            translate="no"
+                            className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold"
+                          >
                             ★ {v.continuousSpan}
                           </span>
                         )}
                         <span className="text-slate-500">
-                          岡山駅から約{v.distanceKm}km
+                          {t.distanceFromOkayama(v.distanceKm)}
                         </span>
                       </div>
                     </div>
@@ -1959,10 +2293,10 @@ export default function App() {
                       href={v.bookingUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-0.5 px-2 py-1 rounded bg-[#1B365D] text-lime-300 font-extrabold text-[11px] hover:bg-[#274b7d] shrink-0"
+                      className="inline-flex items-center gap-0.5 px-2 py-1 rounded bg-[#1B365D] text-lime-300 font-extrabold text-[11px] hover:bg-[#274b7d] shrink-0 whitespace-nowrap"
                     >
-                      <span>予約</span>
-                      <ExternalLink className="w-3 h-3" />
+                      <span>{t.bookLink}</span>
+                      <ExternalLink className="w-3 h-3 shrink-0" />
                     </a>
                   </div>
                 ))}
@@ -1971,22 +2305,22 @@ export default function App() {
               {[
                 {
                   label: inspectSlot.isTwoHourBlock
-                    ? `◯ 2時間とも参加OK (${inspectSlot.yesPlayers.length}名):`
-                    : `◯ 参加OK (${inspectSlot.yesPlayers.length}名):`,
+                    ? t.twoHourYesGroup(inspectSlot.yesPlayers.length)
+                    : t.oneHourYesGroup(inspectSlot.yesPlayers.length),
                   players: inspectSlot.yesPlayers,
                   titleClass: 'text-emerald-700',
                   badgeClass: 'bg-emerald-100 text-emerald-900',
                 },
                 {
                   label: inspectSlot.isTwoHourBlock
-                    ? `△ 調整可 / 1時間のみ参加可 (${inspectSlot.maybePlayers.length}名):`
-                    : `△ 調整可 (${inspectSlot.maybePlayers.length}名):`,
+                    ? t.twoHourMaybeGroup(inspectSlot.maybePlayers.length)
+                    : t.oneHourMaybeGroup(inspectSlot.maybePlayers.length),
                   players: inspectSlot.maybePlayers,
                   titleClass: 'text-amber-700',
                   badgeClass: 'bg-amber-100 text-amber-900',
                 },
                 {
-                  label: `✕ 不可 (${inspectSlot.noPlayers.length}名):`,
+                  label: t.noGroup(inspectSlot.noPlayers.length),
                   players: inspectSlot.noPlayers,
                   titleClass: 'text-rose-700',
                   badgeClass: 'bg-rose-100 text-rose-900',
@@ -1998,11 +2332,12 @@ export default function App() {
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {group.players.length === 0 ? (
-                      <span className="text-slate-400">なし</span>
+                      <span className="text-slate-400">{t.noneLabel}</span>
                     ) : (
                       group.players.map((p) => (
                         <span
                           key={p.id}
+                          translate="no"
                           className={`px-2.5 py-1 rounded-full ${group.badgeClass} font-bold`}
                         >
                           {p.name}
@@ -2021,23 +2356,23 @@ export default function App() {
                       handleCycleSlot(inspectSlot.slotKey);
                       setInspectSlot(null);
                     }}
-                    className="px-3.5 py-2 rounded-xl bg-emerald-700 text-white font-extrabold hover:bg-emerald-600 cursor-pointer"
+                    className="px-3.5 py-2 rounded-xl bg-emerald-700 text-white font-extrabold hover:bg-emerald-600 cursor-pointer whitespace-nowrap"
                   >
-                    自分の回答を切替 (◯/△/✕)
+                    {t.cycleSlotBtn}
                   </button>
                 ) : (
                   <span className="text-[11px] text-slate-500">
                     {viewingVote
-                      ? `閲覧モード中 (${viewingVote.name})`
-                      : '※ 各1時間枠の回答は上のカレンダーから変更できます'}
+                      ? t.modalViewingNote(viewingVote.name)
+                      : t.modalTwoHourNote}
                   </span>
                 )}
                 <button
                   type="button"
                   onClick={() => setInspectSlot(null)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer ml-auto"
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer ml-auto whitespace-nowrap"
                 >
-                  閉じる
+                  {t.closeBtn}
                 </button>
               </div>
             </div>
@@ -2049,24 +2384,22 @@ export default function App() {
       {showEditPickerModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3.5 bg-[#1B365D] text-white flex items-center justify-between">
+            <div className="px-4 py-3.5 bg-[#1B365D] text-white flex items-center justify-between gap-2">
               <h3 className="font-extrabold text-sm sm:text-base flex items-center gap-2">
-                <UserCheck className="w-4 h-4 text-lime-300" />
-                編集する回答を選択 (Select Player)
+                <UserCheck className="w-4 h-4 text-lime-300 shrink-0" />
+                <span>{t.pickVoterTitle}</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setShowEditPickerModal(false)}
-                className="p-1 rounded-lg hover:bg-white/15 text-slate-200 cursor-pointer"
+                className="p-1 rounded-lg hover:bg-white/15 text-slate-200 cursor-pointer shrink-0"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="p-4 space-y-2.5 text-xs">
-              <p className="text-slate-600">
-                日程を変更したいメンバーを選んでください：
-              </p>
+              <p className="text-slate-600">{t.pickVoterPrompt}</p>
 
               <div className="space-y-1.5 max-h-72 overflow-y-auto">
                 {activeVotes.map((v) => {
@@ -2079,7 +2412,10 @@ export default function App() {
                       className="w-full p-2.5 rounded-xl bg-slate-50 hover:bg-amber-50 border border-slate-200 hover:border-amber-400 flex items-center justify-between gap-2 text-left transition cursor-pointer"
                     >
                       <div className="min-w-0">
-                        <div className="font-extrabold text-slate-900 text-sm">
+                        <div
+                          translate="no"
+                          className="font-extrabold text-slate-900 text-sm"
+                        >
                           {v.name}
                         </div>
                         {v.note && (
@@ -2089,12 +2425,12 @@ export default function App() {
                         )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-bold text-[11px]">
-                          {count}枠回答済
+                        <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-bold text-[11px] whitespace-nowrap">
+                          {t.answeredSlotsCount(count)}
                         </span>
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#1B365D] text-lime-300 font-extrabold">
-                          <Edit3 className="w-3 h-3" />
-                          <span>編集</span>
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#1B365D] text-lime-300 font-extrabold whitespace-nowrap">
+                          <Edit3 className="w-3 h-3 shrink-0" />
+                          <span>{t.editAction}</span>
                         </span>
                       </div>
                     </button>
@@ -2106,9 +2442,9 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setShowEditPickerModal(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer"
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer whitespace-nowrap"
                 >
-                  閉じる
+                  {t.closeBtn}
                 </button>
               </div>
             </div>
@@ -2120,24 +2456,22 @@ export default function App() {
       {showShareModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3.5 bg-[#1B365D] text-white flex items-center justify-between">
+            <div className="px-4 py-3.5 bg-[#1B365D] text-white flex items-center justify-between gap-2">
               <h3 className="font-extrabold text-sm sm:text-base flex items-center gap-2">
-                <Share2 className="w-4 h-4 text-lime-300" />
-                LINE / Instagram 共有テキスト
+                <Share2 className="w-4 h-4 text-lime-300 shrink-0" />
+                <span>{t.shareModalTitle}</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setShowShareModal(false)}
-                className="p-1 rounded-lg hover:bg-white/15 text-slate-200 cursor-pointer"
+                className="p-1 rounded-lg hover:bg-white/15 text-slate-200 cursor-pointer shrink-0"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="p-4 space-y-3">
-              <p className="text-xs text-slate-600">
-                コピーしてLINEオープンチャットやInstagramグループDMに貼り付けてください：
-              </p>
+              <p className="text-xs text-slate-600">{t.sharePrompt}</p>
 
               <textarea
                 ref={textareaRef}
@@ -2155,13 +2489,13 @@ export default function App() {
               >
                 {copiedShare ? (
                   <>
-                    <Check className="w-4 h-4" />
-                    <span>コピーしました！</span>
+                    <Check className="w-4 h-4 shrink-0" />
+                    <span>{t.copiedBtn}</span>
                   </>
                 ) : (
                   <>
-                    <Copy className="w-4 h-4" />
-                    <span>案内文をコピー</span>
+                    <Copy className="w-4 h-4 shrink-0" />
+                    <span>{t.copyBtn}</span>
                   </>
                 )}
               </button>
@@ -2175,25 +2509,25 @@ export default function App() {
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4">
             <h3 className="font-extrabold text-slate-900 text-base">
-              回答を削除しますか？
+              {t.deleteModalTitle}
             </h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              <strong>{voteToDelete.name}</strong> さんの投票データを削除します。
+              {t.deleteModalBody(voteToDelete.name)}
             </p>
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setVoteToDelete(null)}
-                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 cursor-pointer"
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 cursor-pointer whitespace-nowrap"
               >
-                キャンセル
+                {t.cancelBtn}
               </button>
               <button
                 type="button"
                 onClick={handleConfirmDeleteVote}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer whitespace-nowrap"
               >
-                削除する
+                {t.confirmDeleteBtn}
               </button>
             </div>
           </div>
