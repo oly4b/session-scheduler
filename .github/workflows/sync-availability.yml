@@ -8,7 +8,7 @@ on:
 
 concurrency:
   group: sync-court-availability
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 defaults:
   run:
