@@ -56,7 +56,7 @@ const COPY = {
   en: {
     badgeIntegrated: (count) => `${count} Venues · Availability & Poll`,
     syncedWaiting: '※ Waiting for initial availability scrape',
-    appTitle: 'Okadai dinks Session Scheduler',
+    appTitle: '岡大dinks Session Scheduler',
     venuesSummary: (total, okayama, kurashiki) =>
       `Venues (${total}): Okayama (${okayama}) · Kurashiki (${kurashiki})`,
     shareToSns: 'Share to SNS',
