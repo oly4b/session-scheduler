@@ -37,7 +37,14 @@ import {
 
 const AVAILABILITY_PAGE_SIZE = 1000;
 
-function getTwoHourPreferenceRank(startHour) {
+function getTwoHourPreferenceRank(startHour, courtType = 'indoor') {
+  if (courtType === 'outdoor') {
+    if (startHour === 14) return 0; // 14:00-16:00
+    if (startHour === 13) return 1; // 13:00-15:00
+    if (startHour === 15) return 2; // 15:00-17:00
+    return 3 + Math.abs(startHour - 14);
+  }
+
   if (startHour === 19) return 0; // 19:00-21:00
   if (startHour === 18) return 1; // 18:00-20:00
   if (startHour === 20) return 2; // 20:00-22:00
@@ -394,7 +401,7 @@ export default function App() {
             key1,
             key2,
             spanLabel: `${b1.shortLabel}–${String(b2.startHour + 1).padStart(2, '0')}:00`,
-            timePrefRank: getTwoHourPreferenceRank(b1.startHour),
+            timePrefRank: getTwoHourPreferenceRank(b1.startHour, topVenue?.courtType),
             facilityTier: topVenue?.facilityTier ?? 0,
             distanceKm: topVenue?.distanceKm ?? 99,
             topVenueName: topVenue?.shortName || '',
@@ -566,6 +573,10 @@ export default function App() {
             dow: day.dow,
             holiday: day.holiday,
             timeLabel: `${b1.shortLabel}–${String(b2.startHour + 1).padStart(2, '0')}:00 (2時間)`,
+            timePrefRank: getTwoHourPreferenceRank(
+              b1.startHour,
+              recommendedVenues[0]?.courtType
+            ),
             openVenues: filteredShared,
             recommendedVenues,
             venueSummary: recommendedVenues.map((v) => v.shortName).join(' / '),
@@ -584,7 +595,10 @@ export default function App() {
 
         if (dayBlocks.length === 0) continue;
 
-        dayBlocks.sort((a, b) => b.score - a.score);
+        dayBlocks.sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          return a.timePrefRank - b.timePrefRank;
+        });
         const [primaryBlock, secondBestBlock = null] = dayBlocks;
 
         bestByDate.push({
