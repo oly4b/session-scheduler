@@ -1,19 +1,21 @@
-import { createClient } from '@supabase/supabase-js';
+import { createSupabaseServiceClient, getJstDateString } from './lib/scraper-utils.js';
 import { pruneStaleVotes } from './prune-stale-votes.js';
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
-  process.exit(1);
+/**
+ * Initializes the Supabase service client and prunes stale court availability
+ * votes prior to today's JST date.
+ *
+ * @returns {Promise<void>}
+ */
+async function main() {
+  const supabase = createSupabaseServiceClient();
+  await pruneStaleVotes(supabase, getJstDateString(0));
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-function getJstToday() {
-  const jstTime = new Date(Date.now() + 9 * 60 * 60 * 1000);
-  return jstTime.toISOString().slice(0, 10);
+try {
+  await main();
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[prune-votes] Fatal error: ${message}`);
+  process.exitCode = 1;
 }
-
-await pruneStaleVotes(supabase, getJstToday());

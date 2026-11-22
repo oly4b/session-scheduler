@@ -2,13 +2,13 @@ name: Sync Court Availability
 
 on:
   schedule:
-    # Runs hourly from 11:28 to 21:28 JST (02:28–12:28 UTC) and at 06:28 JST (21:28 UTC)
-    - cron: '28 2-12,21 * * *'
+    # Runs hourly from 11:28 to 21:28 JST (02:28-12:28 UTC)
+    - cron: '28 2-12 * * *'
   workflow_dispatch:
 
 concurrency:
   group: sync-court-availability
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 defaults:
   run:
@@ -19,7 +19,7 @@ env:
   SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
 jobs:
-  scrape:
+  sync:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -37,16 +37,35 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('okayama-pickleball/package-lock.json') }}
 
-      - name: Sync yoyacool availability (Okayama City)
+      - name: Install Playwright Chromium
+        run: |
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" != "true" ]; then
+            npx playwright install --with-deps chromium
+          else
+            npx playwright install-deps chromium
+          fi
+
+      - name: Sync Yoyacool availability (Okayama City)
+        id: yoyacool
+        continue-on-error: true
         run: node scripts/scrape-yoyacool.js
 
       - name: Sync Spacepad availability (Kurashiki City)
-        if: always()
+        id: spacepad
+        continue-on-error: true
         run: node scripts/scrape-spacepad.js
 
-      - name: Prune booked-out time blocks & 0-vote rows
-        if: success()
+      - name: Prune stale votes
+        if: steps.yoyacool.outcome == 'success' && steps.spacepad.outcome == 'success'
         run: node scripts/run-prune-votes.js
+
+      - name: Fail job if any scraper failed
+        if: steps.yoyacool.outcome != 'success' || steps.spacepad.outcome != 'success'
+        run: exit 1

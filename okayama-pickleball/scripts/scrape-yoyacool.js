@@ -1,38 +1,62 @@
 import { chromium } from 'playwright';
-import { createClient } from '@supabase/supabase-js';
 import { VENUES } from '../src/config/venues.js';
+import {
+  ALLOWED_HOURS_SET,
+  ALLOWED_START_HOURS,
+  CONCURRENCY,
+  JST_OFFSET_MS,
+  SCRAPE_DAYS,
+  blockNonEssentialAssets,
+  createSupabaseServiceClient,
+  formatTimeRange,
+  getJstDateString,
+  runWithConcurrency,
+  syncCourtAvailability,
+} from './lib/scraper-utils.js';
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const OPEN_MARKERS = ['trip_origin', '空き状況のみ', '空きあり', '○'];
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
-  process.exit(1);
-}
+const DATE_LABEL_RE = /(\d{1,2})月(\d{1,2})日/;
+const HOUR_RANGE_RE = /(\d{1,2})時から(\d{1,2})時/;
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+/**
+ * @typedef {import('playwright').Browser} Browser
+ * @typedef {import('playwright').Page} Page
+ * @typedef {import('./lib/scraper-utils.js').CourtSlotRecord} CourtSlotRecord
+ * @typedef {{
+ *   id: string,
+ *   source: string,
+ *   shortName: string,
+ *   fullName: string,
+ *   scraperUrl: string,
+ *   courtType?: string,
+ *   hasLights?: boolean,
+ *   maxStartHour?: number,
+ * }} VenueConfig
+ */
 
-const YOYACOOL_VENUES = VENUES.filter((v) => v.source === 'yoyacool');
-const ALLOWED_START_HOURS = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
-const ALLOWED_HOURS_SET = new Set(ALLOWED_START_HOURS);
-const UNLIT_OUTDOOR_IDS = new Set(['yoshiigawa_1', 'hyakkengawa_a', 'hyakkengawa_c']);
-const CONCURRENCY = 3;
-
-function getJstDateString(offsetDays = 0) {
-  const jstTime = new Date(Date.now() + 9 * 60 * 60 * 1000 + offsetDays * 86400000);
-  return jstTime.toISOString().slice(0, 10);
-}
-
+/**
+ * Returns the latest valid 1-hour slot start hour for a venue.
+ *
+ * @param {VenueConfig} venue
+ * @returns {number}
+ */
 function getEffectiveMaxStartHour(venue) {
-  if (typeof venue.maxStartHour === 'number') {
-    return venue.maxStartHour;
-  }
-  if (UNLIT_OUTDOOR_IDS.has(venue.id) || (venue.courtType === 'outdoor' && venue.hasLights === false)) {
-    return 16; // Last 1-hour block starting at 16:00 (16:00–17:00); closed from 17:00 onward
-  }
-  return 21;
+  if (typeof venue.maxStartHour === 'number') return venue.maxStartHour;
+
+  // Unlit outdoor courts close at 17:00; final playable block is 16:00-17:00.
+  const isUnlitOutdoor = venue.courtType === 'outdoor' && venue.hasLights === false;
+  return isUnlitOutdoor ? 16 : 21;
 }
 
+/**
+ * Appends Yoyacool date window query parameters to a venue's base URL.
+ *
+ * @param {string} baseUrl
+ * @param {string} startDate
+ * @param {string} endDate
+ * @returns {string}
+ */
 function buildWindowUrl(baseUrl, startDate, endDate) {
   const url = new URL(baseUrl);
   url.searchParams.set('d', startDate);
@@ -41,13 +65,20 @@ function buildWindowUrl(baseUrl, startDate, endDate) {
   return url.toString();
 }
 
-function resolveDateKey(text) {
-  const match = text.match(/(\d{1,2})月(\d{1,2})日/);
+/**
+ * Converts a Japanese month/day label (e.g., `12月5日`) into an ISO date string,
+ * rolling the year forward when December queries wrap into January.
+ *
+ * @param {string} label
+ * @returns {string | null}
+ */
+function resolveDateKey(label) {
+  const match = label.match(DATE_LABEL_RE);
   if (!match) return null;
+
   const month = Number(match[1]);
   const day = Number(match[2]);
-
-  const nowJst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const nowJst = new Date(Date.now() + JST_OFFSET_MS);
   const currentYear = nowJst.getUTCFullYear();
   const currentMonth = nowJst.getUTCMonth() + 1;
   const year = currentMonth === 12 && month === 1 ? currentYear + 1 : currentYear;
@@ -55,108 +86,124 @@ function resolveDateKey(text) {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
+/**
+ * Dismisses up to three blocking Vuetify modal dialogs on the current page.
+ *
+ * @param {Page} page
+ * @returns {Promise<void>}
+ */
 async function dismissDialogs(page) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const dialogBtn = page.locator('.v-dialog--active button').first();
-    if (!(await dialogBtn.count())) break;
-    await dialogBtn.click({ force: true }).catch(() => null);
+    const closeBtn = page.locator('.v-dialog--active button').first();
+    if (!(await closeBtn.count())) break;
+
+    await closeBtn.click({ force: true }).catch(() => null);
     await page.waitForTimeout(200);
   }
 }
 
+/**
+ * Scrolls virtualized Vuetify containers so lazy-mounted availability tables render,
+ * then extracts all open start hours grouped by ISO date.
+ *
+ * @param {Page} page
+ * @param {Map<string, Set<number>>} openHoursByDate
+ * @param {Set<string>} capturedDates
+ * @returns {Promise<void>}
+ */
 async function parseVisibleTables(page, openHoursByDate, capturedDates) {
-  // Scroll internal Vuetify containers so all court tables mount
   await page.evaluate(async () => {
     const scrollables = Array.from(document.querySelectorAll('*')).filter(
       (el) => el.scrollHeight > el.clientHeight + 100
     );
+
     for (const el of scrollables) {
       for (let y = 0; y <= el.scrollHeight; y += 900) {
         el.scrollTop = y;
-        await new Promise((r) => setTimeout(r, 40));
+        await new Promise((resolve) => setTimeout(resolve, 40));
       }
       el.scrollTop = 0;
     }
   });
   await page.waitForTimeout(300);
 
-  const allTablesRows = await page.evaluate(() => {
-    const normalize = (s) =>
-      (s || '')
+  const tables = await page.evaluate(() => {
+    const normalize = (text) =>
+      (text || '')
         .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
         .replace(/\u3000/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 
-    const visibleTables = Array.from(document.querySelectorAll('table')).filter(
-      (t) => t.offsetParent !== null && t.querySelector('.AvailabilityFrameSet_frame')
-    );
+    return Array.from(document.querySelectorAll('table'))
+      .filter((t) => t.offsetParent !== null && t.querySelector('.AvailabilityFrameSet_frame'))
+      .map((table) =>
+        Array.from(table.querySelectorAll('tr')).map((tr) => {
+          const firstCell = tr.querySelector('th, td');
+          const frames = Array.from(
+            tr.querySelectorAll('.AvailabilityFrameSet_frame')
+          ).map((el) => ({
+            text: normalize(el.innerText),
+            title: normalize(
+              el.querySelector('.AvailabilityFrameSet_frame_content')?.getAttribute('title')
+            ),
+            startTime: el.querySelector('time')?.getAttribute('datetime') || '',
+          }));
 
-    return visibleTables.map((table) =>
-      Array.from(table.querySelectorAll('tr')).map((tr) => {
-        const cells = Array.from(tr.querySelectorAll('th, td'));
-        const frames = Array.from(tr.querySelectorAll('.AvailabilityFrameSet_frame')).map((el) => ({
-          text: normalize(el.innerText),
-          title: normalize(
-            el.querySelector('.AvailabilityFrameSet_frame_content')?.getAttribute('title') || ''
-          ),
-          startTime: el.querySelector('time')?.getAttribute('datetime') || '',
-        }));
-
-        return {
-          firstCellText: cells[0] ? normalize(cells[0].innerText) : '',
-          frames,
-        };
-      })
-    );
+          return {
+            firstCellText: firstCell ? normalize(firstCell.innerText) : '',
+            frames,
+          };
+        })
+      );
   });
 
-  for (const tableRows of allTablesRows) {
-    for (const row of tableRows) {
-      if (!/\d{1,2}月\d{1,2}日/.test(row.firstCellText)) continue;
-
+  for (const rows of tables) {
+    for (const row of rows) {
       const slotDate = resolveDateKey(row.firstCellText);
       if (!slotDate || row.frames.length === 0) continue;
 
       capturedDates.add(slotDate);
-      if (!openHoursByDate.has(slotDate)) {
-        openHoursByDate.set(slotDate, new Set());
+      let openHours = openHoursByDate.get(slotDate);
+      if (!openHours) {
+        openHours = new Set();
+        openHoursByDate.set(slotDate, openHours);
       }
 
       for (const frame of row.frames) {
-        let startHour = null;
-        let endHour = null;
+        const hourMatch = frame.text.match(HOUR_RANGE_RE);
+        let startHour;
+        let endHour;
 
-        const hourMatch = frame.text.match(/(\d{1,2})時から(\d{1,2})時/);
         if (hourMatch) {
           startHour = Number(hourMatch[1]);
           endHour = Number(hourMatch[2]);
-        } else if (frame.startTime && frame.startTime.length >= 13) {
+        } else if (frame.startTime.length >= 13) {
           startHour = Number(frame.startTime.slice(11, 13));
           endHour = startHour + 1;
         } else {
           continue;
         }
 
-        const combined = `${frame.text} ${frame.title}`;
-        const isOpen =
-          combined.includes('trip_origin') ||
-          combined.includes('空き状況のみ') ||
-          combined.includes('空きあり') ||
-          combined.includes('○');
+        const labelText = `${frame.text} ${frame.title}`;
+        if (!OPEN_MARKERS.some((marker) => labelText.includes(marker))) continue;
 
-        if (isOpen) {
-          for (let h = startHour; h < endHour; h += 1) {
-            if (ALLOWED_HOURS_SET.has(h)) {
-              openHoursByDate.get(slotDate).add(h);
-            }
-          }
+        for (let hour = startHour; hour < endHour; hour += 1) {
+          if (ALLOWED_HOURS_SET.has(hour)) openHours.add(hour);
         }
       }
     }
   }
 }
 
+/**
+ * Scrapes a 28-day availability window for a single Yoyacool venue and normalizes
+ * every hourly slot into `open`, `booked`, or `closed` database records.
+ *
+ * @param {Browser} browser
+ * @param {VenueConfig} venue
+ * @returns {Promise<CourtSlotRecord[]>}
+ */
 async function scrapeYoyacoolVenue(browser, venue) {
   const page = await browser.newPage({
     locale: 'ja-JP',
@@ -164,29 +211,25 @@ async function scrapeYoyacoolVenue(browser, venue) {
     viewport: { width: 1440, height: 12000 },
   });
 
-  await page.route('**/*', (route) => {
-    const type = route.request().resourceType();
-    if (type === 'image' || type === 'font' || type === 'media') {
-      return route.abort();
-    }
-    return route.continue();
-  });
+  await blockNonEssentialAssets(page);
 
+  /** @type {Map<string, Set<number>>} */
   const openHoursByDate = new Map();
+  /** @type {Set<string>} */
   const capturedDates = new Set();
 
   const windows = [
-    { label: 'Weeks 1–2', start: getJstDateString(0), end: getJstDateString(13) },
-    { label: 'Weeks 3–4', start: getJstDateString(14), end: getJstDateString(27) },
+    { start: getJstDateString(0), end: getJstDateString(13) },
+    { start: getJstDateString(14), end: getJstDateString(27) },
   ];
 
   try {
     console.log(`[${venue.id}] Opening ${venue.fullName}...`);
 
-    for (const win of windows) {
-      const targetUrl = buildWindowUrl(venue.scraperUrl, win.start, win.end);
-      await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 45000 });
-      await page.waitForSelector('.AvailabilityFrameSet_frame', { timeout: 20000 });
+    for (const { start, end } of windows) {
+      const targetUrl = buildWindowUrl(venue.scraperUrl, start, end);
+      await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 45_000 });
+      await page.waitForSelector('.AvailabilityFrameSet_frame', { timeout: 20_000 });
       await dismissDialogs(page);
       await parseVisibleTables(page, openHoursByDate, capturedDates);
     }
@@ -197,64 +240,66 @@ async function scrapeYoyacoolVenue(browser, venue) {
   }
 
   const maxHour = getEffectiveMaxStartHour(venue);
-  const venueRecords = [];
+  const updatedAt = new Date().toISOString();
+  /** @type {CourtSlotRecord[]} */
+  const records = [];
+  let openCount = 0;
+  let bookedCount = 0;
+  let closedCount = 0;
 
-  for (let offset = 0; offset < 28; offset += 1) {
+  for (let offset = 0; offset < SCRAPE_DAYS; offset += 1) {
     const dateKey = getJstDateString(offset);
-    const openSet = openHoursByDate.get(dateKey) || new Set();
+    const openSet = openHoursByDate.get(dateKey);
 
     for (const startHour of ALLOWED_START_HOURS) {
-      const timeRange = `${String(startHour).padStart(2, '0')}:00-${String(startHour + 1).padStart(2, '0')}:00`;
-      const isWithinOperatingHours = startHour <= maxHour;
+      const timeRange = formatTimeRange(startHour);
 
+      /** @type {'open' | 'booked' | 'closed'} */
       let status = 'closed';
-      if (isWithinOperatingHours) {
-        status = openSet.has(startHour) ? 'open' : 'booked';
+      if (startHour <= maxHour) {
+        status = openSet?.has(startHour) ? 'open' : 'booked';
       }
 
-      venueRecords.push({
+      if (status === 'open') openCount += 1;
+      else if (status === 'booked') bookedCount += 1;
+      else closedCount += 1;
+
+      records.push({
         slot_key: `${dateKey}_${venue.id}_${timeRange}`,
         slot_date: dateKey,
         time_range: timeRange,
         court_detail: venue.id,
         status,
-        updated_at: new Date().toISOString(),
+        updated_at: updatedAt,
       });
     }
   }
 
-  const openCount = venueRecords.filter((r) => r.status === 'open').length;
-  const bookedCount = venueRecords.filter((r) => r.status === 'booked').length;
-  const closedCount = venueRecords.filter((r) => r.status === 'closed').length;
   console.log(
-    `[${venue.id}] Prepared ${venueRecords.length} venue slots (${openCount} open, ${bookedCount} booked, ${closedCount} closed).`
+    `[${venue.id}] Prepared ${records.length} slots ` +
+      `(${openCount} open, ${bookedCount} booked, ${closedCount} closed).`
   );
 
-  return venueRecords;
+  return records;
 }
 
-async function runWithConcurrency(items, limit, worker) {
-  const results = [];
-  const executing = new Set();
-  for (const item of items) {
-    const p = Promise.resolve().then(() => worker(item));
-    results.push(p);
-    executing.add(p);
-    p.finally(() => executing.delete(p));
-    if (executing.size >= limit) {
-      await Promise.race(executing);
-    }
-  }
-  return Promise.all(results);
-}
+/**
+ * Scrapes all Yoyacool venues and syncs their 28-day court availability to Supabase.
+ *
+ * @returns {Promise<void>}
+ */
+async function main() {
+  const isDryRun = process.argv.includes('--dry-run');
+  const supabase = isDryRun ? null : createSupabaseServiceClient();
 
-async function run() {
+  const yoyacoolVenues = VENUES.filter((venue) => venue.source === 'yoyacool');
   const minDate = getJstDateString(0);
   const browser = await chromium.launch({ headless: true });
-  let allRecords = [];
 
+  /** @type {CourtSlotRecord[]} */
+  let allRecords;
   try {
-    const nested = await runWithConcurrency(YOYACOOL_VENUES, CONCURRENCY, (venue) =>
+    const nested = await runWithConcurrency(yoyacoolVenues, CONCURRENCY, (venue) =>
       scrapeYoyacoolVenue(browser, venue)
     );
     allRecords = nested.flat();
@@ -262,34 +307,26 @@ async function run() {
     await browser.close();
   }
 
-  if (process.argv.includes('--dry-run')) {
-    console.log(`\nDry run complete (${allRecords.length} total records) — skipped Supabase writes.`);
-    process.exit(0);
+  if (!supabase) {
+    console.log(`[yoyacool] Dry run complete (${allRecords.length} records).`);
+    return;
   }
 
-  const venueIds = YOYACOOL_VENUES.map((v) => v.id);
-
-  await supabase
-    .from('court_availability')
-    .delete()
-    .in('court_detail', venueIds)
-    .lt('slot_date', minDate);
-
-  for (let i = 0; i < allRecords.length; i += 600) {
-    const chunk = allRecords.slice(i, i + 600);
-    const { error } = await supabase
-      .from('court_availability')
-      .upsert(chunk, { onConflict: 'slot_key' });
-
-    if (error) {
-      console.error('Supabase upsert error:', error);
-      process.exit(1);
-    }
-  }
+  await syncCourtAvailability(supabase, {
+    venueIds: yoyacoolVenues.map((venue) => venue.id),
+    minDate,
+    records: allRecords,
+  });
 
   console.log(
-    `\nSuccessfully synced ${allRecords.length} venue-level slots across ${YOYACOOL_VENUES.length} yoyacool venues.`
+    `[yoyacool] Synced ${allRecords.length} slots across ${yoyacoolVenues.length} venues.`
   );
 }
 
-run();
+try {
+  await main();
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[yoyacool] Fatal error: ${message}`);
+  process.exitCode = 1;
+}

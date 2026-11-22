@@ -1,86 +1,163 @@
-/**
- * Removes ONLY the specific time blocks (YYYY-MM-DD_HH:00-HH:00) that are
- * expired or fully booked across all 13 venues from every voter's `responses`,
- * keeping all other voted slots intact. Drops a voter row only if 0 votes remain.
- */
-export async function pruneStaleVotes(supabase, minDate) {
-  const validSlotKeys = new Set();
-  const pageSize = 1000;
-  let from = 0;
+import { CONCURRENCY, runWithConcurrency } from './lib/scraper-utils.js';
 
-  while (true) {
-    const { data, error } = await supabase
+const PAGE_SIZE = 1000;
+const LEGACY_PREFIX = 'spacepad_1_3_';
+const RESPONSE_PRIORITY = { yes: 3, maybe: 2, no: 1 };
+
+/**
+ * @typedef {import('@supabase/supabase-js').SupabaseClient} SupabaseClient
+ * @typedef {{ slot_key: string, slot_date: string, time_range: string }} CourtSlotRow
+ * @typedef {{ id: string, name: string, responses: Record<string, string> | null }} CalendarVoteRow
+ */
+
+/**
+ * Fetches all open court slot keys (`YYYY-MM-DD_HH:00-HH:00`) on or after `minDate`
+ * using deterministic primary-key pagination.
+ *
+ * @param {SupabaseClient} supabase
+ * @param {string} minDate - ISO date string (`YYYY-MM-DD`).
+ * @returns {Promise<Set<string>>}
+ */
+async function fetchOpenSlotKeys(supabase, minDate) {
+  const openKeys = new Set();
+
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    /** @type {{ data: CourtSlotRow[] | null, error: { message: string } | null }} */
+    const { data: slots, error } = await supabase
       .from('court_availability')
-      .select('slot_date, time_range')
+      .select('slot_key, slot_date, time_range')
       .eq('status', 'open')
       .gte('slot_date', minDate)
-      .range(from, from + pageSize - 1);
+      .order('slot_key', { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
 
-    if (error || !data || data.length === 0) break;
-    for (const row of data) {
-      validSlotKeys.add(`${row.slot_date}_${row.time_range}`);
+    if (error) {
+      throw new Error(`Failed to fetch open slots at offset ${offset}: ${error.message}`);
     }
-    if (data.length < pageSize) break;
-    from += pageSize;
+    if (!slots?.length) break;
+
+    for (const { slot_date, time_range } of slots) {
+      openKeys.add(`${slot_date}_${time_range}`);
+    }
+
+    if (slots.length < PAGE_SIZE) break;
   }
 
-  // Safety guard: never prune if court_availability returned 0 open rows
-  if (validSlotKeys.size === 0) return;
+  return openKeys;
+}
 
-  const { data: votes, error: votesError } = await supabase
+/**
+ * Strips legacy Spacepad prefixes, resolves any duplicate keys using
+ * `RESPONSE_PRIORITY` (`yes` > `maybe` > `no`), and filters to active slots.
+ *
+ * @param {Record<string, string> | null} responses
+ * @param {Set<string>} openKeys
+ * @returns {{ cleaned: Record<string, string>, changed: boolean, count: number }}
+ */
+function sanitizeResponses(responses, openKeys) {
+  /** @type {Record<string, string>} */
+  const cleaned = {};
+  let changed = false;
+
+  for (const [rawKey, availability] of Object.entries(responses ?? {})) {
+    if (!availability) {
+      changed = true;
+      continue;
+    }
+
+    const key = rawKey.startsWith(LEGACY_PREFIX)
+      ? rawKey.slice(LEGACY_PREFIX.length)
+      : rawKey;
+
+    if (key !== rawKey) changed = true;
+
+    if (!openKeys.has(key)) {
+      changed = true;
+      continue;
+    }
+
+    const existing = cleaned[key];
+    if (!existing) {
+      cleaned[key] = availability;
+    } else {
+      changed = true;
+      if ((RESPONSE_PRIORITY[availability] ?? 0) > (RESPONSE_PRIORITY[existing] ?? 0)) {
+        cleaned[key] = availability;
+      }
+    }
+  }
+
+  return { cleaned, changed, count: Object.keys(cleaned).length };
+}
+
+/**
+ * Removes expired or fully booked time blocks (`YYYY-MM-DD_HH:00-HH:00`) from every
+ * voter's responses, deleting the voter row entirely if zero active votes remain.
+ *
+ * @param {SupabaseClient} supabase
+ * @param {string} minDate - Earliest valid slot date (`YYYY-MM-DD`).
+ * @returns {Promise<void>}
+ */
+export async function pruneStaleVotes(supabase, minDate) {
+  const openSlotKeys = await fetchOpenSlotKeys(supabase, minDate);
+
+  // Abort if no open slots exist to prevent wiping all votes on an upstream outage
+  if (openSlotKeys.size === 0) return;
+
+  /** @type {{ data: CalendarVoteRow[] | null, error: { message: string } | null }} */
+  const { data: votes, error: fetchError } = await supabase
     .from('calendar_votes')
     .select('id, name, responses');
 
-  if (votesError || !votes) {
-    console.error('Failed to fetch calendar_votes for pruning:', votesError);
+  if (fetchError || !votes) {
+    console.error('[prune-votes] Failed to fetch calendar_votes:', fetchError);
     return;
   }
 
-  for (const vote of votes) {
-    const raw = vote.responses || {};
-    const cleaned = {};
-    let changed = false;
+  const now = new Date().toISOString();
+  /** @type {Array<{ id: string, name: string }>} */
+  const staleVoters = [];
+  /** @type {Array<{ id: string, name: string, responses: Record<string, string>, count: number }>} */
+  const updates = [];
 
-    for (const [key, val] of Object.entries(raw)) {
-      const normalizedKey = key.startsWith('spacepad_1_3_')
-        ? key.slice('spacepad_1_3_'.length)
-        : key;
+  for (const { id, name, responses } of votes) {
+    const { cleaned, changed, count } = sanitizeResponses(responses, openSlotKeys);
+    if (!changed) continue;
 
-      if (normalizedKey !== key) changed = true;
-
-      // Keeps every voted time block that still has >= 1 open venue; drops only booked-out blocks
-      if (validSlotKeys.has(normalizedKey)) {
-        cleaned[normalizedKey] = val;
-      } else {
-        changed = true;
-      }
+    if (count === 0) {
+      staleVoters.push({ id, name });
+    } else {
+      updates.push({ id, name, responses: cleaned, count });
     }
+  }
 
-    const remainingCount = Object.keys(cleaned).length;
+  if (staleVoters.length > 0) {
+    const { error } = await supabase
+      .from('calendar_votes')
+      .delete()
+      .in('id', staleVoters.map((voter) => voter.id));
 
-    if (remainingCount === 0) {
-      const { error: delError } = await supabase
-        .from('calendar_votes')
-        .delete()
-        .eq('id', vote.id);
-
-      if (!delError) {
-        console.log(`[prune-votes] Dropped "${vote.name}" (0 active votes remaining).`);
-      }
-    } else if (changed) {
-      const { error: updError } = await supabase
-        .from('calendar_votes')
-        .update({
-          responses: cleaned,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', vote.id);
-
-      if (!updError) {
-        console.log(
-          `[prune-votes] Removed booked-out slot(s) for "${vote.name}" (${remainingCount} active remaining).`
-        );
+    if (error) {
+      console.error('[prune-votes] Failed to delete stale voters:', error);
+    } else {
+      for (const { name } of staleVoters) {
+        console.log(`[prune-votes] Dropped "${name}" (0 active votes remaining).`);
       }
     }
   }
+
+  await runWithConcurrency(updates, CONCURRENCY, async ({ id, name, responses, count }) => {
+    const { error } = await supabase
+      .from('calendar_votes')
+      .update({ responses, updated_at: now })
+      .eq('id', id);
+
+    if (error) {
+      console.error(`[prune-votes] Failed to update "${name}":`, error);
+    } else {
+      console.log(
+        `[prune-votes] Removed booked-out slot(s) for "${name}" (${count} active remaining).`
+      );
+    }
+  });
 }

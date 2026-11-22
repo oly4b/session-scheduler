@@ -1,10 +1,3 @@
-/**
- * @fileoverview Okayama Pickleball Session Scheduler (`岡大dinks`) — Scalable Multi-Venue Edition
- * Coordinates group pickleball sessions across Okayama & Kurashiki gymnasiums and outdoor hardcourts.
- * Evaluates venue-level availability, prioritizes 19:00–21:00 > 18:00–20:00 > 20:00–22:00 2-hour blocks,
- * ranks Top 3 recommended courts per slot, and computes Top 5 consecutive 2-hour block bookings.
- */
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   MapPin,
@@ -28,162 +21,27 @@ import {
   RefreshCw,
   ExternalLink,
   Award,
-  UserCheck
+  UserCheck,
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
-import { VENUES } from './config/venues';
+import { VENUES, VENUE_BY_ID } from './config/venues';
+import {
+  ACTIVE_VENUE_IDS,
+  TIME_BLOCKS,
+  formatJstTimestamp,
+  getJstDayMeta,
+  getMergedVoterChoice,
+  normalizeResponsesMap,
+  rankRecommendedVenues,
+} from './utils/scheduler';
 
-// ============================================================================
-// CONSTANTS & JST CALENDAR UTILITIES
-// ============================================================================
+const AVAILABILITY_PAGE_SIZE = 1000;
 
-const TIME_BLOCKS = [
-  { id: '12:00-13:00', startHour: 12, label: '12:00–13:00', shortLabel: '12:00', isStudentPrime: false },
-  { id: '13:00-14:00', startHour: 13, label: '13:00–14:00', shortLabel: '13:00', isStudentPrime: false },
-  { id: '14:00-15:00', startHour: 14, label: '14:00–15:00', shortLabel: '14:00', isStudentPrime: false },
-  { id: '15:00-16:00', startHour: 15, label: '15:00–16:00', shortLabel: '15:00', isStudentPrime: false },
-  { id: '16:00-17:00', startHour: 16, label: '16:00–17:00', shortLabel: '16:00', isStudentPrime: false },
-  { id: '17:00-18:00', startHour: 17, label: '17:00–18:00', shortLabel: '17:00', isStudentPrime: false },
-  { id: '18:00-19:00', startHour: 18, label: '18:00–19:00', shortLabel: '18:00', isStudentPrime: true },
-  { id: '19:00-20:00', startHour: 19, label: '19:00–20:00', shortLabel: '19:00', isStudentPrime: true },
-  { id: '20:00-21:00', startHour: 20, label: '20:00–21:00', shortLabel: '20:00', isStudentPrime: true },
-  { id: '21:00-22:00', startHour: 21, label: '21:00–22:00', shortLabel: '21:00', isStudentPrime: true }
-];
-
-const VENUE_BY_ID = Object.fromEntries(VENUES.map((v) => [v.id, v]));
-const ACTIVE_VENUE_IDS = new Set(VENUES.map((v) => v.id));
-
-const JP_DOW = ['日', '月', '火', '水', '木', '金', '土'];
-
-const JP_HOLIDAYS = new Set([
-  '2026-11-23',
-  '2027-01-01',
-  '2027-01-11',
-  '2027-02-11',
-  '2027-02-23',
-  '2027-03-21',
-  '2027-03-22',
-  '2027-04-29',
-  '2027-05-03',
-  '2027-05-04',
-  '2027-05-05'
-]);
-
-const RESPONSE_PRIORITY = { yes: 3, maybe: 2, no: 1 };
-
-function getVenueFacilityTier(venue) {
-  if (venue.courtType === 'indoor') return 3; // 1st: Indoor gym
-  if (venue.hasLights) return 2; // 2nd: Outdoor with lights
-  return 1; // 3rd: Outdoor without lights
-}
-
-/**
- * Ranks candidate venues (max 3) by:
- * 1. Adjacent open timeslot(s) at the same venue
- * 2. Indoor > Outdoor (lit) > Outdoor (no lights)
- * 3. Closest distance to JR Okayama Station
- */
-function rankRecommendedVenues(candidateVenues, dateKey, targetHours, openVenuesBySlot, limit = 3) {
-  const minHour = Math.min(...targetHours);
-  const maxHour = Math.max(...targetHours);
-  const prevHour = minHour - 1;
-  const nextHour = maxHour + 1;
-
-  const prevIds =
-    prevHour >= 12
-      ? openVenuesBySlot[`${dateKey}_${String(prevHour).padStart(2, '0')}:00-${String(prevHour + 1).padStart(2, '0')}:00`] || new Set()
-      : new Set();
-  const nextIds =
-    nextHour <= 21
-      ? openVenuesBySlot[`${dateKey}_${String(nextHour).padStart(2, '0')}:00-${String(nextHour + 1).padStart(2, '0')}:00`] || new Set()
-      : new Set();
-
-  return candidateVenues
-    .map((v) => {
-      const hasPrev = prevIds.has(v.id);
-      const hasNext = nextIds.has(v.id);
-      const adjacentCount = (hasPrev ? 1 : 0) + (hasNext ? 1 : 0);
-
-      let continuousSpan = null;
-      if (hasPrev && hasNext) {
-        continuousSpan = `${prevHour}:00–${nextHour + 1}:00 連続空き`;
-      } else if (hasPrev) {
-        continuousSpan = `${prevHour}:00–${maxHour + 1}:00 連続空き`;
-      } else if (hasNext) {
-        continuousSpan = `${minHour}:00–${nextHour + 1}:00 連続空き`;
-      }
-
-      return {
-        ...v,
-        hasAdjacent: adjacentCount > 0,
-        adjacentCount,
-        continuousSpan,
-        facilityTier: getVenueFacilityTier(v)
-      };
-    })
-    .sort((a, b) => {
-      if (b.hasAdjacent !== a.hasAdjacent) return Number(b.hasAdjacent) - Number(a.hasAdjacent);
-      if (b.adjacentCount !== a.adjacentCount) return b.adjacentCount - a.adjacentCount;
-      if (b.facilityTier !== a.facilityTier) return b.facilityTier - a.facilityTier;
-      return (a.distanceKm ?? 99) - (b.distanceKm ?? 99);
-    })
-    .slice(0, limit);
-}
-
-function getJstDayMeta(offsetDays) {
-  const now = new Date();
-  const jstMs = now.getTime() + 9 * 60 * 60 * 1000 + offsetDays * 86400000;
-  const d = new Date(jstMs);
-  const year = d.getUTCFullYear();
-  const month = d.getUTCMonth() + 1;
-  const day = d.getUTCDate();
-  const dowIdx = d.getUTCDay();
-  const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  const isHoliday = JP_HOLIDAYS.has(dateKey);
-
-  let dayType = 'weekday';
-  if (isHoliday) dayType = 'holiday';
-  else if (dowIdx === 6) dayType = 'saturday';
-  else if (dowIdx === 0) dayType = 'sunday';
-
-  return {
-    dateKey,
-    year,
-    month,
-    day,
-    jpDate: `${month}月${day}日`,
-    shortDate: `${month}/${day}`,
-    dow: JP_DOW[dowIdx],
-    dowIdx,
-    holiday: isHoliday ? '祝' : '',
-    dayType
-  };
-}
-
-function getMergedVoterChoice(responsesMap, slotKey) {
-  if (!responsesMap) return undefined;
-  const direct = responsesMap[slotKey];
-  const legacySp = responsesMap[`spacepad_1_3_${slotKey}`];
-  if (!direct) return legacySp;
-  if (!legacySp) return direct;
-  return RESPONSE_PRIORITY[direct] >= RESPONSE_PRIORITY[legacySp] ? direct : legacySp;
-}
-
-function normalizeResponsesMap(rawResponses) {
-  const normalized = {};
-  if (!rawResponses) return normalized;
-
-  for (const [key, val] of Object.entries(rawResponses)) {
-    if (!val) continue;
-    const cleanKey = key.startsWith('spacepad_1_3_')
-      ? key.slice('spacepad_1_3_'.length)
-      : key;
-    const existing = normalized[cleanKey];
-    if (!existing || RESPONSE_PRIORITY[val] > RESPONSE_PRIORITY[existing]) {
-      normalized[cleanKey] = val;
-    }
-  }
-  return normalized;
+function getTwoHourPreferenceRank(startHour) {
+  if (startHour === 19) return 0; // 19:00-21:00
+  if (startHour === 18) return 1; // 18:00-20:00
+  if (startHour === 20) return 2; // 20:00-22:00
+  return 3 + Math.abs(startHour - 19);
 }
 
 function PickleballIcon({ className = 'w-7 h-7' }) {
@@ -214,33 +72,32 @@ function PickleballIcon({ className = 'w-7 h-7' }) {
   );
 }
 
+/**
+ * Okayama Pickleball Session Scheduler (`岡大dinks`).
+ * Coordinates group scheduling across Okayama and Kurashiki venues with live
+ * availability, 2-hour block prioritization, and top-court recommendations.
+ */
 export default function App() {
-  // Supabase Data State
   const [loadingVotes, setLoadingVotes] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [votes, setVotes] = useState([]);
-  // Map of `${dateKey}_${timeRange}` -> Set<venueId> for status === 'open'
   const [openVenuesBySlot, setOpenVenuesBySlot] = useState({});
-  // Map of `${dateKey}_${timeRange}` -> Set<venueId> for status === 'booked'
   const [bookedVenuesBySlot, setBookedVenuesBySlot] = useState({});
   const [lastSyncedAt, setLastSyncedAt] = useState({ yoyacool: '', spacepad: '' });
 
-  // Week Navigation, Area/Venue Filter & Grid Display Modes
   const [activeWeekIdx, setActiveWeekIdx] = useState(0);
-  const [areaFilter, setAreaFilter] = useState('all'); // 'all' | 'okayama' | 'kurashiki'
-  const [venueFilter, setVenueFilter] = useState('all'); // 'all' | venue.id
-  const [gridViewMode, setGridViewMode] = useState('vote'); // 'vote' | 'heatmap'
+  const [areaFilter, setAreaFilter] = useState('all');
+  const [venueFilter, setVenueFilter] = useState('all');
+  const [gridViewMode, setGridViewMode] = useState('vote');
   const [highlightPrimeOnly, setHighlightPrimeOnly] = useState(false);
 
-  // Voter Input, View-Only Inspection & Edit State
   const [voterName, setVoterName] = useState('');
   const [voterNote, setVoterNote] = useState('');
   const [responses, setResponses] = useState({});
   const [editingVoteId, setEditingVoteId] = useState(null);
-  const [viewingVote, setViewingVote] = useState(null); // Read-only player inspection
+  const [viewingVote, setViewingVote] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Modals & Toast Notifications
   const [inspectSlot, setInspectSlot] = useState(null);
   const [showEditPickerModal, setShowEditPickerModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -249,27 +106,39 @@ export default function App() {
   const [copiedShare, setCopiedShare] = useState(false);
 
   const voterBarRef = useRef(null);
+  const textareaRef = useRef(null);
 
-  const triggerToast = (msg) => {
+  const triggerToast = useCallback((msg) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage((prev) => (prev === msg ? '' : prev));
     }, 3200);
-  };
+  }, []);
 
-  // Filtered venue dropdown options based on selected area
-  const visibleVenues = useMemo(() => {
-    if (areaFilter === 'all') return VENUES;
-    return VENUES.filter((v) => v.area === areaFilter);
+  const { okayamaCount, kurashikiCount, visibleVenues } = useMemo(() => {
+    let okayama = 0;
+    let kurashiki = 0;
+    const filtered = [];
+
+    for (const venue of VENUES) {
+      if (venue.area === 'okayama') okayama += 1;
+      else if (venue.area === 'kurashiki') kurashiki += 1;
+
+      if (areaFilter === 'all' || venue.area === areaFilter) {
+        filtered.push(venue);
+      }
+    }
+
+    return { okayamaCount: okayama, kurashikiCount: kurashiki, visibleVenues: filtered };
   }, [areaFilter]);
 
-  const viewingResponsesMap = useMemo(() => {
-    if (!viewingVote) return null;
-    return normalizeResponsesMap(viewingVote.responses);
-  }, [viewingVote]);
+  const viewingResponsesMap = useMemo(
+    () => (viewingVote ? normalizeResponsesMap(viewingVote.responses) : null),
+    [viewingVote]
+  );
 
   // --------------------------------------------------------------------------
-  // 1. FETCH VOTES & VENUE AVAILABILITY (open / booked / closed) FROM SUPABASE
+  // 1. SUPABASE FETCH & REALTIME SUBSCRIPTION
   // --------------------------------------------------------------------------
 
   const fetchVotes = useCallback(async () => {
@@ -289,70 +158,59 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let isCancelled = false;
+
     async function fetchAvailability() {
       const minDate = getJstDayMeta(0).dateKey;
-      const pageSize = 1000;
-      let from = 0;
-      let allRows = [];
-
-      while (true) {
-        const { data, error } = await supabase
-          .from('court_availability')
-          .select('slot_date, time_range, court_detail, status, updated_at')
-          .gte('slot_date', minDate)
-          .range(from, from + pageSize - 1);
-
-        if (error || !data || data.length === 0) break;
-        allRows = allRows.concat(data);
-        if (data.length < pageSize) break;
-        from += pageSize;
-      }
-
-      if (allRows.length === 0) return;
-
       const openMap = {};
       const bookedMap = {};
       let latestYoyacool = '';
       let latestSpacepad = '';
 
-      for (const row of allRows) {
-        const venueId = row.court_detail;
-        if (!ACTIVE_VENUE_IDS.has(venueId)) continue;
+      for (let from = 0; ; from += AVAILABILITY_PAGE_SIZE) {
+        const { data, error } = await supabase
+          .from('court_availability')
+          .select('slot_key, slot_date, time_range, court_detail, status, updated_at')
+          .gte('slot_date', minDate)
+          .order('slot_key', { ascending: true })
+          .range(from, from + AVAILABILITY_PAGE_SIZE - 1);
 
-        const key = `${row.slot_date}_${row.time_range}`;
-        if (row.status === 'open') {
-          if (!openMap[key]) openMap[key] = new Set();
-          openMap[key].add(venueId);
-        } else if (row.status === 'booked') {
-          if (!bookedMap[key]) bookedMap[key] = new Set();
-          bookedMap[key].add(venueId);
+        if (isCancelled || error || !data?.length) break;
+
+        for (const row of data) {
+          const venueId = row.court_detail;
+          if (!ACTIVE_VENUE_IDS.has(venueId)) continue;
+
+          const key = `${row.slot_date}_${row.time_range}`;
+          if (row.status === 'open') {
+            if (!openMap[key]) openMap[key] = new Set();
+            openMap[key].add(venueId);
+          } else if (row.status === 'booked') {
+            if (!bookedMap[key]) bookedMap[key] = new Set();
+            bookedMap[key].add(venueId);
+          }
+
+          const src = VENUE_BY_ID.get(venueId)?.source;
+          if (src === 'yoyacool' && row.updated_at > latestYoyacool) {
+            latestYoyacool = row.updated_at;
+          } else if (src === 'spacepad' && row.updated_at > latestSpacepad) {
+            latestSpacepad = row.updated_at;
+          }
         }
 
-        const src = VENUE_BY_ID[venueId]?.source;
-        if (src === 'yoyacool' && row.updated_at && row.updated_at > latestYoyacool) {
-          latestYoyacool = row.updated_at;
-        } else if (src === 'spacepad' && row.updated_at && row.updated_at > latestSpacepad) {
-          latestSpacepad = row.updated_at;
-        }
+        if (data.length < AVAILABILITY_PAGE_SIZE) break;
+      }
+
+      if (isCancelled) return;
+      if (Object.keys(openMap).length === 0 && Object.keys(bookedMap).length === 0) {
+        return;
       }
 
       setOpenVenuesBySlot(openMap);
       setBookedVenuesBySlot(bookedMap);
-
-      const fmtJst = (iso) =>
-        iso
-          ? new Date(iso).toLocaleString('ja-JP', {
-              timeZone: 'Asia/Tokyo',
-              month: 'numeric',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })
-          : '';
-
       setLastSyncedAt({
-        yoyacool: fmtJst(latestYoyacool),
-        spacepad: fmtJst(latestSpacepad)
+        yoyacool: formatJstTimestamp(latestYoyacool),
+        spacepad: formatJstTimestamp(latestSpacepad),
       });
     }
 
@@ -364,29 +222,26 @@ export default function App() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'calendar_votes' },
-        () => {
-          fetchVotes();
-        }
+        fetchVotes
       )
       .subscribe();
 
     return () => {
+      isCancelled = true;
       supabase.removeChannel(channel);
     };
   }, [fetchVotes]);
 
   // --------------------------------------------------------------------------
-  // 2. BUILD UNIFIED 28-DAY (4-WEEK) CALENDAR
+  // 2. 28-DAY CALENDAR MATRIX & 2-HOUR CONTINUOUS BLOCKS
   // --------------------------------------------------------------------------
 
   const matchesFilter = useCallback(
     (openVenueIds) => {
-      if (venueFilter !== 'all') {
-        return openVenueIds.has(venueFilter);
-      }
+      if (venueFilter !== 'all') return openVenueIds.has(venueFilter);
       if (areaFilter !== 'all') {
         for (const id of openVenueIds) {
-          if (VENUE_BY_ID[id]?.area === areaFilter) return true;
+          if (VENUE_BY_ID.get(id)?.area === areaFilter) return true;
         }
         return false;
       }
@@ -420,39 +275,32 @@ export default function App() {
       const slots = {};
       let openCount = 0;
 
-      TIME_BLOCKS.forEach((block) => {
+      for (const block of TIME_BLOCKS) {
         const key = `${meta.dateKey}_${block.id}`;
-        const studentPrime = isWeekendOrHoliday || block.isStudentPrime;
-        const openIds = openVenuesBySlot[key] || new Set();
-        const bookedIds = bookedVenuesBySlot[key] || new Set();
+        const openIds = openVenuesBySlot[key];
+        const bookedIds = bookedVenuesBySlot[key];
 
-        const filteredOpenVenues = filterVenueList(
-          VENUES.filter((v) => openIds.has(v.id))
-        );
-        const filteredBookedVenues = filterVenueList(
-          VENUES.filter((v) => bookedIds.has(v.id))
-        );
+        const filteredOpenVenues = openIds
+          ? filterVenueList(VENUES.filter((v) => openIds.has(v.id)))
+          : [];
+        const filteredBookedVenues = bookedIds
+          ? filterVenueList(VENUES.filter((v) => bookedIds.has(v.id)))
+          : [];
 
         const isOpen = filteredOpenVenues.length > 0;
-        const isFullyBooked = !isOpen && filteredBookedVenues.length > 0;
-
         if (isOpen) openCount += 1;
 
         slots[block.id] = {
           isOpen,
-          isFullyBooked,
+          isFullyBooked: !isOpen && filteredBookedVenues.length > 0,
           openVenues: filteredOpenVenues,
           openVenueIds: new Set(filteredOpenVenues.map((v) => v.id)),
           summaryText: filteredOpenVenues.map((v) => v.shortName).join(' / '),
-          studentPrime
+          studentPrime: isWeekendOrHoliday || block.isStudentPrime,
         };
-      });
+      }
 
-      days.push({
-        ...meta,
-        allBooked: openCount === 0,
-        slots
-      });
+      days.push({ ...meta, allBooked: openCount === 0, slots });
     }
 
     const weeks = [0, 7, 14, 21].map((start, idx) => {
@@ -461,66 +309,59 @@ export default function App() {
         id: `week${idx + 1}`,
         shortTitle: `Week ${idx + 1}: ${slice[0].shortDate}–${slice[6].shortDate}`,
         rangeLabel: `${slice[0].year}年 ${slice[0].jpDate}(${slice[0].dow}) 〜 ${slice[6].jpDate}(${slice[6].dow})`,
-        days: slice
+        days: slice,
       };
     });
 
     const openSlots = [];
     weeks.forEach((week, weekIndex) => {
-      week.days.forEach((day) => {
-        TIME_BLOCKS.forEach((block) => {
+      for (const day of week.days) {
+        for (const block of TIME_BLOCKS) {
           const cell = day.slots[block.id];
-          if (cell && cell.isOpen) {
-            openSlots.push({
-              slotKey: `${day.dateKey}_${block.id}`,
-              weekIndex,
-              dateKey: day.dateKey,
-              jpDate: day.jpDate,
-              dow: day.dow,
-              holiday: day.holiday || '',
-              dayType: day.dayType,
-              blockId: block.id,
-              startHour: block.startHour,
-              timeLabel: block.label,
-              openVenues: cell.openVenues,
-              openVenueIds: cell.openVenueIds,
-              venueSummary: cell.summaryText,
-              studentPrime: Boolean(cell.studentPrime)
-            });
-          }
-        });
-      });
+          if (!cell?.isOpen) continue;
+
+          openSlots.push({
+            slotKey: `${day.dateKey}_${block.id}`,
+            weekIndex,
+            dateKey: day.dateKey,
+            jpDate: day.jpDate,
+            dow: day.dow,
+            holiday: day.holiday,
+            dayType: day.dayType,
+            blockId: block.id,
+            startHour: block.startHour,
+            timeLabel: block.label,
+            openVenues: cell.openVenues,
+            openVenueIds: cell.openVenueIds,
+            venueSummary: cell.summaryText,
+            studentPrime: cell.studentPrime,
+          });
+        }
+      }
     });
 
     return {
       calendarWeeks: weeks,
       allOpenSlots: openSlots,
-      hasLiveAvailability: hasLive
+      hasLiveAvailability: hasLive,
     };
   }, [openVenuesBySlot, bookedVenuesBySlot, filterVenueList]);
 
-  // Active voters who have at least 1 vote on a currently open slot
   const activeVotes = useMemo(() => {
     const openKeySet = new Set(allOpenSlots.map((s) => s.slotKey));
-    return votes.filter((v) => {
-      const normalized = normalizeResponsesMap(v.responses);
-      return Object.keys(normalized).some((k) => openKeySet.has(k));
-    });
+    return votes.filter((vote) =>
+      Object.keys(normalizeResponsesMap(vote.responses)).some((k) =>
+        openKeySet.has(k)
+      )
+    );
   }, [votes, allOpenSlots]);
 
-  // Highlight consecutive 2-hour blocks per day, prioritizing 19:00–21:00 > 18:00–20:00 > 20:00–22:00
-  const twoHourHighlightMap = useMemo(() => {
+  const { twoHourHighlightMap, twoHourEligibleSlotKeys } = useMemo(() => {
     const cellMeta = {};
+    const eligible = new Set();
 
-    const getTwoHourPreferenceRank = (startHour) => {
-      if (startHour === 19) return 0; // 19:00–21:00
-      if (startHour === 18) return 1; // 18:00–20:00
-      if (startHour === 20) return 2; // 20:00–22:00
-      return 3 + Math.abs(startHour - 19);
-    };
-
-    calendarWeeks.forEach((week) => {
-      week.days.forEach((day) => {
+    for (const week of calendarWeeks) {
+      for (const day of week.days) {
         const candidates = [];
 
         for (let i = 0; i < TIME_BLOCKS.length - 1; i += 1) {
@@ -529,15 +370,20 @@ export default function App() {
           const key1 = `${day.dateKey}_${b1.id}`;
           const key2 = `${day.dateKey}_${b2.id}`;
 
-          const ids1 = openVenuesBySlot[key1] || new Set();
-          const ids2 = openVenuesBySlot[key2] || new Set();
+          const ids1 = openVenuesBySlot[key1];
+          const ids2 = openVenuesBySlot[key2];
+          if (!ids1 || !ids2) continue;
 
-          const shared = VENUES.filter((v) => ids1.has(v.id) && ids2.has(v.id));
-          const filtered = filterVenueList(shared);
-          if (filtered.length === 0) continue;
+          const shared = filterVenueList(
+            VENUES.filter((v) => ids1.has(v.id) && ids2.has(v.id))
+          );
+          if (shared.length === 0) continue;
+
+          eligible.add(key1);
+          eligible.add(key2);
 
           const topVenue = rankRecommendedVenues(
-            filtered,
+            shared,
             day.dateKey,
             [b1.startHour, b2.startHour],
             openVenuesBySlot,
@@ -551,11 +397,11 @@ export default function App() {
             timePrefRank: getTwoHourPreferenceRank(b1.startHour),
             facilityTier: topVenue?.facilityTier ?? 0,
             distanceKm: topVenue?.distanceKm ?? 99,
-            topVenueName: topVenue?.shortName || ''
+            topVenueName: topVenue?.shortName || '',
           });
         }
 
-        if (candidates.length === 0) return;
+        if (candidates.length === 0) continue;
 
         candidates.sort((a, b) => {
           if (a.timePrefRank !== b.timePrefRank) return a.timePrefRank - b.timePrefRank;
@@ -563,98 +409,56 @@ export default function App() {
           return a.distanceKm - b.distanceKm;
         });
 
-        for (const c of candidates) {
-          for (const k of [c.key1, c.key2]) {
-            if (!cellMeta[k]) {
-              cellMeta[k] = {
+        for (const candidate of candidates) {
+          for (const key of [candidate.key1, candidate.key2]) {
+            if (!cellMeta[key]) {
+              cellMeta[key] = {
                 isTwoHourPart: true,
                 isPriorityTwoHour: false,
-                spanLabel: c.spanLabel,
-                topVenueName: c.topVenueName
+                spanLabel: candidate.spanLabel,
+                topVenueName: candidate.topVenueName,
               };
             }
           }
         }
 
         const best = candidates[0];
-        for (const k of [best.key1, best.key2]) {
-          cellMeta[k] = {
+        for (const key of [best.key1, best.key2]) {
+          cellMeta[key] = {
             isTwoHourPart: true,
             isPriorityTwoHour: true,
             spanLabel: best.spanLabel,
-            topVenueName: best.topVenueName
+            topVenueName: best.topVenueName,
           };
         }
-      });
-    });
+      }
+    }
 
-    return cellMeta;
+    return { twoHourHighlightMap: cellMeta, twoHourEligibleSlotKeys: eligible };
   }, [calendarWeeks, openVenuesBySlot, filterVenueList]);
-
-  // Any slotKey that can participate in at least one consecutive 2-hour game at a shared venue
-  const twoHourEligibleSlotKeys = useMemo(() => {
-    const eligible = new Set();
-
-    calendarWeeks.forEach((week) => {
-      week.days.forEach((day) => {
-        for (let i = 0; i < TIME_BLOCKS.length - 1; i += 1) {
-          const b1 = TIME_BLOCKS[i];
-          const b2 = TIME_BLOCKS[i + 1];
-          const key1 = `${day.dateKey}_${b1.id}`;
-          const key2 = `${day.dateKey}_${b2.id}`;
-
-          const ids1 = openVenuesBySlot[key1] || new Set();
-          const ids2 = openVenuesBySlot[key2] || new Set();
-
-          const shared = VENUES.filter((v) => ids1.has(v.id) && ids2.has(v.id));
-          if (filterVenueList(shared).length > 0) {
-            eligible.add(key1);
-            eligible.add(key2);
-          }
-        }
-      });
-    });
-
-    return eligible;
-  }, [calendarWeeks, openVenuesBySlot, filterVenueList]);
-
-  const isSlotBlockedForTwoHour = useCallback(
-    (slotKey) => !twoHourEligibleSlotKeys.has(slotKey),
-    [twoHourEligibleSlotKeys]
-  );
 
   // --------------------------------------------------------------------------
-  // 3. 1-HOUR TALLIES (WITH TOP 3 RECOMMENDED VENUES) & TOP 5 2-HOUR BLOCKS
+  // 3. TALLIES & TOP 5 INDEPENDENT-DATE 2-HOUR BLOCKS (MIN 3 VOTES)
   // --------------------------------------------------------------------------
 
   const slotTallies = useMemo(() => {
     const tallyMap = {};
     let bestScore = 0;
 
-    allOpenSlots.forEach((slot) => {
+    for (const slot of allOpenSlots) {
       const yesPlayers = [];
       const maybePlayers = [];
       const noPlayers = [];
 
-      votes.forEach((v) => {
-        const ans = getMergedVoterChoice(v.responses, slot.slotKey);
-        if (ans === 'yes') yesPlayers.push(v);
-        else if (ans === 'maybe') maybePlayers.push(v);
-        else if (ans === 'no') noPlayers.push(v);
-      });
-
-      const score = yesPlayers.length * 100 + maybePlayers.length * 10;
-      if (yesPlayers.length > 0 && score > bestScore) {
-        bestScore = score;
+      for (const vote of votes) {
+        const choice = getMergedVoterChoice(vote.responses, slot.slotKey);
+        if (choice === 'yes') yesPlayers.push(vote);
+        else if (choice === 'maybe') maybePlayers.push(vote);
+        else if (choice === 'no') noPlayers.push(vote);
       }
 
-      const recommendedVenues = rankRecommendedVenues(
-        slot.openVenues,
-        slot.dateKey,
-        [slot.startHour],
-        openVenuesBySlot,
-        3
-      );
+      const score = yesPlayers.length * 100 + maybePlayers.length * 10;
+      if (yesPlayers.length > 0 && score > bestScore) bestScore = score;
 
       tallyMap[slot.slotKey] = {
         ...slot,
@@ -666,38 +470,50 @@ export default function App() {
         maybeCount: maybePlayers.length,
         noCount: noPlayers.length,
         score,
-        recommendedVenues,
+        recommendedVenues: rankRecommendedVenues(
+          slot.openVenues,
+          slot.dateKey,
+          [slot.startHour],
+          openVenuesBySlot,
+          3
+        ),
         isSweetSpot: yesPlayers.length >= 6 && yesPlayers.length <= 8,
-        isDoubleCourt: yesPlayers.length >= 9
+        isDoubleCourt: yesPlayers.length >= 9,
+        isTopPick: false,
       };
-    });
+    }
 
-    allOpenSlots.forEach((slot) => {
-      tallyMap[slot.slotKey].isTopPick =
-        bestScore > 0 && tallyMap[slot.slotKey].score === bestScore;
-    });
+    if (bestScore > 0) {
+      for (const slot of allOpenSlots) {
+        if (tallyMap[slot.slotKey].score === bestScore) {
+          tallyMap[slot.slotKey].isTopPick = true;
+        }
+      }
+    }
 
     return tallyMap;
   }, [allOpenSlots, votes, openVenuesBySlot]);
 
   const rankedTwoHourBlocks = useMemo(() => {
-    const blocks = [];
+    const bestByDate = [];
 
-    calendarWeeks.forEach((week) => {
-      week.days.forEach((day) => {
+    for (const week of calendarWeeks) {
+      for (const day of week.days) {
+        const dayBlocks = [];
+
         for (let i = 0; i < TIME_BLOCKS.length - 1; i += 1) {
           const b1 = TIME_BLOCKS[i];
           const b2 = TIME_BLOCKS[i + 1];
           const slotKey1 = `${day.dateKey}_${b1.id}`;
           const slotKey2 = `${day.dateKey}_${b2.id}`;
 
-          const openIds1 = openVenuesBySlot[slotKey1] || new Set();
-          const openIds2 = openVenuesBySlot[slotKey2] || new Set();
+          const ids1 = openVenuesBySlot[slotKey1];
+          const ids2 = openVenuesBySlot[slotKey2];
+          if (!ids1 || !ids2) continue;
 
-          const sharedVenues = VENUES.filter(
-            (v) => openIds1.has(v.id) && openIds2.has(v.id)
+          const filteredShared = filterVenueList(
+            VENUES.filter((v) => ids1.has(v.id) && ids2.has(v.id))
           );
-          const filteredShared = filterVenueList(sharedVenues);
           if (filteredShared.length === 0) continue;
 
           const bothYesPlayers = [];
@@ -705,31 +521,27 @@ export default function App() {
           const partialYesPlayers = [];
           const noPlayers = [];
 
-          votes.forEach((v) => {
-            const c1 = getMergedVoterChoice(v.responses, slotKey1);
-            const c2 = getMergedVoterChoice(v.responses, slotKey2);
+          for (const vote of votes) {
+            const c1 = getMergedVoterChoice(vote.responses, slotKey1);
+            const c2 = getMergedVoterChoice(vote.responses, slotKey2);
 
             if (c1 === 'yes' && c2 === 'yes') {
-              bothYesPlayers.push(v);
+              bothYesPlayers.push(vote);
             } else if (
               (c1 === 'yes' || c1 === 'maybe') &&
               (c2 === 'yes' || c2 === 'maybe')
             ) {
-              flexBothPlayers.push(v);
+              flexBothPlayers.push(vote);
             } else if (c1 === 'yes' || c2 === 'yes') {
-              partialYesPlayers.push(v);
+              partialYesPlayers.push(vote);
             } else if (c1 === 'no' || c2 === 'no') {
-              noPlayers.push(v);
+              noPlayers.push(vote);
             }
-          });
-
-          if (
-            bothYesPlayers.length === 0 &&
-            flexBothPlayers.length === 0 &&
-            partialYesPlayers.length === 0
-          ) {
-            continue;
           }
+
+          const totalVotes =
+            bothYesPlayers.length + flexBothPlayers.length + partialYesPlayers.length;
+          if (totalVotes < 3) continue;
 
           const score =
             bothYesPlayers.length * 1000 +
@@ -744,7 +556,7 @@ export default function App() {
             3
           );
 
-          blocks.push({
+          dayBlocks.push({
             slotKey: `${day.dateKey}_${b1.id}__2h`,
             slotKey1,
             slotKey2,
@@ -752,7 +564,7 @@ export default function App() {
             dateKey: day.dateKey,
             jpDate: day.jpDate,
             dow: day.dow,
-            holiday: day.holiday || '',
+            holiday: day.holiday,
             timeLabel: `${b1.shortLabel}–${String(b2.startHour + 1).padStart(2, '0')}:00 (2時間)`,
             openVenues: filteredShared,
             recommendedVenues,
@@ -763,31 +575,44 @@ export default function App() {
             bothYesCount: bothYesPlayers.length,
             flexBothCount: flexBothPlayers.length,
             partialYesCount: partialYesPlayers.length,
+            totalVotes,
             score,
             isSweetSpot: bothYesPlayers.length >= 6 && bothYesPlayers.length <= 8,
-            isDoubleCourt: bothYesPlayers.length >= 9
+            isDoubleCourt: bothYesPlayers.length >= 9,
           });
         }
-      });
-    });
 
-    return blocks.sort((a, b) => b.score - a.score).slice(0, 5);
+        if (dayBlocks.length === 0) continue;
+
+        dayBlocks.sort((a, b) => b.score - a.score);
+        const [primaryBlock, secondBestBlock = null] = dayBlocks;
+
+        bestByDate.push({
+          ...primaryBlock,
+          alternativeTwoHourBlock: secondBestBlock,
+        });
+      }
+    }
+
+    return bestByDate.sort((a, b) => b.score - a.score).slice(0, 5);
   }, [calendarWeeks, openVenuesBySlot, filterVenueList, votes]);
 
   // --------------------------------------------------------------------------
-  // 4. INTERACTIVE CELL CYCLING, VIEW-ONLY INSPECTION & VOTER FORM ACTIONS
+  // 4. INTERACTIVE CELL CYCLING & VOTER ACTIONS
   // --------------------------------------------------------------------------
 
   const handleCycleSlot = (slotKey) => {
     if (!slotTallies[slotKey]) return;
 
-    if (isSlotBlockedForTwoHour(slotKey)) {
+    if (!twoHourEligibleSlotKeys.has(slotKey)) {
       triggerToast('1時間枠のみ空きのため、2時間連続枠の対象外（ロック中）です');
       return;
     }
 
     if (viewingVote) {
-      triggerToast(`閲覧モード中 (${viewingVote.name}) — 変更するには「編集する」を押してください`);
+      triggerToast(
+        `閲覧モード中 (${viewingVote.name}) — 変更するには「編集する」を押してください`
+      );
       return;
     }
 
@@ -807,80 +632,36 @@ export default function App() {
     });
   };
 
+  const applyQuickFill = (predicate, value, successMessage) => {
+    if (viewingVote) {
+      triggerToast('閲覧モード中です。「この回答を編集する」を押すと一括入力できます');
+      return;
+    }
+
+    setResponses((prev) => {
+      const next = { ...prev };
+      for (const slot of allOpenSlots) {
+        if (!predicate(slot)) continue;
+        if (!matchesFilter(slot.openVenueIds)) continue;
+        if (value !== 'clear' && !twoHourEligibleSlotKeys.has(slot.slotKey)) continue;
+
+        if (value === 'clear') delete next[slot.slotKey];
+        else next[slot.slotKey] = value;
+      }
+      return next;
+    });
+
+    triggerToast(successMessage);
+  };
+
   const handleQuickFillWeek = (val) => {
-    if (viewingVote) {
-      triggerToast(`閲覧モード中です。「この回答を編集する」を押すと一括入力できます`);
-      return;
-    }
-
     const currentWeek = calendarWeeks[activeWeekIdx];
-    setResponses((prev) => {
-      const next = { ...prev };
-      currentWeek.days.forEach((day) => {
-        TIME_BLOCKS.forEach((block) => {
-          const cell = day.slots[block.id];
-          if (!cell || !cell.isOpen) return;
-          if (!matchesFilter(cell.openVenueIds)) return;
+    const message =
+      val === 'clear'
+        ? `Cleared selections for ${currentWeek.shortTitle}`
+        : `Marked open slots ${val === 'yes' ? '◯' : '△'} for ${currentWeek.shortTitle}`;
 
-          const key = `${day.dateKey}_${block.id}`;
-          if (val !== 'clear' && isSlotBlockedForTwoHour(key)) return;
-          if (val === 'clear') {
-            delete next[key];
-          } else {
-            next[key] = val;
-          }
-        });
-      });
-      return next;
-    });
-
-    if (val === 'clear') {
-      triggerToast(`Cleared selections for ${currentWeek.shortTitle}`);
-    } else {
-      triggerToast(
-        `Marked open slots ${val === 'yes' ? '◯' : '△'} for ${
-          currentWeek.shortTitle
-        }`
-      );
-    }
-  };
-
-  const handleQuickFillPrime = () => {
-    if (viewingVote) {
-      triggerToast(`閲覧モード中です。「この回答を編集する」を押すと一括入力できます`);
-      return;
-    }
-
-    setResponses((prev) => {
-      const next = { ...prev };
-      allOpenSlots.forEach((slot) => {
-        if (!slot.studentPrime) return;
-        if (!matchesFilter(slot.openVenueIds)) return;
-        if (isSlotBlockedForTwoHour(slot.slotKey)) return;
-        next[slot.slotKey] = 'yes';
-      });
-      return next;
-    });
-    triggerToast('Marked all Student Prime slots (18:00+ & Holidays/Weekends) ◯!');
-  };
-
-  const handleQuickFillPriorityTwoHour = () => {
-    if (viewingVote) {
-      triggerToast(`閲覧モード中です。「この回答を編集する」を押すと一括入力できます`);
-      return;
-    }
-
-    setResponses((prev) => {
-      const next = { ...prev };
-      allOpenSlots.forEach((slot) => {
-        if (!twoHourHighlightMap[slot.slotKey]?.isPriorityTwoHour) return;
-        if (!matchesFilter(slot.openVenueIds)) return;
-        if (isSlotBlockedForTwoHour(slot.slotKey)) return;
-        next[slot.slotKey] = 'yes';
-      });
-      return next;
-    });
-    triggerToast('Marked all recommended 2-hour continuous blocks (★ 2h連続) ◯!');
+    applyQuickFill((slot) => slot.weekIndex === activeWeekIdx, val, message);
   };
 
   const resetVoterForm = () => {
@@ -928,32 +709,26 @@ export default function App() {
 
     setIsSubmitting(true);
     try {
-      if (editingVoteId) {
-        const { error } = await supabase
-          .from('calendar_votes')
-          .update({
-            name: trimmedName,
-            note: voterNote.trim(),
-            responses: cleanResponses,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', editingVoteId);
+      const payload = {
+        name: trimmedName,
+        note: voterNote.trim(),
+        responses: cleanResponses,
+      };
 
-        if (error) throw error;
-        triggerToast(`Updated ${trimmedName}'s calendar vote!`);
-      } else {
-        const { error } = await supabase.from('calendar_votes').insert([
-          {
-            name: trimmedName,
-            note: voterNote.trim(),
-            responses: cleanResponses
-          }
-        ]);
+      const { error } = editingVoteId
+        ? await supabase
+            .from('calendar_votes')
+            .update({ ...payload, updated_at: new Date().toISOString() })
+            .eq('id', editingVoteId)
+        : await supabase.from('calendar_votes').insert([payload]);
 
-        if (error) throw error;
-        triggerToast(`Submitted ${trimmedName}'s vote!`);
-      }
+      if (error) throw error;
 
+      triggerToast(
+        editingVoteId
+          ? `Updated ${trimmedName}'s calendar vote!`
+          : `Submitted ${trimmedName}'s vote!`
+      );
       await fetchVotes();
       resetVoterForm();
     } catch (err) {
@@ -988,7 +763,7 @@ export default function App() {
   };
 
   // --------------------------------------------------------------------------
-  // 5. SNS INVITE SUMMARY (Top 2-Hour Blocks + Recommended Venue Map Links)
+  // 5. SNS INVITE SUMMARY
   // --------------------------------------------------------------------------
 
   const shareSummaryText = useMemo(() => {
@@ -996,11 +771,10 @@ export default function App() {
       return [
         '🏓 岡大dinks | 次回セッション日程調整',
         'まだ2時間連続の投票がありません — リンクから参加できる時間帯を選んでください！',
-        window.location.href
+        window.location.origin,
       ].join('\n');
     }
 
-    // Pick top choice; if tied on score, prefer the closest date & preferred evening hour
     const bestBlock = [...rankedTwoHourBlocks].sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       return a.dateKey.localeCompare(b.dateKey);
@@ -1008,59 +782,56 @@ export default function App() {
 
     const topVenue = bestBlock.recommendedVenues[0];
     const hol = bestBlock.holiday ? `(${bestBlock.holiday})` : '';
+    const jpDateLabel = `${bestBlock.jpDate}(${bestBlock.dow})${hol}`;
+    const startHour = Number(bestBlock.slotKey1.slice(-11, -9));
     const footwearNote =
       topVenue?.courtType === 'outdoor'
         ? '👟 屋外コートのためテニス・ハードコート用シューズ推奨'
         : '👟 体育館のため室内専用シューズ必須';
 
+    const eventUrl = new URL('/api/event', window.location.origin);
+    eventUrl.searchParams.set('date', bestBlock.dateKey);
+    eventUrl.searchParams.set('jpDate', jpDateLabel);
+    eventUrl.searchParams.set('start', String(startHour));
+    eventUrl.searchParams.set('end', String(startHour + 2));
+    eventUrl.searchParams.set('venue', topVenue?.fullName || bestBlock.venueSummary);
+    if (topVenue?.mapUrl) eventUrl.searchParams.set('map', topVenue.mapUrl);
+    eventUrl.searchParams.set('note', footwearNote);
+
+    const flexTotal = bestBlock.flexBothCount + bestBlock.partialYesCount;
+    const flexLabel = flexTotal > 0 ? ` (調整可 ${flexTotal}名)` : '';
+
     return [
       '🏓 岡大dinks | 次回セッション案内',
-      `📅 日時: ${bestBlock.jpDate}(${bestBlock.dow})${hol} ${bestBlock.timeLabel}`,
+      `📅 日時: ${jpDateLabel} ${bestBlock.timeLabel}`,
       `🏟 会場: ${topVenue?.fullName || bestBlock.venueSummary}`,
-      `👥 参加予定: ◯${bestBlock.bothYesCount}名${
-        bestBlock.flexBothCount + bestBlock.partialYesCount > 0
-          ? ` (調整可 ${bestBlock.flexBothCount + bestBlock.partialYesCount}名)`
-          : ''
-      }`,
-      topVenue?.mapUrl ? `📍 Map: ${topVenue.mapUrl}` : null,
-      footwearNote
-    ]
-      .filter(Boolean)
-      .join('\n');
+      `👥 参加予定: ◯${bestBlock.bothYesCount}名${flexLabel}`,
+      footwearNote,
+      '🗓 カレンダー追加・地図はこちら 👇',
+      eventUrl.toString(),
+    ].join('\n');
   }, [rankedTwoHourBlocks]);
 
-  const fallbackCopy = () => {
-    const ta = document.createElement('textarea');
-    ta.value = shareSummaryText;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    setCopiedShare(true);
-    triggerToast('Copied LINE / Instagram invite summary!');
-    setTimeout(() => setCopiedShare(false), 2500);
-  };
-
-  const handleCopyShareText = () => {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard
-        .writeText(shareSummaryText)
-        .then(() => {
-          setCopiedShare(true);
-          triggerToast('Copied LINE / Instagram invite summary!');
-          setTimeout(() => setCopiedShare(false), 2500);
-        })
-        .catch(() => fallbackCopy());
-    } else {
-      fallbackCopy();
+  const handleCopyShareText = async () => {
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(shareSummaryText);
+        setCopiedShare(true);
+        triggerToast('Copied LINE / Instagram invite summary!');
+        setTimeout(() => setCopiedShare(false), 2500);
+        return;
+      } catch {
+        // Fall through to manual textarea selection
+      }
     }
+
+    textareaRef.current?.focus();
+    textareaRef.current?.select();
+    triggerToast('テキストを選択しました — コピーしてください (Ctrl/Cmd+C)');
   };
 
   const currentWeek = calendarWeeks[activeWeekIdx];
   const selectedSlotCount = Object.keys(responses).length;
-  const okayamaCount = VENUES.filter((v) => v.area === 'okayama').length;
-  const kurashikiCount = VENUES.filter((v) => v.area === 'kurashiki').length;
-
   const showEditExistingButton =
     !editingVoteId &&
     activeVotes.length > 0 &&
@@ -1069,7 +840,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#eef2f6] text-slate-900 pb-16 font-sans selection:bg-lime-300 selection:text-slate-950">
-      {/* Floating Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-[#1B365D] text-white px-4 py-3 rounded-2xl shadow-2xl border border-lime-400/60 flex items-center gap-2.5 text-xs sm:text-sm font-bold max-w-[92vw]">
           <Check className="w-4 h-4 shrink-0 text-lime-300" />
@@ -1112,22 +882,21 @@ export default function App() {
                 <p className="text-[11px] sm:text-xs text-sky-200 flex items-center gap-1.5 mt-1">
                   <MapPin className="w-3.5 h-3.5 text-lime-300 shrink-0" />
                   <span>
-                    対象施設 ({VENUES.length}会場): 岡山市 ({okayamaCount}施設) ・ 倉敷市 ({kurashikiCount}施設)
+                    対象施設 ({VENUES.length}会場): 岡山市 ({okayamaCount}施設) ・
+                    倉敷市 ({kurashikiCount}施設)
                   </span>
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 self-start sm:self-center">
-              <button
-                type="button"
-                onClick={() => setShowShareModal(true)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-lime-400 hover:bg-lime-300 active:scale-95 text-[#1B365D] text-xs sm:text-sm font-extrabold shadow transition cursor-pointer"
-              >
-                <Share2 className="w-4 h-4" />
-                <span>Share to SNS</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowShareModal(true)}
+              className="self-start sm:self-center inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-lime-400 hover:bg-lime-300 active:scale-95 text-[#1B365D] text-xs sm:text-sm font-extrabold shadow transition cursor-pointer"
+            >
+              <Share2 className="w-4 h-4" />
+              <span>Share to SNS</span>
+            </button>
           </div>
         </div>
       </header>
@@ -1148,8 +917,8 @@ export default function App() {
             editingVoteId
               ? 'bg-amber-50/90 border-amber-400'
               : viewingVote
-              ? 'bg-sky-50/90 border-sky-400'
-              : 'bg-white border-[#1B365D]/20'
+                ? 'bg-sky-50/90 border-sky-400'
+                : 'bg-white border-[#1B365D]/20'
           }`}
         >
           <div
@@ -1157,8 +926,8 @@ export default function App() {
               editingVoteId
                 ? 'bg-amber-200/80 text-amber-950'
                 : viewingVote
-                ? 'bg-sky-700 text-white'
-                : 'bg-[#264673] text-white'
+                  ? 'bg-sky-700 text-white'
+                  : 'bg-[#264673] text-white'
             }`}
           >
             <div className="flex items-center gap-2">
@@ -1171,8 +940,8 @@ export default function App() {
                 {editingVoteId
                   ? `編集中 (Editing): ${voterName}`
                   : viewingVote
-                  ? `閲覧モード (View-Only): ${viewingVote.name} さんの回答を確認中`
-                  : `名前を入力して参加できる時間帯をタップ (1回の入力で${VENUES.length}会場に反映)`}
+                    ? `閲覧モード (View-Only): ${viewingVote.name} さんの回答を確認中`
+                    : `名前を入力して参加できる時間帯をタップ (1回の入力で${VENUES.length}会場に反映)`}
               </span>
             </div>
 
@@ -1276,8 +1045,8 @@ export default function App() {
                       {isSubmitting
                         ? '送信中...'
                         : editingVoteId
-                        ? '回答を更新する'
-                        : `回答を登録 (${selectedSlotCount}枠)`}
+                          ? '回答を更新する'
+                          : `回答を登録 (${selectedSlotCount}枠)`}
                     </span>
                   </button>
                 )}
@@ -1306,14 +1075,26 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={handleQuickFillPrime}
+                  onClick={() =>
+                    applyQuickFill(
+                      (slot) => slot.studentPrime,
+                      'yes',
+                      'Marked all Student Prime slots (18:00+ & Holidays/Weekends) ◯!'
+                    )
+                  }
                   className="px-2.5 py-1 rounded-lg bg-sky-100 hover:bg-sky-200 text-sky-900 font-extrabold text-xs border border-sky-300 cursor-pointer"
                 >
                   ★ 学生向け枠のみ ◯
                 </button>
                 <button
                   type="button"
-                  onClick={handleQuickFillPriorityTwoHour}
+                  onClick={() =>
+                    applyQuickFill(
+                      (slot) => Boolean(twoHourHighlightMap[slot.slotKey]?.isPriorityTwoHour),
+                      'yes',
+                      'Marked all recommended 2-hour continuous blocks (★ 2h連続) ◯!'
+                    )
+                  }
                   className="px-2.5 py-1 rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-950 font-extrabold text-xs border border-indigo-300 cursor-pointer"
                 >
                   ★ 2h連続のみ ◯
@@ -1356,8 +1137,8 @@ export default function App() {
                           isEditing
                             ? 'bg-amber-400 text-slate-950 border-amber-600'
                             : isViewing
-                            ? 'bg-sky-700 text-white border-sky-900 shadow-2xs'
-                            : 'bg-slate-100 hover:bg-sky-100 text-[#1B365D] border-slate-300'
+                              ? 'bg-sky-700 text-white border-sky-900 shadow-2xs'
+                              : 'bg-slate-100 hover:bg-sky-100 text-[#1B365D] border-slate-300'
                         }`}
                       >
                         <span>{v.name}</span>
@@ -1375,7 +1156,7 @@ export default function App() {
           </form>
         </section>
 
-        {/* 2. WEEK NAVIGATION & CLEAN SCALABLE 1-HOUR MATRIX */}
+        {/* 2. WEEK NAVIGATION & 1-HOUR MATRIX */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-300 overflow-hidden">
           <div className="bg-[#1B365D] px-3 py-2.5 flex flex-wrap items-center justify-between gap-2 text-white">
             <button
@@ -1401,9 +1182,7 @@ export default function App() {
               type="button"
               disabled={activeWeekIdx === calendarWeeks.length - 1}
               onClick={() =>
-                setActiveWeekIdx((i) =>
-                  Math.min(calendarWeeks.length - 1, i + 1)
-                )
+                setActiveWeekIdx((i) => Math.min(calendarWeeks.length - 1, i + 1))
               }
               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#2B547E] hover:bg-[#366799] disabled:opacity-40 disabled:pointer-events-none text-xs font-extrabold border border-white/20 cursor-pointer"
             >
@@ -1412,7 +1191,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* Week Tabs, Scalable Area+Venue Dropdown Filter, Student Prime, & View Mode */}
           <div className="bg-[#f4f6f9] px-3 py-2.5 border-b border-slate-300 flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-1.5">
               {calendarWeeks.map((w, idx) => (
@@ -1434,48 +1212,27 @@ export default function App() {
             <div className="flex flex-wrap items-center gap-2">
               {okayamaCount > 0 && kurashikiCount > 0 && (
                 <div className="inline-flex rounded-xl bg-slate-200 p-0.5 border border-slate-300 text-xs font-extrabold">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAreaFilter('all');
-                      setVenueFilter('all');
-                    }}
-                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
-                      areaFilter === 'all'
-                        ? 'bg-white text-[#1B365D] shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    全エリア
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAreaFilter('okayama');
-                      setVenueFilter('all');
-                    }}
-                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
-                      areaFilter === 'okayama'
-                        ? 'bg-lime-400 text-[#1B365D] shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    岡山市
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAreaFilter('kurashiki');
-                      setVenueFilter('all');
-                    }}
-                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
-                      areaFilter === 'kurashiki'
-                        ? 'bg-sky-300 text-[#1B365D] shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    倉敷市
-                  </button>
+                  {[
+                    { id: 'all', label: '全エリア', activeClass: 'bg-white text-[#1B365D]' },
+                    { id: 'okayama', label: '岡山市', activeClass: 'bg-lime-400 text-[#1B365D]' },
+                    { id: 'kurashiki', label: '倉敷市', activeClass: 'bg-sky-300 text-[#1B365D]' },
+                  ].map((area) => (
+                    <button
+                      key={area.id}
+                      type="button"
+                      onClick={() => {
+                        setAreaFilter(area.id);
+                        setVenueFilter('all');
+                      }}
+                      className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                        areaFilter === area.id
+                          ? `${area.activeClass} shadow-xs`
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {area.label}
+                    </button>
+                  ))}
                 </div>
               )}
 
@@ -1537,7 +1294,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Minimal Symbol Legend */}
+          {/* Symbol Legend */}
           <div className="px-3.5 py-2 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="inline-flex items-center gap-1 font-bold text-emerald-700">
@@ -1590,7 +1347,7 @@ export default function App() {
             </span>
           </div>
 
-          {/* Horizontal-Scrollable Schedule Matrix */}
+          {/* Schedule Matrix Table */}
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-center">
               <thead>
@@ -1622,18 +1379,18 @@ export default function App() {
 
               <tbody className="divide-y divide-slate-300">
                 {currentWeek.days.map((day) => {
-                  let dateTextColor = 'text-slate-900';
-                  let dateBgColor = 'bg-[#f8fafc]';
-                  if (day.dayType === 'saturday') {
-                    dateTextColor = 'text-blue-700';
-                    dateBgColor = 'bg-blue-50';
-                  } else if (
-                    day.dayType === 'sunday' ||
-                    day.dayType === 'holiday'
-                  ) {
-                    dateTextColor = 'text-red-600';
-                    dateBgColor = 'bg-red-50';
-                  }
+                  const dateTextColor =
+                    day.dayType === 'saturday'
+                      ? 'text-blue-700'
+                      : day.dayType === 'sunday' || day.dayType === 'holiday'
+                        ? 'text-red-600'
+                        : 'text-slate-900';
+                  const dateBgColor =
+                    day.dayType === 'saturday'
+                      ? 'bg-blue-50'
+                      : day.dayType === 'sunday' || day.dayType === 'holiday'
+                        ? 'bg-red-50'
+                        : 'bg-[#f8fafc]';
 
                   return (
                     <tr key={day.dateKey} className="h-[88px] divide-x divide-slate-300">
@@ -1662,38 +1419,34 @@ export default function App() {
                       {TIME_BLOCKS.map((block) => {
                         const cellData = day.slots[block.id];
 
-                        if (!cellData || !cellData.isOpen) {
-                          if (cellData?.isFullyBooked) {
-                            return (
-                              <td
-                                key={block.id}
-                                title="対象施設はすべて予約済み（満員）です"
-                                className="bg-[#e5e7eb] h-full px-1 align-middle select-none cursor-not-allowed"
-                              >
-                                <div className="h-full flex flex-col items-center justify-center gap-0.5 text-slate-500">
-                                  <span className="text-xs font-extrabold leading-none">
-                                    ✕
-                                  </span>
-                                  <span className="text-[10px] font-bold">
-                                    満員
-                                  </span>
-                                </div>
-                              </td>
-                            );
-                          }
-
+                        if (!cellData?.isOpen) {
+                          const isBooked = Boolean(cellData?.isFullyBooked);
                           return (
                             <td
                               key={block.id}
-                              title="営業時間外・休場または対象外の時間帯です（空きなし）"
-                              className="bg-slate-100/90 h-full px-1 align-middle select-none cursor-not-allowed"
+                              title={
+                                isBooked
+                                  ? '対象施設はすべて予約済み（満員）です'
+                                  : '営業時間外・休場または対象外の時間帯です（空きなし）'
+                              }
+                              className={`${
+                                isBooked ? 'bg-[#e5e7eb]' : 'bg-slate-100/90'
+                              } h-full px-1 align-middle select-none cursor-not-allowed`}
                             >
-                              <div className="h-full flex flex-col items-center justify-center gap-0.5 text-slate-400">
-                                <span className="text-xs font-bold leading-none">
-                                  —
+                              <div
+                                className={`h-full flex flex-col items-center justify-center gap-0.5 ${
+                                  isBooked ? 'text-slate-500' : 'text-slate-400'
+                                }`}
+                              >
+                                <span className="text-xs font-extrabold leading-none">
+                                  {isBooked ? '✕' : '—'}
                                 </span>
-                                <span className="text-[10px] font-medium">
-                                  空きなし
+                                <span
+                                  className={`text-[10px] ${
+                                    isBooked ? 'font-bold' : 'font-medium'
+                                  }`}
+                                >
+                                  {isBooked ? '満員' : '空きなし'}
                                 </span>
                               </div>
                             </td>
@@ -1702,7 +1455,7 @@ export default function App() {
 
                         const slotKey = `${day.dateKey}_${block.id}`;
 
-                        if (isSlotBlockedForTwoHour(slotKey)) {
+                        if (!twoHourEligibleSlotKeys.has(slotKey)) {
                           return (
                             <td
                               key={block.id}
@@ -1714,9 +1467,7 @@ export default function App() {
                                 <span className="text-xs font-extrabold leading-none">
                                   —
                                 </span>
-                                <span className="text-[10px] font-bold">
-                                  2h不可
-                                </span>
+                                <span className="text-[10px] font-bold">2h不可</span>
                               </div>
                             </td>
                           );
@@ -1731,50 +1482,46 @@ export default function App() {
                           maybeCount: 0,
                           noCount: 0,
                           isTopPick: false,
-                          isSweetSpot: false
                         };
 
-                        const isDimmedByPrime =
-                          highlightPrimeOnly && !cellData.studentPrime;
-                        const isDimmedByVenue = !matchesFilter(cellData.openVenueIds);
-                        const isDimmed = isDimmedByPrime || isDimmedByVenue;
+                        const isDimmed =
+                          (highlightPrimeOnly && !cellData.studentPrime) ||
+                          !matchesFilter(cellData.openVenueIds);
 
-                        let heatmapBg = twoHourInfo?.isPriorityTwoHour
+                        let cellBg = twoHourInfo?.isPriorityTwoHour
                           ? 'bg-indigo-50/70 hover:bg-indigo-100/70'
                           : block.isStudentPrime
-                          ? 'bg-amber-50/45 hover:bg-amber-50/80'
-                          : 'bg-white hover:bg-sky-50';
+                            ? 'bg-amber-50/45 hover:bg-amber-50/80'
+                            : 'bg-white hover:bg-sky-50';
 
                         if (gridViewMode === 'heatmap') {
                           if (tally.yesCount >= 6) {
-                            heatmapBg =
-                              'bg-emerald-200/90 hover:bg-emerald-200';
+                            cellBg = 'bg-emerald-200/90 hover:bg-emerald-200';
                           } else if (tally.yesCount >= 3) {
-                            heatmapBg =
-                              'bg-emerald-100/80 hover:bg-emerald-100';
+                            cellBg = 'bg-emerald-100/80 hover:bg-emerald-100';
                           } else if (tally.yesCount >= 1) {
-                            heatmapBg = 'bg-lime-50 hover:bg-lime-100';
+                            cellBg = 'bg-lime-50 hover:bg-lime-100';
                           } else {
-                            heatmapBg = 'bg-slate-50/70 hover:bg-slate-100';
+                            cellBg = 'bg-slate-50/70 hover:bg-slate-100';
                           }
                         } else if (activeChoice === 'yes') {
-                          heatmapBg = 'bg-emerald-50/90 hover:bg-emerald-100/80';
+                          cellBg = 'bg-emerald-50/90 hover:bg-emerald-100/80';
                         } else if (activeChoice === 'maybe') {
-                          heatmapBg = 'bg-amber-50/90 hover:bg-amber-100/80';
+                          cellBg = 'bg-amber-50/90 hover:bg-amber-100/80';
                         } else if (activeChoice === 'no') {
-                          heatmapBg = 'bg-rose-50/80 hover:bg-rose-100/70';
+                          cellBg = 'bg-rose-50/80 hover:bg-rose-100/70';
                         }
 
                         const highlightRing = tally.isTopPick
                           ? 'ring-2 ring-inset ring-amber-400'
                           : twoHourInfo?.isPriorityTwoHour
-                          ? 'ring-2 ring-inset ring-indigo-400'
-                          : '';
+                            ? 'ring-2 ring-inset ring-indigo-400'
+                            : '';
 
                         return (
                           <td
                             key={block.id}
-                            className={`p-1.5 h-full align-middle transition ${heatmapBg} ${
+                            className={`p-1.5 h-full align-middle transition ${cellBg} ${
                               isDimmed ? 'opacity-25' : ''
                             } ${highlightRing}`}
                           >
@@ -1791,8 +1538,8 @@ export default function App() {
                                   viewingVote
                                     ? `${viewingVote.name} の回答（閲覧モード）`
                                     : twoHourInfo?.isPriorityTwoHour
-                                    ? `★ 2時間連続おすすめ枠 (${twoHourInfo.spanLabel} / ${twoHourInfo.topVenueName}) • ${day.jpDate}(${day.dow}) ${block.label} • 空き会場: ${cellData.summaryText}`
-                                    : `${day.jpDate}(${day.dow}) ${block.label} • 空き会場: ${cellData.summaryText}`
+                                      ? `★ 2時間連続おすすめ枠 (${twoHourInfo.spanLabel} / ${twoHourInfo.topVenueName}) • ${day.jpDate}(${day.dow}) ${block.label} • 空き会場: ${cellData.summaryText}`
+                                      : `${day.jpDate}(${day.dow}) ${block.label} • 空き会場: ${cellData.summaryText}`
                                 }
                               >
                                 {gridViewMode === 'vote' ? (
@@ -1867,7 +1614,7 @@ export default function App() {
           </div>
         </section>
 
-        {/* 3. TOP 5 RECOMMENDED 2-HOUR BLOCKS & PLAYER COMMENTS */}
+        {/* 3. TOP 5 RECOMMENDED 2-HOUR BLOCKS (INDEPENDENT DATES, >= 3 VOTES) & PLAYER COMMENTS */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <section className="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 bg-[#1B365D] text-white flex items-center justify-between">
@@ -1878,7 +1625,7 @@ export default function App() {
                 </h2>
               </div>
               <span className="text-[11px] text-sky-200">
-                2時間連続で予約可能な枠
+                日程別ベスト枠 (3名以上)
               </span>
             </div>
 
@@ -1890,16 +1637,16 @@ export default function App() {
               ) : rankedTwoHourBlocks.length === 0 ? (
                 <div className="text-center py-6 text-xs text-slate-500 space-y-1">
                   <p className="font-bold text-slate-700">
-                    2時間連続の投票はまだありません
+                    3名以上の投票がある2時間連続枠はまだありません
                   </p>
                   <p>
-                    上のカレンダーで連続する2時間枠（◯）をタップすると、同じ会場で2時間取れるおすすめ枠が自動ランキングされます！
+                    上のカレンダーで連続する2時間枠（◯/△）に3名以上集まると、日程ごとのベスト枠が自動ランキングされます！
                   </p>
                 </div>
               ) : (
                 rankedTwoHourBlocks.map((block, index) => (
                   <div
-                    key={block.slotKey}
+                    key={block.dateKey}
                     onClick={() => setInspectSlot(block)}
                     className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 transition cursor-pointer ${
                       index === 0
@@ -1921,9 +1668,7 @@ export default function App() {
                         <div className="text-xs sm:text-sm font-extrabold text-slate-900">
                           {block.jpDate}({block.dow})
                           {block.holiday ? `・${block.holiday}` : ''}{' '}
-                          <span className="text-[#1B365D]">
-                            {block.timeLabel}
-                          </span>
+                          <span className="text-[#1B365D]">{block.timeLabel}</span>
                         </div>
                         <div className="text-[11px] text-slate-600 flex flex-wrap items-center gap-1.5 mt-0.5">
                           <span className="font-bold text-[#1B365D]">
@@ -1931,7 +1676,12 @@ export default function App() {
                           </span>
                           {block.recommendedVenues.length > 1 && (
                             <span className="text-slate-500">
-                              (他 {block.recommendedVenues.slice(1).map((v) => v.shortName).join('・')})
+                              (他{' '}
+                              {block.recommendedVenues
+                                .slice(1)
+                                .map((v) => v.shortName)
+                                .join('・')}
+                              )
                             </span>
                           )}
                           {block.isSweetSpot && (
@@ -1942,6 +1692,11 @@ export default function App() {
                           {block.isDoubleCourt && (
                             <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-900 font-extrabold text-[10px]">
                               🔥 9名以上 (2面推奨)
+                            </span>
+                          )}
+                          {block.alternativeTwoHourBlock && (
+                            <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold text-[10px]">
+                              +別時間帯候補あり
                             </span>
                           )}
                         </div>
@@ -1972,9 +1727,7 @@ export default function App() {
                   参加メンバーのコメント (Notes)
                 </h2>
               </div>
-              <span className="text-[11px] text-sky-200">
-                {activeVotes.length}名
-              </span>
+              <span className="text-[11px] text-sky-200">{activeVotes.length}名</span>
             </div>
 
             <div className="p-3.5 space-y-2 max-h-[430px] overflow-y-auto flex-1">
@@ -1995,9 +1748,7 @@ export default function App() {
                       </div>
                       <p className="text-xs text-slate-600 mt-0.5 break-words">
                         {v.note || (
-                          <span className="text-slate-400 italic">
-                            コメントなし
-                          </span>
+                          <span className="text-slate-400 italic">コメントなし</span>
                         )}
                       </p>
                     </div>
@@ -2017,7 +1768,8 @@ export default function App() {
               <span>対象施設・予約ページ一覧 ({VENUES.length}会場)</span>
             </span>
             <span>
-              体育館は<strong>室内専用シューズ必須</strong>・屋外ハードコートは<strong>テニス/コートシューズ推奨</strong>です。
+              体育館は<strong>室内専用シューズ必須</strong>・屋外ハードコートは
+              <strong>テニス/コートシューズ推奨</strong>です。
             </span>
           </div>
 
@@ -2061,7 +1813,7 @@ export default function App() {
         </footer>
       </main>
 
-      {/* MODAL 1: SLOT BREAKDOWN INSPECTOR (Top 3 Recommended Courts + Voters) */}
+      {/* MODAL 1: SLOT BREAKDOWN INSPECTOR */}
       {inspectSlot && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
@@ -2071,8 +1823,7 @@ export default function App() {
                   おすすめ予約候補 &amp; 投票メンバー詳細
                 </div>
                 <h3 className="font-extrabold text-sm sm:text-base">
-                  {inspectSlot.jpDate}({inspectSlot.dow}){' '}
-                  {inspectSlot.timeLabel}
+                  {inspectSlot.jpDate}({inspectSlot.dow}) {inspectSlot.timeLabel}
                 </h3>
               </div>
               <button
@@ -2085,7 +1836,39 @@ export default function App() {
             </div>
 
             <div className="p-4 space-y-3 text-xs max-h-[82vh] overflow-y-auto">
-              {/* Top 3 Recommended Venues */}
+              {inspectSlot.alternativeTwoHourBlock && (
+                <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-extrabold text-indigo-700">
+                      同日の第2候補 (Alternative 2h Block)
+                    </div>
+                    <div className="font-extrabold text-slate-900 truncate">
+                      {inspectSlot.alternativeTwoHourBlock.timeLabel} —{' '}
+                      {inspectSlot.alternativeTwoHourBlock.recommendedVenues[0]?.shortName}
+                    </div>
+                    <div className="text-[10px] text-slate-600">
+                      2h◯ {inspectSlot.alternativeTwoHourBlock.bothYesCount}名 / 計{' '}
+                      {inspectSlot.alternativeTwoHourBlock.totalVotes}名
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setInspectSlot({
+                        ...inspectSlot.alternativeTwoHourBlock,
+                        alternativeTwoHourBlock: {
+                          ...inspectSlot,
+                          alternativeTwoHourBlock: null,
+                        },
+                      })
+                    }
+                    className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-[11px] shrink-0 cursor-pointer"
+                  >
+                    詳細を見る
+                  </button>
+                </div>
+              )}
+
               <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-extrabold text-[#1B365D] inline-flex items-center gap-1">
@@ -2162,69 +1945,50 @@ export default function App() {
                 ))}
               </div>
 
-              <div>
-                <div className="font-extrabold text-emerald-700 mb-1">
-                  {inspectSlot.isTwoHourBlock
+              {[
+                {
+                  label: inspectSlot.isTwoHourBlock
                     ? `◯ 2時間とも参加OK (${inspectSlot.yesPlayers.length}名):`
-                    : `◯ 参加OK (${inspectSlot.yesPlayers.length}名):`}
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {inspectSlot.yesPlayers.length === 0 ? (
-                    <span className="text-slate-400">なし</span>
-                  ) : (
-                    inspectSlot.yesPlayers.map((p) => (
-                      <span
-                        key={p.id}
-                        className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-900 font-bold"
-                      >
-                        {p.name}
-                      </span>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <div className="font-extrabold text-amber-700 mb-1">
-                  {inspectSlot.isTwoHourBlock
+                    : `◯ 参加OK (${inspectSlot.yesPlayers.length}名):`,
+                  players: inspectSlot.yesPlayers,
+                  titleClass: 'text-emerald-700',
+                  badgeClass: 'bg-emerald-100 text-emerald-900',
+                },
+                {
+                  label: inspectSlot.isTwoHourBlock
                     ? `△ 調整可 / 1時間のみ参加可 (${inspectSlot.maybePlayers.length}名):`
-                    : `△ 調整可 (${inspectSlot.maybePlayers.length}名):`}
+                    : `△ 調整可 (${inspectSlot.maybePlayers.length}名):`,
+                  players: inspectSlot.maybePlayers,
+                  titleClass: 'text-amber-700',
+                  badgeClass: 'bg-amber-100 text-amber-900',
+                },
+                {
+                  label: `✕ 不可 (${inspectSlot.noPlayers.length}名):`,
+                  players: inspectSlot.noPlayers,
+                  titleClass: 'text-rose-700',
+                  badgeClass: 'bg-rose-100 text-rose-900',
+                },
+              ].map((group) => (
+                <div key={group.label}>
+                  <div className={`font-extrabold ${group.titleClass} mb-1`}>
+                    {group.label}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {group.players.length === 0 ? (
+                      <span className="text-slate-400">なし</span>
+                    ) : (
+                      group.players.map((p) => (
+                        <span
+                          key={p.id}
+                          className={`px-2.5 py-1 rounded-full ${group.badgeClass} font-bold`}
+                        >
+                          {p.name}
+                        </span>
+                      ))
+                    )}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {inspectSlot.maybePlayers.length === 0 ? (
-                    <span className="text-slate-400">なし</span>
-                  ) : (
-                    inspectSlot.maybePlayers.map((p) => (
-                      <span
-                        key={p.id}
-                        className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 font-bold"
-                      >
-                        {p.name}
-                      </span>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <div className="font-extrabold text-rose-700 mb-1">
-                  ✕ 不可 ({inspectSlot.noPlayers.length}名):
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {inspectSlot.noPlayers.length === 0 ? (
-                    <span className="text-slate-400">なし</span>
-                  ) : (
-                    inspectSlot.noPlayers.map((p) => (
-                      <span
-                        key={p.id}
-                        className="px-2.5 py-1 rounded-full bg-rose-100 text-rose-900 font-bold"
-                      >
-                        {p.name}
-                      </span>
-                    ))
-                  )}
-                </div>
-              </div>
+              ))}
 
               <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-200">
                 {!inspectSlot.isTwoHourBlock && !viewingVote ? (
@@ -2353,9 +2117,11 @@ export default function App() {
               </p>
 
               <textarea
+                ref={textareaRef}
                 readOnly
                 rows={12}
                 value={shareSummaryText}
+                onFocus={(e) => e.target.select()}
                 className="w-full p-3 rounded-xl bg-slate-50 border border-slate-300 text-xs font-mono text-slate-800 focus:outline-none"
               />
 
