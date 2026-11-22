@@ -1674,14 +1674,9 @@ export default function App() {
                           <span className="font-bold text-[#1B365D]">
                             第1候補: {block.recommendedVenues[0]?.shortName}
                           </span>
-                          {block.recommendedVenues.length > 1 && (
-                            <span className="text-slate-500">
-                              (他{' '}
-                              {block.recommendedVenues
-                                .slice(1)
-                                .map((v) => v.shortName)
-                                .join('・')}
-                              )
+                          {block.openVenues.length > 1 && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700 font-bold text-[10px]">
+                              +他{block.openVenues.length - 1}会場
                             </span>
                           )}
                           {block.isSweetSpot && (
