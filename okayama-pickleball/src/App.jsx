@@ -42,6 +42,16 @@ import {
 
 const AVAILABILITY_PAGE_SIZE = 1000;
 
+const START_HOUR_OPTIONS = Array.from({ length: 10 }, (_, idx) => {
+  const hour = String(idx + 12).padStart(2, '0');
+  return `${hour}:00`;
+});
+
+const END_HOUR_OPTIONS = Array.from({ length: 10 }, (_, idx) => {
+  const hour = String(idx + 13).padStart(2, '0');
+  return `${hour}:00`;
+});
+
 const COPY = {
   en: {
     badgeIntegrated: (count) => `${count} Venues · Availability & Poll`,
@@ -981,6 +991,22 @@ export default function App() {
     triggerToast(t.editingBanner(vote.name));
   };
 
+  const handleStartTimeChange = (nextStart) => {
+    const currentEnd = bookingTime.split('-')[1] || '20:00';
+    const startNum = Number(nextStart.slice(0, 2));
+    const endNum = Number(currentEnd.slice(0, 2));
+    const adjustedEnd =
+      endNum <= startNum
+        ? `${String(Math.min(22, startNum + 1)).padStart(2, '0')}:00`
+        : currentEnd;
+    setBookingTime(`${nextStart}-${adjustedEnd}`);
+  };
+
+  const handleEndTimeChange = (nextEnd) => {
+    const currentStart = bookingTime.split('-')[0] || '18:00';
+    setBookingTime(`${currentStart}-${nextEnd}`);
+  };
+
   const handleSubmitVote = async (e) => {
     e.preventDefault();
     const trimmedName = voterName.trim().replace(/\s+/g, ' ');
@@ -1168,6 +1194,7 @@ export default function App() {
     activeVotes.length > 0 &&
     !voterName.trim() &&
     selectedSlotCount === 0;
+  const [selectedStartHour, selectedEndHour] = bookingTime.split('-');
 
   return (
     <div className="min-h-screen bg-[#eef2f6] text-slate-900 pb-16 font-sans selection:bg-lime-300 selection:text-slate-950">
@@ -2563,14 +2590,42 @@ export default function App() {
                     <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
                       {lang === 'ja' ? '時間' : 'Time'}
                     </label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={bookingTime}
-                      onChange={(e) => setBookingTime(e.target.value)}
-                      placeholder="18:00-20:00"
-                      className="w-full min-w-0 box-border px-3 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs"
-                    />
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <select
+                        aria-label="Start time"
+                        value={selectedStartHour || '18:00'}
+                        onChange={(e) => handleStartTimeChange(e.target.value)}
+                        translate="no"
+                        className="flex-1 min-w-0 px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs cursor-pointer"
+                      >
+                        {START_HOUR_OPTIONS.map((slot) => (
+                          <option key={`start-${slot}`} value={slot}>
+                            {slot}
+                          </option>
+                        ))}
+                      </select>
+
+                      <span
+                        translate="no"
+                        className="text-xs font-extrabold text-slate-500 shrink-0 px-0.5"
+                      >
+                        ~
+                      </span>
+
+                      <select
+                        aria-label="End time"
+                        value={selectedEndHour || '20:00'}
+                        onChange={(e) => handleEndTimeChange(e.target.value)}
+                        translate="no"
+                        className="flex-1 min-w-0 px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs cursor-pointer"
+                      >
+                        {END_HOUR_OPTIONS.map((slot) => (
+                          <option key={`end-${slot}`} value={slot}>
+                            {slot}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   <div className="min-w-0">
