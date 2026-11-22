@@ -301,15 +301,14 @@ const COPY = {
 
 function getTwoHourPreferenceRank(startHour, courtType = 'indoor') {
   if (courtType === 'outdoor') {
-    if (startHour === 14) return 0; // 14:00-16:00
-    if (startHour === 13) return 1; // 13:00-15:00
-    if (startHour === 15) return 2; // 15:00-17:00
+    if (startHour === 14) return 0;
+    if (startHour === 13) return 1;
+    if (startHour === 15) return 2;
     return 3 + Math.abs(startHour - 14);
   }
-
-  if (startHour === 19) return 0; // 19:00-21:00
-  if (startHour === 18) return 1; // 18:00-20:00
-  if (startHour === 20) return 2; // 20:00-22:00
+  if (startHour === 19) return 0;
+  if (startHour === 18) return 1;
+  if (startHour === 20) return 2;
   return 3 + Math.abs(startHour - 19);
 }
 
@@ -342,9 +341,8 @@ function PickleballIcon({ className = 'w-7 h-7' }) {
 }
 
 /**
- * Okayama Pickleball Session Scheduler (`岡大dinks`).
- * Defaults to Japanese with an EN/JA toggle so Japanese mode can be cleanly
- * auto-translated by browsers while protecting fixed time/symbol badges.
+ * Renders the session availability matrix, voting bar, rankings, and SNS share modal.
+ * @returns {JSX.Element}
  */
 export default function App() {
   const [lang, setLang] = useState('ja');
@@ -373,7 +371,7 @@ export default function App() {
   const [inspectSlot, setInspectSlot] = useState(null);
   const [showEditPickerModal, setShowEditPickerModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
-  const [shareTab, setShareTab] = useState('poll'); // 'poll' | 'confirmed'
+  const [shareTab, setShareTab] = useState('poll');
   const [bookingDate, setBookingDate] = useState(() => getTodayJstIsoDate());
   const [bookingTime, setBookingTime] = useState('18:00-20:00');
   const [bookingVenue, setBookingVenue] = useState('');
@@ -413,17 +411,17 @@ export default function App() {
       }
     }
 
-    return { okayamaCount: okayama, kurashikiCount: kurashiki, visibleVenues: filtered };
+    return {
+      okayamaCount: okayama,
+      kurashikiCount: kurashiki,
+      visibleVenues: filtered,
+    };
   }, [areaFilter]);
 
   const viewingResponsesMap = useMemo(
     () => (viewingVote ? normalizeResponsesMap(viewingVote.responses) : null),
     [viewingVote]
   );
-
-  // --------------------------------------------------------------------------
-  // 1. SUPABASE FETCH & REALTIME SUBSCRIPTION
-  // --------------------------------------------------------------------------
 
   const fetchVotes = useCallback(async () => {
     const { data, error } = await supabase
@@ -486,9 +484,7 @@ export default function App() {
       }
 
       if (isCancelled) return;
-      if (Object.keys(openMap).length === 0 && Object.keys(bookedMap).length === 0) {
-        return;
-      }
+      if (!Object.keys(openMap).length && !Object.keys(bookedMap).length) return;
 
       setOpenVenuesBySlot(openMap);
       setBookedVenuesBySlot(bookedMap);
@@ -515,10 +511,6 @@ export default function App() {
       supabase.removeChannel(channel);
     };
   }, [fetchVotes]);
-
-  // --------------------------------------------------------------------------
-  // 2. 28-DAY CALENDAR MATRIX & 2-HOUR CONTINUOUS BLOCKS
-  // --------------------------------------------------------------------------
 
   const matchesFilter = useCallback(
     (openVenueIds) => {
@@ -661,7 +653,7 @@ export default function App() {
           const shared = filterVenueList(
             VENUES.filter((v) => ids1.has(v.id) && ids2.has(v.id))
           );
-          if (shared.length === 0) continue;
+          if (!shared.length) continue;
 
           eligible.add(key1);
           eligible.add(key2);
@@ -686,7 +678,7 @@ export default function App() {
           });
         }
 
-        if (candidates.length === 0) continue;
+        if (!candidates.length) continue;
 
         candidates.sort((a, b) => {
           if (b.isIndoor !== a.isIndoor) return b.isIndoor - a.isIndoor;
@@ -723,10 +715,6 @@ export default function App() {
     return { twoHourHighlightMap: cellMeta, twoHourEligibleSlotKeys: eligible };
   }, [calendarWeeks, openVenuesBySlot, filterVenueList]);
 
-  // --------------------------------------------------------------------------
-  // 3. TALLIES & TOP 5 INDEPENDENT-DATE 2-HOUR BLOCKS (MIN 3 VOTES)
-  // --------------------------------------------------------------------------
-
   const slotTallies = useMemo(() => {
     const tallyMap = {};
     let bestScore = 0;
@@ -746,15 +734,15 @@ export default function App() {
       const score = yesPlayers.length * 100 + maybePlayers.length * 10;
       if (yesPlayers.length > 0 && score > bestScore) bestScore = score;
 
-      const prevIds =
-        openVenuesBySlot[
-          `${slot.dateKey}_${String(slot.startHour - 1).padStart(2, '0')}:00-${String(slot.startHour).padStart(2, '0')}:00`
-        ];
-      const nextIds =
-        openVenuesBySlot[
-          `${slot.dateKey}_${String(slot.startHour + 1).padStart(2, '0')}:00-${String(slot.startHour + 2).padStart(2, '0')}:00`
-        ];
+      const prevHour = String(slot.startHour - 1).padStart(2, '0');
+      const currHour = String(slot.startHour).padStart(2, '0');
+      const nextHour = String(slot.startHour + 1).padStart(2, '0');
+      const endPlusTwo = String(slot.startHour + 2).padStart(2, '0');
 
+      const prevIds = openVenuesBySlot[`${slot.dateKey}_${prevHour}:00-${currHour}:00`];
+      const nextIds = openVenuesBySlot[`${slot.dateKey}_${nextHour}:00-${endPlusTwo}:00`];
+
+      // Exclude venues open for only 1 hour since continuous 2h play is required.
       const twoHourEligibleVenues = slot.openVenues.filter(
         (v) => prevIds?.has(v.id) || nextIds?.has(v.id)
       );
@@ -814,7 +802,7 @@ export default function App() {
           const filteredShared = filterVenueList(
             VENUES.filter((v) => ids1.has(v.id) && ids2.has(v.id))
           );
-          if (filteredShared.length === 0) continue;
+          if (!filteredShared.length) continue;
 
           const bothYesPlayers = [];
           const flexBothPlayers = [];
@@ -885,7 +873,7 @@ export default function App() {
           });
         }
 
-        if (dayBlocks.length === 0) continue;
+        if (!dayBlocks.length) continue;
 
         dayBlocks.sort((a, b) => {
           if (b.score !== a.score) return b.score - a.score;
@@ -903,10 +891,6 @@ export default function App() {
 
     return bestByDate.sort((a, b) => b.score - a.score).slice(0, 5);
   }, [calendarWeeks, openVenuesBySlot, filterVenueList, votes]);
-
-  // --------------------------------------------------------------------------
-  // 4. INTERACTIVE CELL CYCLING & VOTER ACTIONS
-  // --------------------------------------------------------------------------
 
   const handleCycleSlot = (slotKey) => {
     if (!slotTallies[slotKey]) return;
@@ -1007,7 +991,7 @@ export default function App() {
     }
 
     const cleanResponses = normalizeResponsesMap(responses);
-    if (Object.keys(cleanResponses).length === 0) {
+    if (!Object.keys(cleanResponses).length) {
       triggerToast(t.toastSelectSlot);
       return;
     }
@@ -1030,7 +1014,9 @@ export default function App() {
       if (error) throw error;
 
       triggerToast(
-        editingVoteId ? t.toastUpdatedVote(trimmedName) : t.toastSubmittedVote(trimmedName)
+        editingVoteId
+          ? t.toastUpdatedVote(trimmedName)
+          : t.toastSubmittedVote(trimmedName)
       );
       await fetchVotes();
       resetVoterForm();
@@ -1065,12 +1051,8 @@ export default function App() {
     }
   };
 
-  // --------------------------------------------------------------------------
-  // 5. SNS INVITE SUMMARY
-  // --------------------------------------------------------------------------
-
   const shareSummaryText = useMemo(() => {
-    if (rankedTwoHourBlocks.length === 0) {
+    if (!rankedTwoHourBlocks.length) {
       return lang === 'en'
         ? [
             '🏓 Okadai dinks | Next Session Poll',
@@ -1170,7 +1152,7 @@ export default function App() {
         setTimeout(() => setCopiedShare(false), 2500);
         return;
       } catch {
-        // Fall through to manual textarea selection
+        // Fall through to manual textarea selection when clipboard API is blocked.
       }
     }
 
@@ -1196,7 +1178,6 @@ export default function App() {
         </div>
       )}
 
-      {/* HEADER */}
       <header className="bg-[#1B365D] text-white shadow-md border-b-4 border-[#2B547E]">
         <div className="max-w-6xl mx-auto px-3.5 sm:px-6 py-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -1284,7 +1265,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* MAIN WORKSPACE */}
       <main className="max-w-6xl mx-auto px-2.5 sm:px-5 pt-4 space-y-4">
         {errorMsg && (
           <div className="bg-rose-50 border border-rose-300 text-rose-800 px-4 py-3 rounded-xl flex items-center gap-2 text-xs sm:text-sm">
@@ -1293,7 +1273,6 @@ export default function App() {
           </div>
         )}
 
-        {/* 1. VOTER ACTION BAR */}
         <section
           ref={voterBarRef}
           className={`rounded-2xl shadow-sm border-2 transition overflow-hidden ${
@@ -1440,7 +1419,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Quick-fill toolbar + Existing Voters Strip */}
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/80">
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[11px] font-bold text-slate-500 mr-1 whitespace-nowrap">
@@ -1477,7 +1455,8 @@ export default function App() {
                   type="button"
                   onClick={() =>
                     applyQuickFill(
-                      (slot) => Boolean(twoHourHighlightMap[slot.slotKey]?.isPriorityTwoHour),
+                      (slot) =>
+                        Boolean(twoHourHighlightMap[slot.slotKey]?.isPriorityTwoHour),
                       'yes',
                       t.twoHourPriorityYes
                     )
@@ -1500,7 +1479,7 @@ export default function App() {
                   <Users className="w-3.5 h-3.5 text-[#1B365D] shrink-0" />
                   <span>{t.votedLabel(activeVotes.length)}</span>
                 </span>
-                {activeVotes.length === 0 ? (
+                {!activeVotes.length ? (
                   <span className="text-[11px] text-slate-400 italic">
                     {t.noVotesYet}
                   </span>
@@ -1545,7 +1524,6 @@ export default function App() {
           </form>
         </section>
 
-        {/* 2. WEEK NAVIGATION & 1-HOUR MATRIX */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-300 overflow-hidden">
           <div className="bg-[#1B365D] px-3 py-2.5 flex flex-wrap items-center justify-between gap-2 text-white">
             <button
@@ -1606,8 +1584,16 @@ export default function App() {
                 <div className="inline-flex rounded-xl bg-slate-200 p-0.5 border border-slate-300 text-xs font-extrabold">
                   {[
                     { id: 'all', label: t.allAreas, activeClass: 'bg-white text-[#1B365D]' },
-                    { id: 'okayama', label: t.okayamaArea, activeClass: 'bg-lime-400 text-[#1B365D]' },
-                    { id: 'kurashiki', label: t.kurashikiArea, activeClass: 'bg-sky-300 text-[#1B365D]' },
+                    {
+                      id: 'okayama',
+                      label: t.okayamaArea,
+                      activeClass: 'bg-lime-400 text-[#1B365D]',
+                    },
+                    {
+                      id: 'kurashiki',
+                      label: t.kurashikiArea,
+                      activeClass: 'bg-sky-300 text-[#1B365D]',
+                    },
                   ].map((area) => (
                     <button
                       key={area.id}
@@ -1684,7 +1670,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Symbol Legend */}
           <div className="px-3.5 py-2 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="inline-flex items-center gap-1 font-bold text-emerald-700 whitespace-nowrap">
@@ -1744,7 +1729,6 @@ export default function App() {
             <span className="font-bold text-[#1B365D]">{t.legendHint}</span>
           </div>
 
-          {/* Schedule Matrix Table */}
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-center">
               <thead>
@@ -1997,7 +1981,10 @@ export default function App() {
                                 {gridViewMode === 'heatmap' ? (
                                   <span>{t.detailsLabel}</span>
                                 ) : (
-                                  <span translate="no" className="inline-flex items-center gap-1">
+                                  <span
+                                    translate="no"
+                                    className="inline-flex items-center gap-1"
+                                  >
                                     <span className="text-emerald-700">
                                       ◯{tally.yesCount}
                                     </span>
@@ -2019,7 +2006,6 @@ export default function App() {
           </div>
         </section>
 
-        {/* 3. TOP 5 RECOMMENDED 2-HOUR BLOCKS (INDEPENDENT DATES, >= 3 VOTES) & PLAYER COMMENTS */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <section className="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 bg-[#1B365D] text-white flex items-center justify-between gap-2">
@@ -2037,7 +2023,7 @@ export default function App() {
                 <p className="text-xs text-slate-500 py-4 text-center">
                   {t.loadingVotes}
                 </p>
-              ) : rankedTwoHourBlocks.length === 0 ? (
+              ) : !rankedTwoHourBlocks.length ? (
                 <div className="text-center py-6 text-xs text-slate-500 space-y-1">
                   <p className="font-bold text-slate-700">{t.noRankedBlocksTitle}</p>
                   <p>{t.noRankedBlocksDesc}</p>
@@ -2142,7 +2128,7 @@ export default function App() {
             </div>
 
             <div className="p-3.5 space-y-2 max-h-[430px] overflow-y-auto flex-1">
-              {activeVotes.length === 0 ? (
+              {!activeVotes.length ? (
                 <p className="text-xs text-slate-400 italic py-6 text-center">
                   {t.noNotesYet}
                 </p>
@@ -2174,7 +2160,6 @@ export default function App() {
           </section>
         </div>
 
-        {/* Venue Directory & Footwear Reminder Footer */}
         <footer className="bg-white border border-slate-200 rounded-2xl p-3.5 text-[11px] sm:text-xs text-slate-600 space-y-2.5">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <span className="font-extrabold text-slate-800 inline-flex items-center gap-1.5">
@@ -2224,7 +2209,6 @@ export default function App() {
         </footer>
       </main>
 
-      {/* MODAL 1: SLOT BREAKDOWN INSPECTOR */}
       {inspectSlot && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
@@ -2287,7 +2271,9 @@ export default function App() {
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-extrabold text-[#1B365D] inline-flex items-center gap-1">
                     <Award className="w-4 h-4 text-amber-500 shrink-0" />
-                    <span>{t.recTopHeading(inspectSlot.recommendedVenues?.length || 0)}</span>
+                    <span>
+                      {t.recTopHeading(inspectSlot.recommendedVenues?.length || 0)}
+                    </span>
                   </span>
                   <span className="text-[10px] text-slate-500 whitespace-nowrap">
                     {t.openCountLabel(inspectSlot.openVenues?.length || 0)}
@@ -2390,7 +2376,7 @@ export default function App() {
                     {group.label}
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {group.players.length === 0 ? (
+                    {!group.players.length ? (
                       <span className="text-slate-400">{t.noneLabel}</span>
                     ) : (
                       group.players.map((p) => (
@@ -2439,7 +2425,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL 2: SELECT VOTER TO EDIT */}
       {showEditPickerModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
@@ -2511,7 +2496,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL 3: SHARE INVITE TEXT */}
       {showShareModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
@@ -2563,33 +2547,33 @@ export default function App() {
 
               {shareTab === 'confirmed' && (
                 <div className="space-y-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
-                        {lang === 'ja' ? '日付' : 'Date'}
-                      </label>
-                      <input
-                        type="date"
-                        value={bookingDate}
-                        onChange={(e) => setBookingDate(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold text-slate-800"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
-                        {lang === 'ja' ? '時間' : 'Time'}
-                      </label>
-                      <input
-                        type="text"
-                        value={bookingTime}
-                        onChange={(e) => setBookingTime(e.target.value)}
-                        placeholder="18:00-20:00"
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold text-slate-800"
-                      />
-                    </div>
+                  <div className="min-w-0">
+                    <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
+                      {lang === 'ja' ? '日付' : 'Date'}
+                    </label>
+                    <input
+                      type="date"
+                      value={bookingDate}
+                      onChange={(e) => setBookingDate(e.target.value)}
+                      className="w-full min-w-0 box-border px-3 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs"
+                    />
                   </div>
 
-                  <div>
+                  <div className="min-w-0">
+                    <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
+                      {lang === 'ja' ? '時間' : 'Time'}
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={bookingTime}
+                      onChange={(e) => setBookingTime(e.target.value)}
+                      placeholder="18:00-20:00"
+                      className="w-full min-w-0 box-border px-3 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs"
+                    />
+                  </div>
+
+                  <div className="min-w-0">
                     <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
                       {lang === 'ja' ? '会場名' : 'Venue Name'}
                     </label>
@@ -2602,11 +2586,11 @@ export default function App() {
                           ? '例: 岡山市立〇〇体育館'
                           : 'e.g. Municipal Gym / Pitch'
                       }
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold text-slate-800"
+                      className="w-full min-w-0 box-border px-3 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs"
                     />
                   </div>
 
-                  <div>
+                  <div className="min-w-0">
                     <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
                       {lang === 'ja' ? 'Googleマップ リンク' : 'Google Maps Link'}
                     </label>
@@ -2615,16 +2599,16 @@ export default function App() {
                       value={bookingMapUrl}
                       onChange={(e) => setBookingMapUrl(e.target.value)}
                       placeholder="https://maps.google.com/?q=..."
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800"
+                      className="w-full min-w-0 box-border px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs"
                     />
                   </div>
 
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                    <div className="inline-flex rounded-lg bg-white p-0.5 border border-slate-300 font-extrabold text-[11px]">
+                    <div className="inline-flex rounded-lg bg-white p-0.5 border border-slate-300 font-extrabold text-[11px] shrink-0">
                       <button
                         type="button"
                         onClick={() => setBookingCourtType('indoor')}
-                        className={`px-2 py-1 rounded cursor-pointer ${
+                        className={`px-2.5 py-1 rounded cursor-pointer ${
                           bookingCourtType === 'indoor'
                             ? 'bg-sky-100 text-sky-900'
                             : 'text-slate-500'
@@ -2635,7 +2619,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => setBookingCourtType('outdoor')}
-                        className={`px-2 py-1 rounded cursor-pointer ${
+                        className={`px-2.5 py-1 rounded cursor-pointer ${
                           bookingCourtType === 'outdoor'
                             ? 'bg-amber-100 text-amber-900'
                             : 'text-slate-500'
@@ -2645,7 +2629,7 @@ export default function App() {
                       </button>
                     </div>
 
-                    <div className="inline-flex rounded-lg bg-white p-0.5 border border-slate-300 font-extrabold text-[11px]">
+                    <div className="inline-flex rounded-lg bg-white p-0.5 border border-slate-300 font-extrabold text-[11px] shrink-0">
                       {[
                         { id: 'ja', label: 'JA' },
                         { id: 'en', label: 'EN' },
@@ -2655,7 +2639,7 @@ export default function App() {
                           key={item.id}
                           type="button"
                           onClick={() => setBookingFormat(item.id)}
-                          className={`px-2 py-1 rounded cursor-pointer ${
+                          className={`px-2.5 py-1 rounded cursor-pointer ${
                             bookingFormat === item.id
                               ? 'bg-[#1B365D] text-lime-300'
                               : 'text-slate-500'
@@ -2674,10 +2658,10 @@ export default function App() {
               <textarea
                 ref={textareaRef}
                 readOnly
-                rows={11}
+                rows={10}
                 value={activeShareText}
                 onFocus={(e) => e.target.select()}
-                className="w-full p-3 rounded-xl bg-slate-50 border border-slate-300 text-xs font-mono text-slate-800 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-slate-50 border border-slate-300 text-xs font-sans leading-relaxed text-slate-800 focus:outline-none break-all"
               />
 
               <button
@@ -2702,7 +2686,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL 4: CONFIRM DELETE PLAYER VOTE */}
       {voteToDelete && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4">
