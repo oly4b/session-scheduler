@@ -401,6 +401,7 @@ export default function App() {
             key1,
             key2,
             spanLabel: `${b1.shortLabel}–${String(b2.startHour + 1).padStart(2, '0')}:00`,
+            isIndoor: topVenue?.courtType === 'indoor' ? 1 : 0,
             timePrefRank: getTwoHourPreferenceRank(b1.startHour, topVenue?.courtType),
             facilityTier: topVenue?.facilityTier ?? 0,
             distanceKm: topVenue?.distanceKm ?? 99,
@@ -411,6 +412,7 @@ export default function App() {
         if (candidates.length === 0) continue;
 
         candidates.sort((a, b) => {
+          if (b.isIndoor !== a.isIndoor) return b.isIndoor - a.isIndoor;
           if (a.timePrefRank !== b.timePrefRank) return a.timePrefRank - b.timePrefRank;
           if (b.facilityTier !== a.facilityTier) return b.facilityTier - a.facilityTier;
           return a.distanceKm - b.distanceKm;
@@ -467,6 +469,20 @@ export default function App() {
       const score = yesPlayers.length * 100 + maybePlayers.length * 10;
       if (yesPlayers.length > 0 && score > bestScore) bestScore = score;
 
+      const prevIds =
+        openVenuesBySlot[
+          `${slot.dateKey}_${String(slot.startHour - 1).padStart(2, '0')}:00-${String(slot.startHour).padStart(2, '0')}:00`
+        ];
+      const nextIds =
+        openVenuesBySlot[
+          `${slot.dateKey}_${String(slot.startHour + 1).padStart(2, '0')}:00-${String(slot.startHour + 2).padStart(2, '0')}:00`
+        ];
+
+      // Exclude venues that are only open for 1 hour (2h不可 on their own)
+      const twoHourEligibleVenues = slot.openVenues.filter(
+        (v) => prevIds?.has(v.id) || nextIds?.has(v.id)
+      );
+
       tallyMap[slot.slotKey] = {
         ...slot,
         isTwoHourBlock: false,
@@ -477,8 +493,9 @@ export default function App() {
         maybeCount: maybePlayers.length,
         noCount: noPlayers.length,
         score,
+        openVenues: twoHourEligibleVenues,
         recommendedVenues: rankRecommendedVenues(
-          slot.openVenues,
+          twoHourEligibleVenues,
           slot.dateKey,
           [slot.startHour],
           openVenuesBySlot,
@@ -562,6 +579,7 @@ export default function App() {
             openVenuesBySlot,
             3
           );
+          const topCourtType = recommendedVenues[0]?.courtType;
 
           dayBlocks.push({
             slotKey: `${day.dateKey}_${b1.id}__2h`,
@@ -573,10 +591,8 @@ export default function App() {
             dow: day.dow,
             holiday: day.holiday,
             timeLabel: `${b1.shortLabel}–${String(b2.startHour + 1).padStart(2, '0')}:00 (2時間)`,
-            timePrefRank: getTwoHourPreferenceRank(
-              b1.startHour,
-              recommendedVenues[0]?.courtType
-            ),
+            isIndoor: topCourtType === 'indoor' ? 1 : 0,
+            timePrefRank: getTwoHourPreferenceRank(b1.startHour, topCourtType),
             openVenues: filteredShared,
             recommendedVenues,
             venueSummary: recommendedVenues.map((v) => v.shortName).join(' / '),
@@ -597,6 +613,7 @@ export default function App() {
 
         dayBlocks.sort((a, b) => {
           if (b.score !== a.score) return b.score - a.score;
+          if (b.isIndoor !== a.isIndoor) return b.isIndoor - a.isIndoor;
           return a.timePrefRank - b.timePrefRank;
         });
         const [primaryBlock, secondBestBlock = null] = dayBlocks;

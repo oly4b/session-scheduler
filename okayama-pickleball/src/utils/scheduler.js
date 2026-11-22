@@ -1,213 +1,227 @@
-import { VENUES, VENUE_BY_ID } from '../config/venues';
+import { VENUES } from '../config/venues';
 
 export const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
-export const DAY_MS = 86_400_000;
-export const LEGACY_SPACEPAD_PREFIX = 'spacepad_1_3_';
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DOW_JP = ['日', '月', '火', '水', '木', '金', '土'];
+
+export const ACTIVE_VENUE_IDS = new Set(VENUES.map((v) => v.id));
 
 export const TIME_BLOCKS = Array.from({ length: 10 }, (_, idx) => {
   const startHour = 12 + idx;
-  const startLabel = `${String(startHour).padStart(2, '0')}:00`;
-  const endLabel = `${String(startHour + 1).padStart(2, '0')}:00`;
+  const endHour = startHour + 1;
+  const startStr = `${String(startHour).padStart(2, '0')}:00`;
+  const endStr = `${String(endHour).padStart(2, '0')}:00`;
   return {
-    id: `${startLabel}-${endLabel}`,
+    id: `${startStr}-${endStr}`,
     startHour,
-    label: `${startLabel}–${endLabel}`,
-    shortLabel: startLabel,
+    label: `${startStr}–${endStr}`,
+    shortLabel: startStr,
     isStudentPrime: startHour >= 18,
   };
 });
 
-export const ACTIVE_VENUE_IDS = new Set(VENUES.map((v) => v.id));
-
-const JP_DOW = ['日', '月', '火', '水', '木', '金', '土'];
-const RESPONSE_PRIORITY = { yes: 3, maybe: 2, no: 1 };
-
-/** @type {Map<number, Set<string>>} */
-const holidayCacheByYear = new Map();
-
-function getNthWeekdayOfMonth(year, month, targetDow, occurrence) {
-  const firstDow = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
-  const offset = (targetDow - firstDow + 7) % 7;
-  return 1 + offset + (occurrence - 1) * 7;
-}
-
-function getEquinoxDay(year, isAutumnal) {
-  const base = isAutumnal ? 23.2488 : 20.8431;
-  return Math.floor(base + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
+/**
+ * Calculates the Vernal Equinox Day (春分の日) in March for a given year.
+ *
+ * @param {number} year
+ * @returns {number}
+ */
+function getVernalEquinoxDay(year) {
+  return Math.floor(20.8431 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
 }
 
 /**
- * Builds and caches all statutory Japanese national holidays (`YYYY-MM-DD`) for `year`,
- * including substitute holidays (振替休日) and sandwiched Citizens' Holidays (国民の休日).
+ * Calculates the Autumnal Equinox Day (秋分の日) in September for a given year.
  *
  * @param {number} year
- * @returns {Set<string>}
+ * @returns {number}
+ */
+function getAutumnalEquinoxDay(year) {
+  return Math.floor(23.2488 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
+}
+
+/**
+ * Returns the day of the month for the Nth specific weekday in a month.
+ *
+ * @param {number} year
+ * @param {number} month - 1-indexed month (1 = January).
+ * @param {number} weekday - 0 (Sunday) through 6 (Saturday).
+ * @param {number} nth - 1-indexed occurrence (e.g., 2 for 2nd Monday).
+ * @returns {number}
+ */
+function getNthWeekdayOfMonth(year, month, weekday, nth) {
+  const firstDow = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  const offset = (weekday - firstDow + 7) % 7;
+  return 1 + offset + (nth - 1) * 7;
+}
+
+const holidayYearCache = new Map();
+
+/**
+ * Computes all Japanese national holidays (国民の祝日), substitute holidays
+ * (振替休日), and Citizens' holidays (国民の休日) for a given year.
+ *
+ * @param {number} year
+ * @returns {Set<string>} Set of `YYYY-MM-DD` date strings.
  */
 function getJapaneseHolidaysForYear(year) {
-  const cached = holidayCacheByYear.get(year);
-  if (cached) return cached;
+  if (holidayYearCache.has(year)) return holidayYearCache.get(year);
 
-  const toKey = (m, d) =>
-    `${year}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const baseHolidays = new Set();
+  const add = (m, d) => {
+    baseHolidays.add(`${year}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+  };
 
-  const baseDates = [
-    [1, 1], // 元日
-    [1, getNthWeekdayOfMonth(year, 1, 1, 2)], // 成人の日
-    [2, 11], // 建国記念の日
-    [2, 23], // 天皇誕生日
-    [3, getEquinoxDay(year, false)], // 春分の日
-    [4, 29], // 昭和の日
-    [5, 3], // 憲法記念日
-    [5, 4], // みどりの日
-    [5, 5], // こどもの日
-    [7, getNthWeekdayOfMonth(year, 7, 1, 3)], // 海の日
-    [8, 11], // 山の日
-    [9, getNthWeekdayOfMonth(year, 9, 1, 3)], // 敬老の日
-    [9, getEquinoxDay(year, true)], // 秋分の日
-    [10, getNthWeekdayOfMonth(year, 10, 1, 2)], // スポーツの日
-    [11, 3], // 文化の日
-    [11, 23], // 勤労感謝の日
-  ];
+  add(1, 1); // 元日
+  add(1, getNthWeekdayOfMonth(year, 1, 1, 2)); // 成人の日 (2nd Mon)
+  add(2, 11); // 建国記念の日
+  add(2, 23); // 天皇誕生日
+  add(3, getVernalEquinoxDay(year)); // 春分の日
+  add(4, 29); // 昭和の日
+  add(5, 3); // 憲法記念日
+  add(5, 4); // みどりの日
+  add(5, 5); // こどもの日
+  add(7, getNthWeekdayOfMonth(year, 7, 1, 3)); // 海の日 (3rd Mon)
+  add(8, 11); // 山の日
+  add(9, getNthWeekdayOfMonth(year, 9, 1, 3)); // 敬老の日 (3rd Mon)
+  add(9, getAutumnalEquinoxDay(year)); // 秋分の日
+  add(10, getNthWeekdayOfMonth(year, 10, 1, 2)); // スポーツの日 (2nd Mon)
+  add(11, 3); // 文化の日
+  add(11, 23); // 勤労感謝の日
 
-  const holidays = new Set(baseDates.map(([m, d]) => toKey(m, d)));
+  const allHolidays = new Set(baseHolidays);
 
-  // Substitute holidays (振替休日): Sunday holidays shift to the next non-holiday weekday.
-  for (const [m, d] of baseDates) {
-    const date = new Date(Date.UTC(year, m - 1, d));
-    if (date.getUTCDay() !== 0) continue;
+  // Substitute holidays (振替休日): Sunday holiday shifts to next non-holiday weekday
+  for (const dateKey of baseHolidays) {
+    const dt = new Date(`${dateKey}T00:00:00Z`);
+    if (dt.getUTCDay() !== 0) continue;
 
-    while (holidays.has(date.toISOString().slice(0, 10))) {
-      date.setUTCDate(date.getUTCDate() + 1);
+    let cursor = new Date(dt.getTime() + DAY_MS);
+    while (allHolidays.has(cursor.toISOString().slice(0, 10))) {
+      cursor = new Date(cursor.getTime() + DAY_MS);
     }
-    holidays.add(date.toISOString().slice(0, 10));
+    allHolidays.add(cursor.toISOString().slice(0, 10));
   }
 
-  // Citizens' Holidays (国民の休日): a weekday sandwiched between two national holidays.
-  for (const key of [...holidays]) {
-    const dayAfter = new Date(`${key}T00:00:00Z`);
-    dayAfter.setUTCDate(dayAfter.getUTCDate() + 1);
-    const twoDaysAfter = new Date(dayAfter);
-    twoDaysAfter.setUTCDate(twoDaysAfter.getUTCDate() + 1);
+  // Citizens' holiday (国民の休日): non-holiday sandwiched between two holidays
+  for (let m = 1; m <= 12; m += 1) {
+    const daysInMonth = new Date(Date.UTC(year, m, 0)).getUTCDate();
+    for (let d = 2; d < daysInMonth; d += 1) {
+      const cur = new Date(Date.UTC(year, m - 1, d));
+      if (cur.getUTCDay() === 0) continue;
 
-    const middleKey = dayAfter.toISOString().slice(0, 10);
-    const endKey = twoDaysAfter.toISOString().slice(0, 10);
+      const curKey = cur.toISOString().slice(0, 10);
+      if (allHolidays.has(curKey)) continue;
 
-    if (dayAfter.getUTCDay() !== 0 && !holidays.has(middleKey) && holidays.has(endKey)) {
-      holidays.add(middleKey);
+      const prevKey = new Date(cur.getTime() - DAY_MS).toISOString().slice(0, 10);
+      const nextKey = new Date(cur.getTime() + DAY_MS).toISOString().slice(0, 10);
+      if (allHolidays.has(prevKey) && allHolidays.has(nextKey)) {
+        allHolidays.add(curKey);
+      }
     }
   }
 
-  holidayCacheByYear.set(year, holidays);
-  return holidays;
+  holidayYearCache.set(year, allHolidays);
+  return allHolidays;
 }
 
 /**
- * Returns true if `dateKey` (`YYYY-MM-DD`) is a statutory Japanese national holiday.
- *
- * @param {number} year
- * @param {string} dateKey
- * @returns {boolean}
- */
-export function isJapaneseHoliday(year, dateKey) {
-  return getJapaneseHolidaysForYear(year).has(dateKey);
-}
-
-/**
- * Formats an integer start hour (e.g. `19`) into `19:00-20:00`.
- *
- * @param {number} startHour
- * @returns {string}
- */
-export function formatHourBlock(startHour) {
-  const start = String(startHour).padStart(2, '0');
-  const end = String(startHour + 1).padStart(2, '0');
-  return `${start}:00-${end}:00`;
-}
-
-/**
- * Returns JST calendar metadata for a day offset from today.
+ * Returns JST calendar metadata for `offsetDays` from today.
  *
  * @param {number} offsetDays
  */
 export function getJstDayMeta(offsetDays) {
-  const jst = new Date(Date.now() + JST_OFFSET_MS + offsetDays * DAY_MS);
-  const year = jst.getUTCFullYear();
-  const month = jst.getUTCMonth() + 1;
-  const day = jst.getUTCDate();
-  const dowIdx = jst.getUTCDay();
+  const jstDate = new Date(Date.now() + JST_OFFSET_MS + offsetDays * DAY_MS);
+  const year = jstDate.getUTCFullYear();
+  const month = jstDate.getUTCMonth() + 1;
+  const day = jstDate.getUTCDate();
+  const dowIdx = jstDate.getUTCDay();
+
   const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  const isHoliday = isJapaneseHoliday(year, dateKey);
+  const isHoliday = getJapaneseHolidaysForYear(year).has(dateKey);
+  const holiday = isHoliday ? '祝' : '';
 
   let dayType = 'weekday';
-  if (isHoliday) dayType = 'holiday';
+  if (isHoliday || dowIdx === 0) dayType = 'holiday';
   else if (dowIdx === 6) dayType = 'saturday';
-  else if (dowIdx === 0) dayType = 'sunday';
 
   return {
     dateKey,
     year,
-    month,
-    day,
     jpDate: `${month}月${day}日`,
     shortDate: `${month}/${day}`,
-    dow: JP_DOW[dowIdx],
-    dowIdx,
-    holiday: isHoliday ? '祝' : '',
+    dow: DOW_JP[dowIdx],
+    holiday,
     dayType,
   };
 }
 
 /**
- * Resolves a voter's choice for `slotKey`, merging legacy Spacepad keys if present.
+ * Formats an ISO timestamp string into `MM/DD HH:mm` in JST.
  *
- * @param {Record<string, string> | null | undefined} responsesMap
- * @param {string} slotKey
- * @returns {'yes' | 'maybe' | 'no' | undefined}
+ * @param {string | null | undefined} isoString
+ * @returns {string}
  */
-export function getMergedVoterChoice(responsesMap, slotKey) {
-  if (!responsesMap) return undefined;
-  const direct = responsesMap[slotKey];
-  const legacy = responsesMap[`${LEGACY_SPACEPAD_PREFIX}${slotKey}`];
-  if (!direct) return legacy;
-  if (!legacy) return direct;
-  return RESPONSE_PRIORITY[direct] >= RESPONSE_PRIORITY[legacy] ? direct : legacy;
+export function formatJstTimestamp(isoString) {
+  if (!isoString) return '';
+  const d = new Date(new Date(isoString).getTime() + JST_OFFSET_MS);
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const min = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${mm}/${dd} ${hh}:${min}`;
 }
 
-/**
- * Strips legacy prefixes from a voter's response map and deduplicates conflicts
- * using `RESPONSE_PRIORITY` (`yes` > `maybe` > `no`).
- *
- * @param {Record<string, string> | null | undefined} rawResponses
- * @returns {Record<string, 'yes' | 'maybe' | 'no'>}
- */
-export function normalizeResponsesMap(rawResponses) {
-  const normalized = {};
-  if (!rawResponses) return normalized;
+const CHOICE_PRIORITY = { yes: 3, maybe: 2, no: 1 };
+const LEGACY_PREFIX = 'spacepad_1_3_';
 
-  for (const [key, val] of Object.entries(rawResponses)) {
-    if (!val) continue;
-    const cleanKey = key.startsWith(LEGACY_SPACEPAD_PREFIX)
-      ? key.slice(LEGACY_SPACEPAD_PREFIX.length)
-      : key;
+/**
+ * Normalizes a voter's response map, stripping legacy Spacepad prefixes and
+ * keeping the highest-priority choice (`yes` > `maybe` > `no`) on collisions.
+ *
+ * @param {Record<string, string> | null | undefined} responses
+ * @returns {Record<string, string>}
+ */
+export function normalizeResponsesMap(responses) {
+  const normalized = {};
+  for (const [rawKey, value] of Object.entries(responses || {})) {
+    if (!value) continue;
+    const cleanKey = rawKey.startsWith(LEGACY_PREFIX)
+      ? rawKey.slice(LEGACY_PREFIX.length)
+      : rawKey;
+
     const existing = normalized[cleanKey];
-    if (!existing || RESPONSE_PRIORITY[val] > RESPONSE_PRIORITY[existing]) {
-      normalized[cleanKey] = val;
+    if (!existing || (CHOICE_PRIORITY[value] ?? 0) > (CHOICE_PRIORITY[existing] ?? 0)) {
+      normalized[cleanKey] = value;
     }
   }
   return normalized;
 }
 
-function getVenueFacilityTier(venue) {
-  if (venue.courtType === 'indoor') return 3;
-  if (venue.hasLights) return 2;
-  return 1;
+/**
+ * Retrieves a voter's merged choice for a given `YYYY-MM-DD_HH:00-HH:00` slot key.
+ *
+ * @param {Record<string, string> | null | undefined} responses
+ * @param {string} slotKey
+ * @returns {string | undefined}
+ */
+export function getMergedVoterChoice(responses, slotKey) {
+  if (!responses) return undefined;
+  const direct = responses[slotKey];
+  const legacy = responses[`${LEGACY_PREFIX}${slotKey}`];
+  if (!direct) return legacy;
+  if (!legacy) return direct;
+  return (CHOICE_PRIORITY[direct] ?? 0) >= (CHOICE_PRIORITY[legacy] ?? 0) ? direct : legacy;
 }
 
 /**
- * Ranks candidate venues by continuous adjacent availability, facility tier
- * (indoor > lit outdoor > unlit outdoor), and distance from JR Okayama Station.
+ * Ranks available venues for a slot or 2-hour block, strictly prioritizing:
+ * 1. Indoor gyms over outdoor courts (`indoor` > `outdoor`)
+ * 2. Continuous multi-hour open spans (`isContinuous`)
+ * 3. Facility tier (`facilityTier`)
+ * 4. Proximity to Okayama Station (`distanceKm`)
  *
- * @param {import('../config/venues').VenueConfig[]} candidateVenues
+ * @param {Array<object>} candidateVenues
  * @param {string} dateKey
  * @param {number[]} targetHours
  * @param {Record<string, Set<string>>} openVenuesBySlot
@@ -220,66 +234,44 @@ export function rankRecommendedVenues(
   openVenuesBySlot,
   limit = 3
 ) {
-  const minHour = Math.min(...targetHours);
-  const maxHour = Math.max(...targetHours);
-  const prevHour = minHour - 1;
-  const nextHour = maxHour + 1;
+  const scored = candidateVenues.map((venue) => {
+    let minOpenHour = Math.min(...targetHours);
+    let maxOpenHour = Math.max(...targetHours);
 
-  const prevIds =
-    prevHour >= 12
-      ? openVenuesBySlot[`${dateKey}_${formatHourBlock(prevHour)}`]
-      : undefined;
-  const nextIds =
-    nextHour <= 21
-      ? openVenuesBySlot[`${dateKey}_${formatHourBlock(nextHour)}`]
-      : undefined;
+    while (minOpenHour > 12) {
+      const prevKey = `${dateKey}_${String(minOpenHour - 1).padStart(2, '0')}:00-${String(minOpenHour).padStart(2, '0')}:00`;
+      if (openVenuesBySlot[prevKey]?.has(venue.id)) minOpenHour -= 1;
+      else break;
+    }
 
-  return candidateVenues
-    .map((venue) => {
-      const hasPrev = Boolean(prevIds?.has(venue.id));
-      const hasNext = Boolean(nextIds?.has(venue.id));
-      const adjacentCount = (hasPrev ? 1 : 0) + (hasNext ? 1 : 0);
+    while (maxOpenHour < 21) {
+      const nextKey = `${dateKey}_${String(maxOpenHour + 1).padStart(2, '0')}:00-${String(maxOpenHour + 2).padStart(2, '0')}:00`;
+      if (openVenuesBySlot[nextKey]?.has(venue.id)) maxOpenHour += 1;
+      else break;
+    }
 
-      let continuousSpan = null;
-      if (hasPrev && hasNext) {
-        continuousSpan = `${prevHour}:00–${nextHour + 1}:00 連続空き`;
-      } else if (hasPrev) {
-        continuousSpan = `${prevHour}:00–${maxHour + 1}:00 連続空き`;
-      } else if (hasNext) {
-        continuousSpan = `${minHour}:00–${nextHour + 1}:00 連続空き`;
-      }
+    const spanHours = maxOpenHour - minOpenHour + 1;
+    const isContinuous = spanHours >= 2;
+    const continuousSpan = isContinuous
+      ? `${String(minOpenHour).padStart(2, '0')}:00–${String(maxOpenHour + 1).padStart(2, '0')}:00 連続空き`
+      : null;
 
-      return {
-        ...venue,
-        hasAdjacent: adjacentCount > 0,
-        adjacentCount,
-        continuousSpan,
-        facilityTier: getVenueFacilityTier(venue),
-      };
-    })
+    return {
+      ...venue,
+      isContinuous,
+      spanHours,
+      continuousSpan,
+    };
+  });
+
+  return scored
     .sort((a, b) => {
-      if (b.adjacentCount !== a.adjacentCount) return b.adjacentCount - a.adjacentCount;
+      const aIndoor = a.courtType === 'indoor' ? 1 : 0;
+      const bIndoor = b.courtType === 'indoor' ? 1 : 0;
+      if (bIndoor !== aIndoor) return bIndoor - aIndoor;
+      if (b.isContinuous !== a.isContinuous) return b.isContinuous - a.isContinuous;
       if (b.facilityTier !== a.facilityTier) return b.facilityTier - a.facilityTier;
-      return (a.distanceKm ?? 99) - (b.distanceKm ?? 99);
+      return a.distanceKm - b.distanceKm;
     })
     .slice(0, limit);
 }
-
-/**
- * Formats an ISO timestamp into a compact JST month/day/time label.
- *
- * @param {string} iso
- * @returns {string}
- */
-export function formatJstTimestamp(iso) {
-  if (!iso) return '';
-  return new Date(iso).toLocaleString('ja-JP', {
-    timeZone: 'Asia/Tokyo',
-    month: 'numeric',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-export { VENUES, VENUE_BY_ID };
