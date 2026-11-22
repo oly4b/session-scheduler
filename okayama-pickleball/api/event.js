@@ -2,19 +2,67 @@ import { VENUES } from '../src/config/venues.js';
 
 const DOW_JP = ['日', '月', '火', '水', '木', '金', '土'];
 
-const VENUE_ADDRESSES = {
-  mabi: '岡山県倉敷市真備町箭田40-1',
-  kurashiki_gym: '岡山県倉敷市四十瀬4',
-  kurashiki_wl: '岡山県倉敷市四十瀬4',
-  mizushima: '岡山県倉敷市水島青葉町4-1',
-  fukuda: '岡山県倉敷市福田町古新田1027',
-  nakayama: '岡山県倉敷市児島小川町3681-2',
-  seto: '岡山県岡山市東区瀬戸町下450-1',
-  okayama_sogo: '岡山県岡山市北区いずみ町2-1-3',
-  futsukaichi: '岡山県岡山市北区二日市町56',
-  hyakkengawa_a: '岡山県岡山市中区東川原',
-  hyakkengawa_c: '岡山県岡山市中区神下',
-  nadasaki: '岡山県岡山市南区片岡159-1',
+const VENUE_META_BY_ID = {
+  mabi: {
+    address: '岡山県倉敷市真備町箭田2208-1',
+    lat: 34.642562,
+    lng: 133.685144,
+  },
+  kurashiki_gym: {
+    address: '岡山県倉敷市上富井1-8',
+    lat: 34.585989,
+    lng: 133.745118,
+  },
+  kurashiki_wl: {
+    address: '岡山県倉敷市四十瀬4',
+    lat: 34.589062,
+    lng: 133.745787,
+  },
+  mizushima: {
+    address: '岡山県倉敷市水島西千鳥町3-21-303',
+    lat: 34.52977,
+    lng: 133.739137,
+  },
+  fukuda: {
+    address: '岡山県倉敷市福田町古新田1027',
+    lat: 34.53335,
+    lng: 133.7681,
+  },
+  nakayama: {
+    address: '岡山県倉敷市児島小川町2831',
+    lat: 34.480789,
+    lng: 133.810104,
+  },
+  seto: {
+    address: '岡山県岡山市東区瀬戸町南方1311',
+    lat: 34.7481279,
+    lng: 134.0692336,
+  },
+  okayama_sogo: {
+    address: '岡山県岡山市南区浦安南町493-2',
+    lat: 34.600133,
+    lng: 133.915802,
+  },
+  futsukaichi: {
+    address: '岡山県岡山市北区二日市町51',
+    lat: 34.644472,
+    lng: 133.929792,
+  },
+  hyakkengawa_a: {
+    address: '岡山県岡山市中区東川原',
+    lat: 34.678536,
+    lng: 133.946369,
+  },
+  hyakkengawa_c: {
+    address: '岡山県岡山市中区兼基',
+    lat: 34.671356,
+    lng: 133.969445,
+  },
+  nadasaki: {
+    address: '岡山県岡山市南区彦崎2686',
+    lat: 34.549681,
+    lng: 133.83803,
+  },
 };
 
 function escapeHtml(str) {
@@ -43,6 +91,24 @@ function sanitizeSafeUrl(rawUrl) {
     }
   } catch {
     // Invalid URL
+  }
+  return '';
+}
+
+function extractVenueFromMapUrl(rawMapUrl) {
+  const safe = sanitizeSafeUrl(rawMapUrl);
+  if (!safe) return '';
+  try {
+    const parsed = new URL(safe);
+    const queryParam = parsed.searchParams.get('query') || parsed.searchParams.get('q');
+    if (queryParam) return decodeURIComponent(queryParam).trim();
+
+    const placeMatch = parsed.pathname.match(/\/maps\/place\/([^/]+)/);
+    if (placeMatch?.[1]) {
+      return decodeURIComponent(placeMatch[1].replace(/\+/g, ' ')).trim();
+    }
+  } catch {
+    // Ignore parse errors
   }
   return '';
 }
@@ -76,16 +142,23 @@ export default function handler(req, res) {
 
   const venueId = String(v || '').trim();
   const venueRecord = VENUES.find((item) => item.id === venueId) || null;
+  const fallbackMeta = VENUE_META_BY_ID[venueId] || null;
 
+  const mapVenueFallback = extractVenueFromMapUrl(rawMap);
   const venueName =
     venueRecord?.fullName ||
     venueRecord?.name ||
     venueRecord?.shortName ||
     String(rawVenue || '').trim() ||
+    mapVenueFallback ||
     '未定';
 
-  const address = venueRecord?.address || VENUE_ADDRESSES[venueId] || '';
-  const calendarLocation = address ? `${venueName} (${address})` : venueName;
+  const address = venueRecord?.address || fallbackMeta?.address || '';
+  const lat =
+    typeof venueRecord?.lat === 'number' ? venueRecord.lat : fallbackMeta?.lat;
+  const lng =
+    typeof venueRecord?.lng === 'number' ? venueRecord.lng : fallbackMeta?.lng;
+  const hasCoords = typeof lat === 'number' && typeof lng === 'number';
 
   const mapUrl =
     sanitizeSafeUrl(venueRecord?.mapUrl) ||
@@ -100,7 +173,8 @@ export default function handler(req, res) {
         : '👟 体育館のため室内専用シューズ必須'
       : '');
 
-  const displayDate = String(jpDate || '').trim() || (date ? formatJpDateFromIso(date) : '');
+  const displayDate =
+    String(jpDate || '').trim() || (date ? formatJpDateFromIso(date) : '');
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !start || !end) {
     res.status(400).send('Invalid event parameters');
@@ -129,15 +203,12 @@ export default function handler(req, res) {
   const descriptionLines = [
     '岡大dinks 合同セッション',
     displayDate ? `日時: ${displayDate} ${startHour}:00–${endHour}:00` : '',
-    `会場: ${calendarLocation}`,
+    `会場: ${venueName}${address ? ` (${address})` : ''}`,
     note,
     mapUrl ? `Googleマップ: ${mapUrl}` : '',
   ].filter(Boolean);
 
   if (ics === '1') {
-    const hasCoords =
-      typeof venueRecord?.lat === 'number' && typeof venueRecord?.lng === 'number';
-
     const icsLines = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
@@ -159,11 +230,13 @@ export default function handler(req, res) {
       `DTSTART;TZID=Asia/Tokyo:${startStr}`,
       `DTEND;TZID=Asia/Tokyo:${endStr}`,
       `SUMMARY:${escapeIcsText(summary)}`,
-      `LOCATION:${escapeIcsText(calendarLocation)}`,
-      hasCoords ? `GEO:${venueRecord.lat};${venueRecord.lng}` : '',
-      hasCoords
-        ? `X-APPLE-STRUCTURED-LOCATION;VALUE=URI;X-ADDRESS="${escapeIcsText(address || venueName)}";X-TITLE="${escapeIcsText(venueName)}":geo:${venueRecord.lat},${venueRecord.lng}`
-        : '',
+      `LOCATION:${escapeIcsText(venueName)}`,
+      ...(hasCoords
+        ? [
+            `GEO:${lat};${lng}`,
+            `X-APPLE-STRUCTURED-LOCATION;VALUE=URI;X-ADDRESS="${escapeIcsText(address || venueName)}";X-TITLE="${escapeIcsText(venueName)}":geo:${lat},${lng}`,
+          ]
+        : []),
       `DESCRIPTION:${escapeIcsText(descriptionLines.join('\n'))}`,
       mapUrl ? `URL:${mapUrl}` : '',
       'END:VEVENT',
@@ -187,7 +260,10 @@ export default function handler(req, res) {
   googleCalUrl.searchParams.set('text', summary);
   googleCalUrl.searchParams.set('dates', `${startStr}/${endStr}`);
   googleCalUrl.searchParams.set('ctz', 'Asia/Tokyo');
-  googleCalUrl.searchParams.set('location', calendarLocation);
+  googleCalUrl.searchParams.set(
+    'location',
+    address ? `${venueName} (${address})` : venueName
+  );
   googleCalUrl.searchParams.set('details', descriptionLines.join('\n'));
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -218,7 +294,8 @@ export default function handler(req, res) {
       <h1>${escapeHtml(displayDate)} ${startHour}:00–${endHour}:00</h1>
     </div>
     <div class="body">
-      <div class="row"><strong>🏟 会場:</strong> ${escapeHtml(calendarLocation)}</div>
+      <div class="row"><strong>🏟 会場:</strong> ${escapeHtml(venueName)}</div>
+      ${address ? `<div class="row"><strong>📍 住所:</strong> ${escapeHtml(address)}</div>` : ''}
       ${note ? `<div class="row">${escapeHtml(note)}</div>` : ''}
       <a class="btn btn-primary" href="${escapeHtml(downloadUrl.toString())}">📅 Apple / 標準カレンダーに追加 (.ics)</a>
       <a class="btn btn-secondary" href="${escapeHtml(googleCalUrl.toString())}" target="_blank" rel="noopener noreferrer">🗓 Google カレンダーに追加</a>
