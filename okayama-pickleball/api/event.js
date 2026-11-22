@@ -199,9 +199,9 @@ export default function handler(req, res) {
   const endStr = `${compactDate}T${String(endHour).padStart(2, '0')}0000`;
   const nowStamp = `${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`;
 
-  const summary = `🏓 岡大dinks ピックルボール (${venueName})`;
+  const summary = `🏓 岡大dinks Pickleball (${venueName})`;
   const descriptionLines = [
-    '岡大dinks 合同セッション',
+    '岡大dinks セッション',
     displayDate ? `日時: ${displayDate} ${startHour}:00–${endHour}:00` : '',
     `会場: ${venueName}${address ? ` (${address})` : ''}`,
     note,
@@ -297,7 +297,7 @@ export default function handler(req, res) {
       <div class="row"><strong>🏟 会場:</strong> ${escapeHtml(venueName)}</div>
       ${address ? `<div class="row"><strong>📍 住所:</strong> ${escapeHtml(address)}</div>` : ''}
       ${note ? `<div class="row">${escapeHtml(note)}</div>` : ''}
-      <a class="btn btn-primary" href="${escapeHtml(downloadUrl.toString())}">📅 Apple / 標準カレンダーに追加 (.ics)</a>
+      <a class="btn btn-primary" href="${escapeHtml(downloadUrl.toString())}">📅 Apple カレンダーに追加</a>
       <a class="btn btn-secondary" href="${escapeHtml(googleCalUrl.toString())}" target="_blank" rel="noopener noreferrer">🗓 Google カレンダーに追加</a>
       ${mapUrl ? `<a class="btn btn-outline" href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">📍 Google マップで場所を開く</a>` : ''}
     </div>
