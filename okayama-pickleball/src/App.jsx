@@ -2546,8 +2546,8 @@ export default function App() {
               </div>
 
               {shareTab === 'confirmed' && (
-                <div className="space-y-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
-                  <div className="min-w-0">
+                <div className="space-y-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden">
+                  <div className="min-w-0 overflow-hidden">
                     <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
                       {lang === 'ja' ? '日付' : 'Date'}
                     </label>
@@ -2555,7 +2555,7 @@ export default function App() {
                       type="date"
                       value={bookingDate}
                       onChange={(e) => setBookingDate(e.target.value)}
-                      className="w-full min-w-0 box-border px-3 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs"
+                      className="block w-full max-w-full min-w-0 box-border px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs appearance-none"
                     />
                   </div>
 
