@@ -96,7 +96,7 @@ export function buildConfirmedBookingInvite({
         : 'Indoor gym — indoor-only court shoes required';
 
     return [
-      '🏓 Okadai dinks | Confirmed Session',
+      '🏓 岡大dinks | Confirmed Session',
       `📅 Date & Time: ${enDateLabel} · ${parsedTime.formattedRange}`,
       `🏟 Venue: ${trimmedVenue}`,
       `👟 Footwear: ${shoesEn}`,

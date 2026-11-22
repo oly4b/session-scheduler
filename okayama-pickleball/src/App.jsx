@@ -1094,7 +1094,7 @@ export default function App() {
     if (!rankedTwoHourBlocks.length) {
       return lang === 'en'
         ? [
-            '🏓 Okadai dinks | Next Session Poll',
+            '🏓 岡大dinks | Next Session Poll',
             'No 2-hour continuous slots with votes yet — pick your available times via the link!',
             window.location.origin,
           ].join('\n')
@@ -1131,7 +1131,7 @@ export default function App() {
       const flexEn = flexTotal > 0 ? ` (Maybe/1h: ${flexTotal})` : '';
 
       return [
-        '🏓 Okadai dinks | Next Session Invite',
+        '🏓 岡大dinks | Next Session Invite',
         `📅 Date & Time: ${bestBlock.dateKey} (${bestBlock.dow}) ${bestBlock.timeLabel}`,
         `🏟 Venue: ${topVenue?.fullName || bestBlock.venueSummary}`,
         `👥 Going: ${bestBlock.bothYesCount}${flexEn} players`,
