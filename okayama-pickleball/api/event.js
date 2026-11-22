@@ -101,14 +101,14 @@ function extractVenueFromMapUrl(rawMapUrl) {
   try {
     const parsed = new URL(safe);
     const queryParam = parsed.searchParams.get('query') || parsed.searchParams.get('q');
-    if (queryParam) return decodeURIComponent(queryParam).trim();
+    if (queryParam) return queryParam.trim();
 
     const placeMatch = parsed.pathname.match(/\/maps\/place\/([^/]+)/);
     if (placeMatch?.[1]) {
       return decodeURIComponent(placeMatch[1].replace(/\+/g, ' ')).trim();
     }
   } catch {
-    // Ignore parse errors
+    // Ignore malformed percent-encoding
   }
   return '';
 }
@@ -137,6 +137,8 @@ export default function handler(req, res) {
     venue: rawVenue = '',
     map: rawMap = '',
     note: rawNote = '',
+    sport: rawSport = 'pickleball',
+    title: rawTitle = '',
     ics = '',
   } = req.query;
 
@@ -165,14 +167,19 @@ export default function handler(req, res) {
     sanitizeSafeUrl(rawMap) ||
     buildGoogleMapsFallbackUrl(address ? `${venueName} ${address}` : venueName);
 
-  const note =
-    String(rawNote || '').trim() ||
-    (venueRecord
-      ? venueRecord.courtType === 'outdoor'
-        ? '👟 屋外コートのためテニス・ハードコート用シューズ推奨'
-        : '👟 体育館のため室内専用シューズ必須'
-      : '');
+  const sport = String(rawSport || 'pickleball').trim().toLowerCase();
+  const defaultSportLabel =
+    sport === 'futsal' ? 'Futsal' : sport === 'football' ? 'Football' : 'Pickleball';
 
+  const fallbackNote = venueRecord
+    ? venueRecord.courtType === 'outdoor'
+      ? sport === 'futsal' || sport === 'football'
+        ? '👟 屋外コートのため適切なシューズ推奨'
+        : '👟 屋外コートのためテニス・ハードコート用シューズ推奨'
+      : '👟 体育館のため室内専用シューズ必須'
+    : '';
+
+  const note = String(rawNote || '').trim() || fallbackNote;
   const displayDate =
     String(jpDate || '').trim() || (date ? formatJpDateFromIso(date) : '');
 
@@ -199,7 +206,9 @@ export default function handler(req, res) {
   const endStr = `${compactDate}T${String(endHour).padStart(2, '0')}0000`;
   const nowStamp = `${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`;
 
-  const summary = `🏓 岡大dinks Pickleball (${venueName})`;
+  const summary =
+    String(rawTitle || '').trim() ||
+    `🏓 岡大dinks ${defaultSportLabel} (${venueName})`;
   const descriptionLines = [
     '岡大dinks セッション',
     displayDate ? `日時: ${displayDate} ${startHour}:00–${endHour}:00` : '',

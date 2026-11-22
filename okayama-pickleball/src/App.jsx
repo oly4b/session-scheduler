@@ -99,7 +99,7 @@ const COPY = {
     legendClosedDesc: 'Outside hours / closed',
     legendRec2h: 'Top 2h Block',
     legendPrime: 'Student Prime (18:00~)',
-    legendHint: '※　Tap "Details" or "◯/△" for top venues & voters',
+    legendHint: '※　Tap on "Details" or "◯/△" for top venues & voters',
     dateColHeader: 'Date / Day',
     allBookedDay: 'No slots',
     bookedTitle: 'All matching venues are booked (Full)',
@@ -149,8 +149,8 @@ const COPY = {
     pickVoterPrompt: 'Choose a member whose availability you want to update:',
     answeredSlotsCount: (count) => `${count} slots`,
     editAction: 'Edit',
-    shareModalTitle: 'Share to LINE / Instagram',
-    sharePrompt: 'Copy and paste into LINE OpenChat or Instagram group DM:',
+    shareModalTitle: 'Share to SNS',
+    sharePrompt: 'Copy & paste into the SNS group DM:',
     copiedBtn: 'Copied!',
     copyBtn: 'Copy Invite Text',
     deleteModalTitle: 'Delete response?',
@@ -164,7 +164,7 @@ const COPY = {
     toastSaveError: 'Could not save vote. Check Supabase connection.',
     toastDeletedVote: (name) => `Removed ${name}'s response.`,
     toastDeleteError: 'Error removing response.',
-    toastCopiedShare: 'Copied LINE / Instagram invite summary!',
+    toastCopiedShare: 'Copied SNS invite summary!',
     toastSelectManual: 'Text selected — press Ctrl/Cmd+C to copy',
   },
   ja: {
@@ -276,9 +276,9 @@ const COPY = {
     pickVoterPrompt: '日程を変更したいメンバーを選んでください：',
     answeredSlotsCount: (count) => `${count}枠回答済`,
     editAction: '編集',
-    shareModalTitle: 'LINE / Instagram 共有テキスト',
+    shareModalTitle: 'SNS共有テキスト',
     sharePrompt:
-      'コピーしてLINEオープンチャットやInstagramグループDMに貼り付けてください：',
+      'コピーしてSNSグループDMに貼り付けてください：',
     copiedBtn: 'コピーしました！',
     copyBtn: '案内文をコピー',
     deleteModalTitle: '回答を削除しますか？',
@@ -291,7 +291,7 @@ const COPY = {
     toastSaveError: 'Could not save vote. Check Supabase connection.',
     toastDeletedVote: (name) => `Removed ${name}'s response.`,
     toastDeleteError: 'Error removing response.',
-    toastCopiedShare: 'Copied LINE / Instagram invite summary!',
+    toastCopiedShare: 'Copied SNS invite summary!',
     toastSelectManual: 'テキストを選択しました — コピーしてください (Ctrl/Cmd+C)',
   },
 };
@@ -1061,11 +1061,17 @@ export default function App() {
 
   const shareSummaryText = useMemo(() => {
     if (rankedTwoHourBlocks.length === 0) {
-      return [
-        '🏓 岡大dinks | 次回セッション日程調整',
-        'まだ2時間連続の投票がありません — リンクから参加できる時間帯を選んでください！',
-        window.location.origin,
-      ].join('\n');
+      return lang === 'en'
+        ? [
+            '🏓 Okadai dinks | Next Session Poll',
+            'No 2-hour continuous slots with votes yet — pick your available times via the link!',
+            window.location.origin,
+          ].join('\n')
+        : [
+            '🏓 岡大dinks | 次回セッション日程調整',
+            'まだ2時間連続の投票がありません — リンクから参加できる時間帯を選んでください！',
+            window.location.origin,
+          ].join('\n');
     }
 
     const bestBlock = [...rankedTwoHourBlocks].sort((a, b) => {
@@ -1077,10 +1083,6 @@ export default function App() {
     const hol = bestBlock.holiday ? `(${bestBlock.holiday})` : '';
     const jpDateLabel = `${bestBlock.jpDate}(${bestBlock.dow})${hol}`;
     const startHour = Number(bestBlock.slotKey1.slice(-11, -9));
-    const footwearNote =
-      topVenue?.courtType === 'outdoor'
-        ? '👟 屋外コートのためテニス・ハードコート用シューズ推奨'
-        : '👟 体育館のため室内専用シューズ必須';
 
     const eventUrl = new URL('/api/event', window.location.origin);
     if (topVenue?.id) eventUrl.searchParams.set('v', topVenue.id);
@@ -1089,18 +1091,41 @@ export default function App() {
     eventUrl.searchParams.set('end', String(startHour + 2));
 
     const flexTotal = bestBlock.flexBothCount + bestBlock.partialYesCount;
-    const flexLabel = flexTotal > 0 ? ` (調整可 ${flexTotal}名)` : '';
+
+    if (lang === 'en') {
+      const footwearEn =
+        topVenue?.courtType === 'outdoor'
+          ? '👟 Outdoor hard court — tennis/court shoes recommended'
+          : '👟 Indoor gym — indoor-only court shoes required';
+      const flexEn = flexTotal > 0 ? ` (Maybe/1h: ${flexTotal})` : '';
+
+      return [
+        '🏓 Okadai dinks | Next Session Invite',
+        `📅 Date & Time: ${bestBlock.dateKey} (${bestBlock.dow}) ${bestBlock.timeLabel}`,
+        `🏟 Venue: ${topVenue?.fullName || bestBlock.venueSummary}`,
+        `👥 Going: ${bestBlock.bothYesCount}${flexEn} players`,
+        footwearEn,
+        '🗓 Add to Calendar & Map 👇',
+        eventUrl.toString(),
+      ].join('\n');
+    }
+
+    const footwearJa =
+      topVenue?.courtType === 'outdoor'
+        ? '👟 屋外コートのためテニス・ハードコート用シューズ推奨'
+        : '👟 体育館のため室内専用シューズ必須';
+    const flexJa = flexTotal > 0 ? ` (調整可 ${flexTotal}名)` : '';
 
     return [
       '🏓 岡大dinks | 次回セッション案内',
       `📅 日時: ${jpDateLabel} ${bestBlock.timeLabel}`,
       `🏟 会場: ${topVenue?.fullName || bestBlock.venueSummary}`,
-      `👥 参加予定: ◯${bestBlock.bothYesCount}名${flexLabel}`,
-      footwearNote,
+      `👥 参加予定: ◯${bestBlock.bothYesCount}名${flexJa}`,
+      footwearJa,
       '🗓 カレンダー追加・地図はこちら 👇',
       eventUrl.toString(),
     ].join('\n');
-  }, [rankedTwoHourBlocks]);
+  }, [rankedTwoHourBlocks, lang]);
 
   const handleCopyShareText = async () => {
     if (navigator.clipboard && window.isSecureContext) {
