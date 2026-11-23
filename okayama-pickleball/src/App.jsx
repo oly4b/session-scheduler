@@ -65,7 +65,7 @@ const COPY = {
     editingBanner: (name) => `Editing: ${name}`,
     viewingBanner: (name) => `View-Only: viewing ${name}'s response`,
     defaultBanner: () => 'Please enter your name after picking dates & slots',
-    deleteBtn: 'Delete',
+    deleteBtn: '✕',
     cancelBtn: 'Cancel',
     editThisBtn: 'Edit Response',
     exitViewBtn: 'Exit View',
@@ -115,8 +115,7 @@ const COPY = {
     bookedBadge: 'Booked',
     venueTbd: 'Venue TBD',
     goingLabel: 'Going',
-    setAvailabilityBtn: 'Going',
-    unmarkBookingBtn: 'Unmark',
+    unmarkBookingBtn: '✕',
     unmarkModalTitle: 'Remove booked session row?',
     unmarkModalBody: (dateStr, venueLabel) =>
       `Remove the confirmed booking card on ${dateStr} (${venueLabel}) and restore hourly slots?`,
@@ -126,6 +125,8 @@ const COPY = {
     deleteKeywordPlaceholder: (keyword) => `Type ${keyword}`,
     toastMarkedBooked: (dateStr) => `Replaced ${dateStr} row with booked card.`,
     toastUnmarkedBooked: (dateStr) => `Restored hourly slots for ${dateStr}.`,
+    toastDuplicateDateBooking: (dateStr) =>
+      `${dateStr} already has a booking. Delete it first to create another.`,
     toastBookingSaveError: 'Could not save booking. Check Supabase connection.',
     toastBookingDeleteError:
       'Could not remove booking. Check Supabase connection.',
@@ -206,7 +207,7 @@ const COPY = {
     editingBanner: (name) => `編集中: ${name}`,
     viewingBanner: (name) => `閲覧モード: ${name} さんの回答を確認中`,
     defaultBanner: () => '日程を選んだあとに名前を入力して送信してください',
-    deleteBtn: '削除',
+    deleteBtn: '✕',
     cancelBtn: 'キャンセル',
     editThisBtn: 'この回答を編集する',
     exitViewBtn: '閲覧終了',
@@ -256,8 +257,7 @@ const COPY = {
     bookedBadge: '予約確定',
     venueTbd: '会場未定',
     goingLabel: '参加予定',
-    setAvailabilityBtn: '参加',
-    unmarkBookingBtn: '解除',
+    unmarkBookingBtn: '✕',
     unmarkModalTitle: '予約確定カードを解除しますか？',
     unmarkModalBody: (dateStr, venueLabel) =>
       `${dateStr}（${venueLabel}）の予約確定カードを解除して時間枠表示に戻します。`,
@@ -268,6 +268,8 @@ const COPY = {
     deleteKeywordPlaceholder: (keyword) => `「${keyword}」を入力`,
     toastMarkedBooked: (dateStr) => `${dateStr} の行を予約確定カードに切り替えました。`,
     toastUnmarkedBooked: (dateStr) => `${dateStr} の時間枠表示に戻しました。`,
+    toastDuplicateDateBooking: (dateStr) =>
+      `${dateStr} には既に予約があります。新規作成するには先に既存の予約を削除してください。`,
     toastBookingSaveError:
       '予約確定を保存できませんでした。Supabase接続を確認してください。',
     toastBookingDeleteError:
@@ -665,7 +667,6 @@ function BookedSessionFullRowCard({
                     : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-900 cursor-pointer'
               }`}
             >
-              <span>{t.setAvailabilityBtn}</span>
               <span
                 translate="no"
                 className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full text-xs font-extrabold inline-flex items-center justify-center shrink-0 ${badge.cls}`}
@@ -700,6 +701,7 @@ function BookedSessionFullRowCard({
 /**
  * Renders the Okadai dinks pickleball availability scheduler with real-time
  * Supabase persistence for confirmed session bookings.
+ *
  * @returns {JSX.Element}
  */
 export default function App() {
@@ -1394,6 +1396,12 @@ export default function App() {
   const handleSaveBookedSessionRow = async () => {
     if (!bookingDate || isSavingBooking) return;
 
+    // Block creating a second booking on a date until its row is deleted.
+    if (bookedSessionsByDate[bookingDate]) {
+      triggerToast(t.toastDuplicateDateBooking(bookingDate));
+      return;
+    }
+
     const [rawStart, rawEnd] = bookingTime.split('-');
     const startHour = parseHourValue(rawStart || '17:00');
     const endHour = Math.max(startHour + 1, parseHourValue(rawEnd || '19:00'));
@@ -1403,17 +1411,14 @@ export default function App() {
 
     setIsSavingBooking(true);
     try {
-      const { error } = await supabase.from('booked_sessions').upsert(
-        {
-          date_key: bookingDate,
-          start_hour: startHour,
-          end_hour: endHour,
-          venue_id: venueId,
-          venue_name: venueName,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'date_key' }
-      );
+      const { error } = await supabase.from('booked_sessions').insert({
+        date_key: bookingDate,
+        start_hour: startHour,
+        end_hour: endHour,
+        venue_id: venueId,
+        venue_name: venueName,
+        updated_at: new Date().toISOString(),
+      });
       if (error) throw error;
 
       setBookedSessionsByDate((prev) => ({
@@ -1433,6 +1438,10 @@ export default function App() {
       });
       triggerToast(t.toastMarkedBooked(bookingDate));
     } catch (err) {
+      if (err?.code === '23505') {
+        triggerToast(t.toastDuplicateDateBooking(bookingDate));
+        return;
+      }
       console.error('Supabase booking save error:', err);
       triggerToast(t.toastBookingSaveError);
     } finally {
@@ -1838,6 +1847,9 @@ export default function App() {
     deleteConfirmInput.trim() === t.deleteKeyword;
   const isUnmarkKeywordMatched =
     unmarkConfirmInput.trim() === t.deleteKeyword;
+  const hasBookingForSelectedDate = Boolean(
+    bookingDate && bookedSessionsByDate[bookingDate]
+  );
 
   const renderBookingFormFields = () => (
     <div className="space-y-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden">
@@ -1854,6 +1866,11 @@ export default function App() {
           }}
           className="block w-full max-w-full min-w-0 box-border px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs appearance-none"
         />
+        {hasBookingForSelectedDate && (
+          <p className="mt-1 text-[11px] font-bold text-amber-800">
+            {t.toastDuplicateDateBooking(bookingDate)}
+          </p>
+        )}
       </div>
 
       <div className="min-w-0">
@@ -3058,7 +3075,7 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  disabled={isSavingBooking}
+                  disabled={isSavingBooking || hasBookingForSelectedDate}
                   onClick={handleSaveBookedSessionRow}
                   className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-lime-300 font-extrabold cursor-pointer whitespace-nowrap"
                 >
