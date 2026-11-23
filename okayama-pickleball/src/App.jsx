@@ -41,7 +41,6 @@ import { getTodayJstIsoDate } from './utils/confirmedInvite';
 
 const AVAILABILITY_PAGE_SIZE = 1000;
 const OTHER_VENUE_OPTION = '__other__';
-const BOOKED_STORAGE_KEY = 'okadaidinks_booked_sessions_v1';
 
 const START_HOUR_OPTIONS = Array.from({ length: 10 }, (_, idx) => {
   const hour = String(idx + 12).padStart(2, '0');
@@ -127,6 +126,9 @@ const COPY = {
     deleteKeywordPlaceholder: (keyword) => `Type ${keyword}`,
     toastMarkedBooked: (dateStr) => `Replaced ${dateStr} row with booked card.`,
     toastUnmarkedBooked: (dateStr) => `Restored hourly slots for ${dateStr}.`,
+    toastBookingSaveError: 'Could not save booking. Check Supabase connection.',
+    toastBookingDeleteError:
+      'Could not remove booking. Check Supabase connection.',
     top5Title: 'Top 5 Recommended 2h Blocks',
     top5Subtitle: 'Best per day (3+ votes)',
     loadingVotes: 'Loading tallies...',
@@ -266,6 +268,10 @@ const COPY = {
     deleteKeywordPlaceholder: (keyword) => `「${keyword}」を入力`,
     toastMarkedBooked: (dateStr) => `${dateStr} の行を予約確定カードに切り替えました。`,
     toastUnmarkedBooked: (dateStr) => `${dateStr} の時間枠表示に戻しました。`,
+    toastBookingSaveError:
+      '予約確定を保存できませんでした。Supabase接続を確認してください。',
+    toastBookingDeleteError:
+      '予約確定の解除に失敗しました。Supabase接続を確認してください。',
     top5Title: 'おすすめ2時間枠 TOP 5（連続空き会場）',
     top5Subtitle: '日程別ベスト枠（3名以上）',
     loadingVotes: '集計データを読み込み中...',
@@ -354,15 +360,15 @@ function formatHourSlot(hourValue) {
   return `${String(hourValue).padStart(2, '0')}:00`;
 }
 
-function loadSavedBookings() {
-  try {
-    const raw = window.localStorage.getItem(BOOKED_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
+function normalizeBookedRow(row) {
+  if (!row?.date_key) return null;
+  return {
+    dateKey: row.date_key,
+    startHour: Number(row.start_hour),
+    endHour: Number(row.end_hour),
+    venueId: row.venue_id || '',
+    venueName: row.venue_name || '',
+  };
 }
 
 function resolveBookingVenueLabel(booking, fallbackLabel) {
@@ -692,8 +698,8 @@ function BookedSessionFullRowCard({
 }
 
 /**
- * Renders the Okadai dinks pickleball availability scheduler where booked
- * session cards cycle strictly between going (`◯`) and unmarked.
+ * Renders the Okadai dinks pickleball availability scheduler with real-time
+ * Supabase persistence for confirmed session bookings.
  * @returns {JSX.Element}
  */
 export default function App() {
@@ -712,9 +718,7 @@ export default function App() {
   const [showVenueList, setShowVenueList] = useState(false);
   const [gridViewMode, setGridViewMode] = useState('vote');
   const [dayWindowByDate, setDayWindowByDate] = useState({});
-  const [bookedSessionsByDate, setBookedSessionsByDate] = useState(
-    loadSavedBookings
-  );
+  const [bookedSessionsByDate, setBookedSessionsByDate] = useState({});
   const [tableViewportWidth, setTableViewportWidth] = useState(0);
 
   const [voterName, setVoterName] = useState('');
@@ -723,6 +727,7 @@ export default function App() {
   const [editingVoteId, setEditingVoteId] = useState(null);
   const [viewingVote, setViewingVote] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingBooking, setIsSavingBooking] = useState(false);
 
   const [inspectSlot, setInspectSlot] = useState(null);
   const [showEditPickerModal, setShowEditPickerModal] = useState(false);
@@ -766,17 +771,6 @@ export default function App() {
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        BOOKED_STORAGE_KEY,
-        JSON.stringify(bookedSessionsByDate)
-      );
-    } catch {
-      // Ignore storage quota or private-mode errors.
-    }
-  }, [bookedSessionsByDate]);
-
   const triggerToast = useCallback((msg) => {
     setToastMessage(msg);
     setTimeout(() => {
@@ -814,6 +808,27 @@ export default function App() {
     }
     setLoadingVotes(false);
   }, [t.supabaseError]);
+
+  const fetchBookedSessions = useCallback(async () => {
+    const minDate = getJstDayMeta(0).dateKey;
+    const { data, error } = await supabase
+      .from('booked_sessions')
+      .select('date_key, start_hour, end_hour, venue_id, venue_name')
+      .gte('date_key', minDate)
+      .order('date_key', { ascending: true });
+
+    if (error) {
+      console.error('Supabase booked_sessions fetch error:', error);
+      return;
+    }
+
+    const nextMap = {};
+    for (const row of data || []) {
+      const normalized = normalizeBookedRow(row);
+      if (normalized) nextMap[normalized.dateKey] = normalized;
+    }
+    setBookedSessionsByDate(nextMap);
+  }, []);
 
   useEffect(() => {
     let isCancelled = false;
@@ -873,9 +888,10 @@ export default function App() {
     }
 
     fetchVotes();
+    fetchBookedSessions();
     fetchAvailability();
 
-    const channel = supabase
+    const votesChannel = supabase
       .channel('calendar-votes-realtime')
       .on(
         'postgres_changes',
@@ -884,11 +900,37 @@ export default function App() {
       )
       .subscribe();
 
+    const bookingsChannel = supabase
+      .channel('booked-sessions-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'booked_sessions' },
+        (payload) => {
+          if (isCancelled) return;
+          if (payload.eventType === 'DELETE' && payload.old?.date_key) {
+            setBookedSessionsByDate((prev) => {
+              const next = { ...prev };
+              delete next[payload.old.date_key];
+              return next;
+            });
+            return;
+          }
+          const normalized = normalizeBookedRow(payload.new);
+          if (!normalized) return;
+          setBookedSessionsByDate((prev) => ({
+            ...prev,
+            [normalized.dateKey]: normalized,
+          }));
+        }
+      )
+      .subscribe();
+
     return () => {
       isCancelled = true;
-      supabase.removeChannel(channel);
+      supabase.removeChannel(votesChannel);
+      supabase.removeChannel(bookingsChannel);
     };
-  }, [fetchVotes]);
+  }, [fetchVotes, fetchBookedSessions]);
 
   const { calendarWeeks, allOpenSlots, hasLiveAvailability } = useMemo(() => {
     const hasLive =
@@ -1349,29 +1391,53 @@ export default function App() {
     setShowShareModal(true);
   }, []);
 
-  const handleSaveBookedSessionRow = () => {
+  const handleSaveBookedSessionRow = async () => {
+    if (!bookingDate || isSavingBooking) return;
+
     const [rawStart, rawEnd] = bookingTime.split('-');
     const startHour = parseHourValue(rawStart || '17:00');
     const endHour = Math.max(startHour + 1, parseHourValue(rawEnd || '19:00'));
     const isOther = selectedBookingVenueId === OTHER_VENUE_OPTION;
+    const venueId = isOther ? '' : selectedBookingVenueId;
+    const venueName = isOther ? customBookingVenue.trim() : '';
 
-    setBookedSessionsByDate((prev) => ({
-      ...prev,
-      [bookingDate]: {
-        dateKey: bookingDate,
-        startHour,
-        endHour,
-        venueId: isOther ? '' : selectedBookingVenueId,
-        venueName: isOther ? customBookingVenue.trim() : '',
-      },
-    }));
+    setIsSavingBooking(true);
+    try {
+      const { error } = await supabase.from('booked_sessions').upsert(
+        {
+          date_key: bookingDate,
+          start_hour: startHour,
+          end_hour: endHour,
+          venue_id: venueId,
+          venue_name: venueName,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'date_key' }
+      );
+      if (error) throw error;
 
-    setShowBookingModal(false);
-    calendarSectionRef.current?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    });
-    triggerToast(t.toastMarkedBooked(bookingDate));
+      setBookedSessionsByDate((prev) => ({
+        ...prev,
+        [bookingDate]: {
+          dateKey: bookingDate,
+          startHour,
+          endHour,
+          venueId,
+          venueName,
+        },
+      }));
+      setShowBookingModal(false);
+      calendarSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+      triggerToast(t.toastMarkedBooked(bookingDate));
+    } catch (err) {
+      console.error('Supabase booking save error:', err);
+      triggerToast(t.toastBookingSaveError);
+    } finally {
+      setIsSavingBooking(false);
+    }
   };
 
   const openUnmarkBookingGuard = (targetBooking) => {
@@ -1379,20 +1445,31 @@ export default function App() {
     setBookingToUnmark(targetBooking);
   };
 
-  const handleConfirmClearBooking = useCallback(() => {
+  const handleConfirmClearBooking = useCallback(async () => {
     if (!bookingToUnmark || unmarkConfirmInput.trim() !== t.deleteKeyword) {
       return;
     }
 
     const { dateKey } = bookingToUnmark;
-    setBookedSessionsByDate((prev) => {
-      const next = { ...prev };
-      delete next[dateKey];
-      return next;
-    });
-    setBookingToUnmark(null);
-    setUnmarkConfirmInput('');
-    triggerToast(t.toastUnmarkedBooked(dateKey));
+    try {
+      const { error } = await supabase
+        .from('booked_sessions')
+        .delete()
+        .eq('date_key', dateKey);
+      if (error) throw error;
+
+      setBookedSessionsByDate((prev) => {
+        const next = { ...prev };
+        delete next[dateKey];
+        return next;
+      });
+      setBookingToUnmark(null);
+      setUnmarkConfirmInput('');
+      triggerToast(t.toastUnmarkedBooked(dateKey));
+    } catch (err) {
+      console.error('Supabase booking delete error:', err);
+      triggerToast(t.toastBookingDeleteError);
+    }
   }, [bookingToUnmark, unmarkConfirmInput, t, triggerToast]);
 
   const handleToggleBookingAvailability = useCallback(
@@ -1580,7 +1657,8 @@ export default function App() {
       setResponses(normalizeResponsesMap(vote.responses));
       setGridViewMode('vote');
       setShowEditPickerModal(false);
-      voterBarRef.current?.scrollIntoView({
+      // Scroll to the calendar grid rather than the name input when editing.
+      calendarSectionRef.current?.scrollIntoView({
         behavior: 'smooth',
         block: 'start',
       });
@@ -2598,7 +2676,7 @@ export default function App() {
           <div
             className={`px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold ${
               editingVoteId
-                ? 'bg-amber-200/80 text-amber-950'
+                ? 'bg-amber-400 text-slate-950'
                 : viewingVote
                   ? 'bg-sky-700 text-white'
                   : 'bg-[#264673] text-white'
@@ -2608,7 +2686,11 @@ export default function App() {
               {viewingVote ? (
                 <Eye className="w-3.5 h-3.5 text-lime-300 shrink-0" />
               ) : (
-                <Edit3 className="w-3.5 h-3.5 text-lime-300 shrink-0" />
+                <Edit3
+                  className={`w-3.5 h-3.5 shrink-0 ${
+                    editingVoteId ? 'text-slate-950' : 'text-lime-300'
+                  }`}
+                />
               )}
               <span>
                 {editingVoteId
@@ -2976,10 +3058,11 @@ export default function App() {
                 </button>
                 <button
                   type="button"
+                  disabled={isSavingBooking}
                   onClick={handleSaveBookedSessionRow}
-                  className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-lime-300 font-extrabold cursor-pointer whitespace-nowrap"
+                  className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-lime-300 font-extrabold cursor-pointer whitespace-nowrap"
                 >
-                  {t.saveBookedRowBtn}
+                  {isSavingBooking ? t.submittingBtn : t.saveBookedRowBtn}
                 </button>
               </div>
             </div>

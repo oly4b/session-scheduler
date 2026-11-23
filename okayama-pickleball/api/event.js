@@ -189,48 +189,71 @@ function buildIcsCalendar({
     .join('\r\n');
 }
 
-// Attempt Android Chrome handoff via intent:// while showing manual external-
-// browser instructions on iOS or webviews that block automatic jumps.
-function buildInAppHandoffScript(sharePageUrl) {
-  return `<script>
-(function() {
-  var ua = navigator.userAgent || '';
-  var isAndroid = /Android/i.test(ua);
-  var isIos = /iPhone|iPad|iPod/i.test(ua);
-  var isInApp = /LINE|FBAN|FBAV|Instagram|Twitter|MicroMessenger|KAKAOTALK|GSA|CriOS.*FB|wv/i.test(ua) ||
-    (isIos && !/Safari/i.test(ua));
+function buildExternalBrowserUrl(rawUrl) {
+  const url = new URL(rawUrl);
+  url.searchParams.set('ext', '1');
+  return url.toString();
+}
 
-  if (!isInApp) return;
+function buildAndroidIntentUrl(httpsUrl) {
+  const parsed = new URL(httpsUrl);
+  const scheme = parsed.protocol.replace(':', '') || 'https';
+  return (
+    `intent://${httpsUrl.replace(/^https?:\/\//i, '')}` +
+    `#Intent;scheme=${scheme};package=com.android.chrome;` +
+    `S.browser_fallback_url=${encodeURIComponent(httpsUrl)};end`
+  );
+}
 
-  var banner = document.getElementById('inapp-banner');
-  if (banner) banner.style.display = 'block';
+function renderBlankExternalGateHtml({ title, externalUrl, androidIntentUrl }) {
+  return `<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(title)}</title>
+  <style>
+    body { margin: 0; background: #fff; color: #0f172a; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: flex; min-height: 100vh; align-items: center; justify-content: center; padding: 24px; text-align: center; }
+    .gate { max-width: 320px; width: 100%; }
+    .open-btn { display: inline-block; padding: 12px 18px; border-radius: 12px; background: #1B365D; color: #bef264; font-weight: 800; text-decoration: none; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="gate">
+    <a id="ext-link" class="open-btn" href="${escapeHtml(externalUrl)}" target="_blank" rel="noopener noreferrer">🌐 外部ブラウザで開く</a>
+  </div>
+  <script>
+  (function() {
+    var ua = navigator.userAgent || '';
+    var isAndroid = /Android/i.test(ua);
+    var isIos = /iPhone|iPad|iPod/i.test(ua);
+    var isInApp =
+      /LINE|FBAN|FBAV|Instagram|Twitter|MicroMessenger|KAKAOTALK|GSA|CriOS.*FB|wv/i.test(
+        ua
+      ) || (isIos && !/Safari/i.test(ua));
 
-  var targetUrl = new URL(window.location.href);
-  targetUrl.searchParams.set('ext', '1');
-  var finalUrl = targetUrl.toString();
+    var extLink = document.getElementById('ext-link');
+    var externalUrl = ${JSON.stringify(externalUrl)};
+    var androidIntentUrl = ${JSON.stringify(androidIntentUrl)};
 
-  if (isAndroid && !/[?&]ext=1/.test(window.location.search)) {
-    var parsed = new URL(finalUrl);
-    var scheme = parsed.protocol.replace(':', '');
-    var intentUrl =
-      'intent://' +
-      parsed.host +
-      parsed.pathname +
-      parsed.search +
-      '#Intent;scheme=' +
-      scheme +
-      ';package=com.android.chrome;S.browser_fallback_url=' +
-      encodeURIComponent(finalUrl) +
-      ';end';
-    window.location.replace(intentUrl);
-  }
-})();
-</script>`;
+    if (isAndroid && isInApp && extLink) {
+      extLink.setAttribute('href', androidIntentUrl);
+      window.location.replace(androidIntentUrl);
+      return;
+    }
+
+    if (!isInApp) {
+      window.location.replace(externalUrl);
+    }
+  })();
+  </script>
+</body>
+</html>`;
 }
 
 /**
- * Serves `.ics` calendar invites and HTML event pages from query parameters,
- * resolving `fullName` and `mapUrl` automatically when `v` matches `venues.js`.
+ * Serves `.ics` calendar invites, a blank external-browser gate when `ext` is
+ * not `'1'`, and HTML event pages once opened externally (`ext=1`).
  *
  * @param {import('http').IncomingMessage & { query?: Record<string, string> }} req
  * @param {import('http').ServerResponse & { status: (code: number) => any }} res
@@ -248,6 +271,7 @@ export default function handler(req, res) {
     sport: rawSport = 'pickleball',
     title: rawTitle = '',
     ics = '',
+    ext = '',
   } = req.query || {};
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !start || !end) {
@@ -299,9 +323,9 @@ export default function handler(req, res) {
   const fallbackNote = venueRecord
     ? venueRecord.courtType === 'outdoor'
       ? sport === 'futsal' || sport === 'football'
-        ? '屋外コートのため適切なシューズ推奨'
-        : '屋外コートのためテニス・ハードコート用シューズ推奨'
-      : '体育館のため室内専用シューズ必須'
+        ? '👟 屋外コートのため適切なシューズ推奨'
+        : '👟 屋外コートのためテニス・ハードコート用シューズ推奨'
+      : '👟 体育館のため室内専用シューズ必須'
     : '';
 
   const note = String(rawNote || '').trim() || fallbackNote;
@@ -316,14 +340,14 @@ export default function handler(req, res) {
 
   const summary =
     String(rawTitle || '').trim() ||
-    `岡大dinks ${defaultSportLabel} (${venueName})`;
+    `🏓 岡大dinks ${defaultSportLabel} (${venueName})`;
 
   const descriptionLines = [
-    '岡大dinks セッション',
-    displayDate ? `日時: ${displayDate} ${startHour}:00–${endHour}:00` : '',
-    `会場: ${venueName}${address ? ` (${address})` : ''}`,
+    '🏓 岡大dinks セッション',
+    displayDate ? `⏰ 日時: ${displayDate} ${startHour}:00–${endHour}:00` : '',
+    `📍 会場: ${venueName}${address ? ` (${address})` : ''}`,
     note,
-    mapUrl ? `Googleマップ: ${mapUrl}` : '',
+    mapUrl ? `🗺️ Googleマップ: ${mapUrl}` : '',
   ].filter(Boolean);
   const descriptionText = descriptionLines.join('\n');
 
@@ -354,11 +378,28 @@ export default function handler(req, res) {
   }
 
   const originUrl = `https://${req.headers.host}`;
+  const currentFullUrl = `${originUrl}${req.url}`;
+
+  if (ext !== '1') {
+    const externalUrl = buildExternalBrowserUrl(currentFullUrl);
+    const androidIntentUrl = buildAndroidIntentUrl(externalUrl);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.status(200).send(
+      renderBlankExternalGateHtml({
+        title: summary,
+        externalUrl,
+        androidIntentUrl,
+      })
+    );
+    return;
+  }
+
   const ogImageUrl = `${originUrl}/og-image.png`;
   const pageDescription = descriptionLines.join(' · ');
 
-  const downloadUrl = new URL(req.url, originUrl);
+  const downloadUrl = new URL(currentFullUrl);
   downloadUrl.searchParams.set('ics', '1');
+  downloadUrl.searchParams.set('ext', '1');
 
   const googleCalUrl = new URL('https://calendar.google.com/calendar/render');
   googleCalUrl.searchParams.set('action', 'TEMPLATE');
@@ -382,7 +423,7 @@ export default function handler(req, res) {
   <meta property="og:title" content="${escapeHtml(summary)}" />
   <meta property="og:description" content="${escapeHtml(pageDescription)}" />
   <meta property="og:image" content="${escapeHtml(ogImageUrl)}" />
-  <meta property="og:url" content="${escapeHtml(`${originUrl}${req.url}`)}" />
+  <meta property="og:url" content="${escapeHtml(currentFullUrl)}" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:image" content="${escapeHtml(ogImageUrl)}" />
   <style>
@@ -393,7 +434,6 @@ export default function handler(req, res) {
     .hdr h1 { font-size: 18px; margin: 0; }
     .body { padding: 18px 20px; font-size: 14px; line-height: 1.6; }
     .row { margin-bottom: 10px; }
-    .notice { display: none; background: #fef3c7; color: #78350f; border: 1px solid #f59e0b; border-radius: 12px; padding: 10px 12px; font-size: 12px; font-weight: 700; margin-bottom: 12px; }
     .btn { display: block; text-align: center; text-decoration: none; font-weight: 800; padding: 12px 16px; border-radius: 12px; margin-top: 10px; }
     .btn-primary { background: #a3e635; color: #1B365D; }
     .btn-secondary { background: #1B365D; color: #fff; }
@@ -403,22 +443,18 @@ export default function handler(req, res) {
 <body>
   <div class="card">
     <div class="hdr">
-      <small>岡大dinks セッション案内</small>
-      <h1>${escapeHtml(displayDate)} ${startHour}:00–${endHour}:00</h1>
+      <small>🗓️ 岡大dinks セッション案内</small>
+      <h1>⏰ ${escapeHtml(displayDate)} ${startHour}:00–${endHour}:00</h1>
     </div>
     <div class="body">
-      <div id="inapp-banner" class="notice">
-        アプリ内ブラウザではカレンダー追加が制限される場合があります。右上の「…」や共有メニューから Safari / 外部ブラウザで開いてください。
-      </div>
-      <div class="row"><strong>会場:</strong> ${escapeHtml(venueName)}</div>
-      ${address ? `<div class="row"><strong>住所:</strong> ${escapeHtml(address)}</div>` : ''}
+      <div class="row"><strong>📍 会場:</strong> ${escapeHtml(venueName)}</div>
+      ${address ? `<div class="row"><strong>🏠 住所:</strong> ${escapeHtml(address)}</div>` : ''}
       ${note ? `<div class="row">${escapeHtml(note)}</div>` : ''}
-      <a class="btn btn-primary" href="${escapeHtml(downloadUrl.toString())}">Apple カレンダーに追加</a>
-      <a class="btn btn-secondary" href="${escapeHtml(googleCalUrl.toString())}" target="_blank" rel="noopener noreferrer">Google カレンダーに追加</a>
-      ${mapUrl ? `<a class="btn btn-outline" href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">Google マップで場所を開く</a>` : ''}
+      <a class="btn btn-primary" href="${escapeHtml(downloadUrl.toString())}">🗓️ Apple カレンダーに追加</a>
+      <a class="btn btn-secondary" href="${escapeHtml(googleCalUrl.toString())}" target="_blank" rel="noopener noreferrer">📅 Google カレンダーに追加</a>
+      ${mapUrl ? `<a class="btn btn-outline" href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">🗺️ Google マップで場所を開く</a>` : ''}
     </div>
   </div>
-  ${buildInAppHandoffScript(`${originUrl}${req.url}`)}
 </body>
 </html>`);
 }
