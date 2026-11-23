@@ -166,9 +166,7 @@ const COPY = {
     oneHourMaybeGroup: (count) => `△ Flexible (${count}):`,
     noGroup: (count) => `✕ Unavailable (${count}):`,
     noneLabel: 'None',
-    cycleSlotBtn: 'Cycle My Vote (◯/△/✕)',
     modalViewingNote: (name) => `Viewing ${name}'s response`,
-    modalTwoHourNote: 'Change 1-hour votes directly in the grid above',
     closeBtn: 'Close',
     pickVoterTitle: 'Select Response to Edit',
     pickVoterPrompt: 'Choose a member whose availability you want to update:',
@@ -310,9 +308,7 @@ const COPY = {
     oneHourMaybeGroup: (count) => `△ 調整可 (${count}名):`,
     noGroup: (count) => `✕ 不可 (${count}名):`,
     noneLabel: 'なし',
-    cycleSlotBtn: '自分の回答を切替 (◯/△/✕)',
     modalViewingNote: (name) => `閲覧モード中 (${name})`,
-    modalTwoHourNote: '※ 各1時間枠の回答は上のカレンダーから変更できます',
     closeBtn: '閉じる',
     pickVoterTitle: '編集する回答を選択',
     pickVoterPrompt: '日程を変更したいメンバーを選んでください：',
@@ -794,6 +790,12 @@ export default function App() {
     () => (viewingVote ? normalizeResponsesMap(viewingVote.responses) : null),
     [viewingVote]
   );
+
+  const latestBookedSession = useMemo(() => {
+    const entries = Object.values(bookedSessionsByDate);
+    if (!entries.length) return null;
+    return [...entries].sort((a, b) => b.dateKey.localeCompare(a.dateKey))[0];
+  }, [bookedSessionsByDate]);
 
   const fetchVotes = useCallback(async () => {
     const { data, error } = await supabase
@@ -1360,18 +1362,7 @@ export default function App() {
     setBookingCourtType(topPickDefaults.courtType);
   };
 
-  const handleOpenBookingModal = () => {
-    applyDefaultBookingIfNeeded();
-    setShowBookingModal(true);
-  };
-
-  const handleOpenShareModal = () => {
-    setCopiedShare(false);
-    applyDefaultBookingIfNeeded();
-    setShowShareModal(true);
-  };
-
-  const handleShareBookingCard = useCallback((booking) => {
+  const applyBookingToForm = useCallback((booking) => {
     const hasCustomVenue = Boolean(booking.venueName?.trim());
     const matchedVenue =
       !hasCustomVenue && booking.venueId
@@ -1379,7 +1370,6 @@ export default function App() {
         : null;
 
     setHasCustomizedBooking(true);
-    setCopiedShare(false);
     setBookingDate(booking.dateKey);
     setBookingTime(
       `${formatHourSlot(booking.startHour)}-${formatHourSlot(booking.endHour)}`
@@ -1390,8 +1380,39 @@ export default function App() {
     setCustomBookingVenue(hasCustomVenue ? booking.venueName.trim() : '');
     setCustomBookingMapUrl('');
     setBookingCourtType(matchedVenue?.courtType || 'indoor');
-    setShowShareModal(true);
   }, []);
+
+  const handleOpenBookingModal = () => {
+    applyDefaultBookingIfNeeded();
+    setShowBookingModal(true);
+  };
+
+  const handleOpenShareModal = () => {
+    setCopiedShare(false);
+
+    if (latestBookedSession) {
+      applyBookingToForm(latestBookedSession);
+    } else {
+      setHasCustomizedBooking(true);
+      setBookingDate(topPickDefaults.date);
+      setBookingTime(topPickDefaults.time);
+      setSelectedBookingVenueId(OTHER_VENUE_OPTION);
+      setCustomBookingVenue('');
+      setCustomBookingMapUrl('');
+      setBookingCourtType('indoor');
+    }
+
+    setShowShareModal(true);
+  };
+
+  const handleShareBookingCard = useCallback(
+    (booking) => {
+      setCopiedShare(false);
+      applyBookingToForm(booking);
+      setShowShareModal(true);
+    },
+    [applyBookingToForm]
+  );
 
   const handleSaveBookedSessionRow = async () => {
     if (!bookingDate || isSavingBooking) return;
@@ -1851,7 +1872,7 @@ export default function App() {
     bookingDate && bookedSessionsByDate[bookingDate]
   );
 
-  const renderBookingFormFields = () => (
+  const renderBookingFormFields = ({ showDuplicateWarning = false } = {}) => (
     <div className="space-y-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden">
       <div className="min-w-0 overflow-hidden">
         <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
@@ -1866,7 +1887,7 @@ export default function App() {
           }}
           className="block w-full max-w-full min-w-0 box-border px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs appearance-none"
         />
-        {hasBookingForSelectedDate && (
+        {showDuplicateWarning && hasBookingForSelectedDate && (
           <p className="mt-1 text-[11px] font-bold text-amber-800">
             {t.toastDuplicateDateBooking(bookingDate)}
           </p>
@@ -3063,7 +3084,7 @@ export default function App() {
             </div>
 
             <div className="p-4 space-y-3 max-h-[85vh] overflow-y-auto text-xs">
-              {renderBookingFormFields()}
+              {renderBookingFormFields({ showDuplicateWarning: true })}
 
               <div className="flex items-center justify-end gap-2 pt-1">
                 <button
@@ -3284,24 +3305,11 @@ export default function App() {
               ))}
 
               <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-200">
-                {!inspectSlot.isTwoHourBlock && !viewingVote ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleCycleSlot(inspectSlot.slotKey);
-                      setInspectSlot(null);
-                    }}
-                    className="px-3.5 py-2 rounded-xl bg-emerald-700 text-white font-extrabold hover:bg-emerald-600 cursor-pointer whitespace-nowrap"
-                  >
-                    {t.cycleSlotBtn}
-                  </button>
-                ) : (
-                  <span className="text-[11px] text-slate-500">
-                    {viewingVote
-                      ? t.modalViewingNote(viewingVote.name)
-                      : t.modalTwoHourNote}
-                  </span>
-                )}
+                <span className="text-[11px] text-slate-500">
+                  {viewingVote
+                    ? t.modalViewingNote(viewingVote.name)
+                    : null}
+                </span>
                 <button
                   type="button"
                   onClick={() => setInspectSlot(null)}
