@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   MapPin,
-  Users,
   Trash2,
   Share2,
   Check,
@@ -15,14 +14,17 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Eye,
-  Sparkles,
   Grid,
   RefreshCw,
   ExternalLink,
   Award,
   UserCheck,
   Languages,
+  CalendarCheck,
+  Clock,
+  ShieldAlert,
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { VENUES, VENUE_BY_ID } from './config/venues';
@@ -35,12 +37,11 @@ import {
   normalizeResponsesMap,
   rankRecommendedVenues,
 } from './utils/scheduler';
-import {
-  getTodayJstIsoDate,
-  buildConfirmedBookingInvite,
-} from './utils/confirmedInvite';
+import { getTodayJstIsoDate } from './utils/confirmedInvite';
 
 const AVAILABILITY_PAGE_SIZE = 1000;
+const OTHER_VENUE_OPTION = '__other__';
+const BOOKED_STORAGE_KEY = 'okadaidinks_booked_sessions_v1';
 
 const START_HOUR_OPTIONS = Array.from({ length: 10 }, (_, idx) => {
   const hour = String(idx + 12).padStart(2, '0');
@@ -59,13 +60,12 @@ const COPY = {
     appTitle: '岡大dinks Session Scheduler',
     venuesSummary: (total, okayama, kurashiki) =>
       `Venues (${total}): Okayama (${okayama}) · Kurashiki (${kurashiki})`,
-    shareToSns: 'Share to SNS',
+    shareToSns: 'Share',
     supabaseError:
       'Supabase connection error: please check your .env and table settings.',
     editingBanner: (name) => `Editing: ${name}`,
     viewingBanner: (name) => `View-Only: viewing ${name}'s response`,
-    defaultBanner: (count) =>
-      `Enter your name and tap available slots (1 entry applies across ${count} venues)`,
+    defaultBanner: () => 'Please enter your name after picking dates & slots',
     deleteBtn: 'Delete',
     cancelBtn: 'Cancel',
     editThisBtn: 'Edit Response',
@@ -79,29 +79,21 @@ const COPY = {
     submittingBtn: 'Saving...',
     updateVoteBtn: 'Update Vote',
     submitVoteBtn: (count) => `Submit Vote (${count} slots)`,
-    quickFillLabel: 'Quick-Fill:',
-    weekAllYes: 'Week All ◯',
-    weekAllMaybe: 'Week All △',
-    studentPrimeYes: '★ Student Prime ◯',
-    twoHourPriorityYes: '★ 2h Priority ◯',
-    clearBtn: 'Clear',
-    votedLabel: (count) => `Voted (${count} · tap to view):`,
+    weekFillAll: 'Free All Week ◯',
+    weekClearAll: 'Clear',
+    bookSessionBtn: 'Book Session',
+    bookModalTitle: 'Set Booked Session',
+    saveBookedRowBtn: 'Confirm',
+    viewPlayerPlaceholder: 'View response...',
     noVotesYet: 'No responses yet',
-    viewToggleTitle: 'Click to toggle view mode',
-    viewModeTitle: 'Click to view response (prevents accidental edits)',
-    editModeTitle: 'Click to edit response',
-    oneHourSubLabel: '1-Hour Schedule (12:00–22:00)',
-    prevWeek: 'Prev',
-    nextWeek: 'Next',
-    allAreas: 'All Areas',
-    okayamaArea: 'Okayama',
-    kurashikiArea: 'Kurashiki',
-    allVenuesOption: (count) => `Venues: All (${count})`,
+    oneHourSubLabel: 'Dates & Hours (12:00–22:00)',
     outdoorShort: 'Outdoor',
     indoorShort: 'Indoor',
-    studentPrimeFilter: '★ Prime',
     myVoteTab: (name) => (name ? `${name}'s Vote` : 'My Vote'),
     tallyTab: 'Group Tally',
+    dayAllFree: 'All-day',
+    dayAfternoonOnly: 'Afternoon',
+    dayEveningOnly: 'Evening',
     legendYes: 'Available',
     legendMaybe: 'Maybe',
     legendNo: 'Unavailable',
@@ -121,12 +113,26 @@ const COPY = {
     no2hTitle: 'Only 1 hour open — no continuous 2-hour slot at the same venue',
     viewingCellTitle: (name) => `${name}'s response (View-Only)`,
     detailsLabel: 'Details',
+    bookedBadge: 'Booked',
+    venueTbd: 'Venue TBD',
+    goingLabel: 'Going',
+    setAvailabilityBtn: 'Going',
+    unmarkBookingBtn: 'Unmark',
+    unmarkModalTitle: 'Remove booked session row?',
+    unmarkModalBody: (dateStr, venueLabel) =>
+      `Remove the confirmed booking card on ${dateStr} (${venueLabel}) and restore hourly slots?`,
+    confirmUnmarkBtn: 'Remove Booking',
+    deleteKeyword: 'DELETE',
+    deleteKeywordHint: (keyword) => `Type "${keyword}" to confirm deletion:`,
+    deleteKeywordPlaceholder: (keyword) => `Type ${keyword}`,
+    toastMarkedBooked: (dateStr) => `Replaced ${dateStr} row with booked card.`,
+    toastUnmarkedBooked: (dateStr) => `Restored hourly slots for ${dateStr}.`,
     top5Title: 'Top 5 Recommended 2h Blocks',
     top5Subtitle: 'Best per day (3+ votes)',
     loadingVotes: 'Loading tallies...',
     noRankedBlocksTitle: 'No continuous 2-hour slots with 3+ votes yet',
     noRankedBlocksDesc:
-      'Once 3+ players mark ◯ or △ across two consecutive hours, the top block per day appears here.',
+      'Once 3+ players mark ◯ or △ across two consecutive hours, best block appears.',
     firstChoice: (name) => ` ${name}`,
     moreVenues: (count) => `+${count} more`,
     sweetSpotBadge: '🎯 6–8 sweet spot',
@@ -139,8 +145,10 @@ const COPY = {
     noNotesYet: 'No notes yet',
     noNoteText: 'No note',
     directoryTitle: (count) => `Venues & Booking Links (${count})`,
+    showVenueList: 'Show Venue List',
+    hideVenueList: 'Hide Venue List',
     footwearNote:
-      'Gyms require indoor-only court shoes; outdoor hard courts recommend tennis/court shoes.',
+      'Gyms require indoor-only court shoes; outdoor hard courts recommend court shoes.',
     bookLink: 'Book',
     modalTopTitle: 'Recommended Venues & Voters',
     altSecondChoice: 'Same-day Alternative Option',
@@ -163,7 +171,11 @@ const COPY = {
     pickVoterPrompt: 'Choose a member whose availability you want to update:',
     answeredSlotsCount: (count) => `${count} slots`,
     editAction: 'Edit',
-    shareModalTitle: 'Share to SNS',
+    shareModalTitle: 'Confirmed Session Invite',
+    otherVenueOption: 'Other (custom venue)',
+    customVenueLabel: 'Venue Name',
+    customVenuePlaceholder: 'e.g. Municipal Gym / Pitch',
+    customMapLabel: 'Google Maps Link',
     sharePrompt: 'Copy & paste into the SNS group DM:',
     copiedBtn: 'Copied!',
     copyBtn: 'Copy Invite Text',
@@ -187,60 +199,51 @@ const COPY = {
     appTitle: '岡大dinks 合同セッション日程調整',
     venuesSummary: (total, okayama, kurashiki) =>
       `対象施設 (${total}会場): 岡山市 (${okayama}施設) ・ 倉敷市 (${kurashiki}施設)`,
-    shareToSns: 'Share to SNS',
+    shareToSns: '共有',
     supabaseError: 'Supabase接続エラー: .envとテーブル設定を確認してください。',
-    editingBanner: (name) => `編集中 (Editing): ${name}`,
-    viewingBanner: (name) => `閲覧モード (View-Only): ${name} さんの回答を確認中`,
-    defaultBanner: (count) =>
-      `名前を入力して参加できる時間帯をタップ (1回の入力で${count}会場に反映)`,
+    editingBanner: (name) => `編集中: ${name}`,
+    viewingBanner: (name) => `閲覧モード: ${name} さんの回答を確認中`,
+    defaultBanner: () => '日程を選んだあとに名前を入力して送信してください',
     deleteBtn: '削除',
     cancelBtn: 'キャンセル',
     editThisBtn: 'この回答を編集する',
     exitViewBtn: '閲覧終了',
-    nameLabel: '名前 / Name',
-    namePlaceholder: '例: Kenji / Sarah',
-    nameTitle: '空白のみの入力はできません / Name cannot be blank or spaces only',
-    noteLabel: 'メモ / Note (希望エリア・屋内/屋外・パドル貸出など)',
-    notePlaceholder: '例: 岡山市内希望 / どこでもOK / パドル借りたいです',
-    editExistingBtn: '既存の回答を編集',
+    nameLabel: '名前',
+    namePlaceholder: '例: Kenji / 太郎',
+    nameTitle: '空白のみの入力はできません',
+    noteLabel: 'メモ',
+    notePlaceholder: '例: パドル借りたいです / どこでもOK ',
+    editExistingBtn: '回答を編集',
     submittingBtn: '送信中...',
     updateVoteBtn: '回答を更新する',
     submitVoteBtn: (count) => `回答を登録 (${count}枠)`,
-    quickFillLabel: '一括入力 (Quick-Fill):',
-    weekAllYes: '今週すべて ◯',
-    weekAllMaybe: '今週すべて △',
-    studentPrimeYes: '★ 学生向け枠のみ ◯',
-    twoHourPriorityYes: '★ 2h連続のみ ◯',
-    clearBtn: 'クリア',
-    votedLabel: (count) => `回答済 (${count}名・クリックで閲覧):`,
+    weekFillAll: '今週すべて ◯',
+    weekClearAll: 'クリア',
+    bookSessionBtn: '予約確定を登録',
+    bookModalTitle: '予約確定カードを設定',
+    saveBookedRowBtn: '確定',
+    viewPlayerPlaceholder: '回答を閲覧...',
     noVotesYet: 'まだ回答はありません',
-    viewToggleTitle: 'クリックして閲覧モードを閉じる',
-    viewModeTitle: 'クリックして回答を閲覧（誤変更防止）',
-    editModeTitle: '編集中の回答',
-    oneHourSubLabel: '1時間枠スケジュール (12:00–22:00)',
-    prevWeek: '前週',
-    nextWeek: '次週',
-    allAreas: '全エリア',
-    okayamaArea: '岡山市',
-    kurashikiArea: '倉敷市',
-    allVenuesOption: (count) => `会場: すべて (${count}施設)`,
+    oneHourSubLabel: '日程・時間帯を選択 (12:00–22:00)',
     outdoorShort: '屋外',
     indoorShort: '屋内',
-    studentPrimeFilter: '★ 学生枠',
     myVoteTab: (name) => (name ? `${name}の回答` : '自分の回答'),
     tallyTab: 'みんなの集計',
+    dayAllFree: '終日',
+    dayAfternoonOnly: '昼のみ',
+    dayEveningOnly: '夜のみ',
     legendYes: '参加OK',
     legendMaybe: '調整可',
     legendNo: '不可',
     legendFull: '満員',
     legendFullDesc: '全会場予約済',
     legendNo2h: '2h不可',
-    legendNo2hDesc: '1hのみ空き (2h連続なし)',
+    legendNo2hDesc: '1hのみ空き（2h連続なし）',
     legendClosed: '空きなし',
     legendClosedDesc: '営業時間外・休場',
     legendRec2h: 'おすすめ2時間枠',
     legendPrime: '学生向け時間帯 (18:00~)',
-    legendHint: '※ 「詳細」または「◯/△」タップでおすすめ予約候補TOP3と投票メンバーを表示',
+    legendHint: '※ 「詳細」または「◯/△」タップでおすすめ予約候補と投票メンバーを表示',
     dateColHeader: '日付 / 曜日',
     allBookedDay: '空きなし',
     bookedTitle: '対象施設はすべて予約済み（満員）です',
@@ -248,24 +251,41 @@ const COPY = {
     no2hTitle: '1時間枠は空きがありますが、同一会場で2時間連続になる枠がありません',
     viewingCellTitle: (name) => `${name} の回答（閲覧モード）`,
     detailsLabel: '詳細',
-    top5Title: 'おすすめ2時間枠 TOP 5 (連続空き会場)',
-    top5Subtitle: '日程別ベスト枠 (3名以上)',
+    bookedBadge: '予約確定',
+    venueTbd: '会場未定',
+    goingLabel: '参加予定',
+    setAvailabilityBtn: '参加',
+    unmarkBookingBtn: '解除',
+    unmarkModalTitle: '予約確定カードを解除しますか？',
+    unmarkModalBody: (dateStr, venueLabel) =>
+      `${dateStr}（${venueLabel}）の予約確定カードを解除して時間枠表示に戻します。`,
+    confirmUnmarkBtn: '解除する',
+    deleteKeyword: '削除',
+    deleteKeywordHint: (keyword) =>
+      `削除を実行するには「${keyword}」と入力してください：`,
+    deleteKeywordPlaceholder: (keyword) => `「${keyword}」を入力`,
+    toastMarkedBooked: (dateStr) => `${dateStr} の行を予約確定カードに切り替えました。`,
+    toastUnmarkedBooked: (dateStr) => `${dateStr} の時間枠表示に戻しました。`,
+    top5Title: 'おすすめ2時間枠 TOP 5（連続空き会場）',
+    top5Subtitle: '日程別ベスト枠（3名以上）',
     loadingVotes: '集計データを読み込み中...',
     noRankedBlocksTitle: '3名以上の投票がある2時間連続枠はまだありません',
     noRankedBlocksDesc:
-      '上のカレンダーで連続する2時間枠（◯/△）に3名以上集まると、日程ごとのベスト枠が自動ランキングされます！',
+      '連続2時間枠（◯/△）に3名以上集まると、日程別ベスト枠が自動表示されます。',
     firstChoice: (name) => ` ${name}`,
     moreVenues: (count) => `+他${count}会場`,
     sweetSpotBadge: '🎯 6–8名ベスト人数',
-    doubleCourtBadge: '🔥 9名以上 (2面推奨)',
+    doubleCourtBadge: '🔥 9+ (2面推奨)',
     altBlockBadge: '+別時間帯候補あり',
     twoHourYesPill: (count) => `2h◯ ${count}`,
     flexPill: (count) => `△/1h ${count}`,
-    notesTitle: '参加メンバーのコメント (Notes)',
+    notesTitle: '参加メンバーのコメント',
     playerCountSuffix: (count) => `${count}名`,
     noNotesYet: 'コメントはまだありません',
     noNoteText: 'コメントなし',
     directoryTitle: (count) => `対象施設・予約ページ一覧 (${count}会場)`,
+    showVenueList: '施設一覧を表示',
+    hideVenueList: '施設一覧を閉じる',
     footwearNote:
       '体育館は室内専用シューズ必須・屋外ハードコートはテニス/コートシューズ推奨です。',
     bookLink: '予約',
@@ -273,7 +293,7 @@ const COPY = {
     altSecondChoice: '同日の第2候補',
     seeDetailsBtn: '詳細を見る',
     recTopHeading: (count) => `おすすめ予約候補 TOP ${count}`,
-    openCountLabel: (count) => `全${count}施設空き`,
+    openCountLabel: (count) => `${count}施設空き`,
     outdoorLights: '屋外・照明',
     distanceFromOkayama: (km) => `岡山駅から約${km}km`,
     twoHourYesGroup: (count) => `◯ 2時間とも参加OK (${count}名):`,
@@ -286,25 +306,29 @@ const COPY = {
     modalViewingNote: (name) => `閲覧モード中 (${name})`,
     modalTwoHourNote: '※ 各1時間枠の回答は上のカレンダーから変更できます',
     closeBtn: '閉じる',
-    pickVoterTitle: '編集する回答を選択 (Select Player)',
+    pickVoterTitle: '編集する回答を選択',
     pickVoterPrompt: '日程を変更したいメンバーを選んでください：',
     answeredSlotsCount: (count) => `${count}枠回答済`,
     editAction: '編集',
-    shareModalTitle: 'SNS共有テキスト',
+    shareModalTitle: '予約確定案内',
+    otherVenueOption: 'その他（手動入力）',
+    customVenueLabel: '会場名',
+    customVenuePlaceholder: '例: 岡山市立〇〇体育館',
+    customMapLabel: 'Googleマップ リンク',
     sharePrompt: 'コピーしてSNSグループDMに貼り付けてください：',
     copiedBtn: 'コピーしました！',
     copyBtn: '案内文をコピー',
     deleteModalTitle: '回答を削除しますか？',
     deleteModalBody: (name) => `${name} さんの投票データを削除します。`,
     confirmDeleteBtn: '削除する',
-    toastEnterName: 'Please enter your name / 名前を入力してください',
-    toastSelectSlot: 'Tap at least one open calendar slot (◯ / △ / ✕) first!',
-    toastUpdatedVote: (name) => `Updated ${name}'s calendar vote!`,
-    toastSubmittedVote: (name) => `Submitted ${name}'s vote!`,
-    toastSaveError: 'Could not save vote. Check Supabase connection.',
-    toastDeletedVote: (name) => `Removed ${name}'s response.`,
-    toastDeleteError: 'Error removing response.',
-    toastCopiedShare: 'Copied SNS invite summary!',
+    toastEnterName: '名前を入力してください',
+    toastSelectSlot: '先に空き時間帯（◯ / △ / ✕）を1つ以上タップしてください！',
+    toastUpdatedVote: (name) => `${name} さんの回答を更新しました！`,
+    toastSubmittedVote: (name) => `${name} さんの回答を登録しました！`,
+    toastSaveError: '保存できませんでした。Supabase接続を確認してください。',
+    toastDeletedVote: (name) => `${name} さんの回答を削除しました。`,
+    toastDeleteError: '削除中にエラーが発生しました。',
+    toastCopiedShare: '案内文をコピーしました！',
     toastSelectManual: 'テキストを選択しました — コピーしてください (Ctrl/Cmd+C)',
   },
 };
@@ -328,6 +352,140 @@ function parseHourValue(timeSlot) {
 
 function formatHourSlot(hourValue) {
   return `${String(hourValue).padStart(2, '0')}:00`;
+}
+
+function loadSavedBookings() {
+  try {
+    const raw = window.localStorage.getItem(BOOKED_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function resolveBookingVenueLabel(booking, fallbackLabel) {
+  if (booking.venueName?.trim()) return booking.venueName.trim();
+  const record = booking.venueId ? VENUE_BY_ID.get(booking.venueId) : null;
+  return record?.fullName || record?.shortName || fallbackLabel;
+}
+
+function buildShortEventUrl({
+  origin,
+  dateIso,
+  startHour,
+  endHour,
+  venueId = '',
+  venueName = '',
+  mapUrl = '',
+}) {
+  const url = new URL('/api/event', origin);
+  url.searchParams.set('date', dateIso);
+  url.searchParams.set('start', String(startHour));
+  url.searchParams.set('end', String(endHour));
+
+  if (venueId && VENUE_BY_ID.has(venueId)) {
+    url.searchParams.set('v', venueId);
+    return url.toString();
+  }
+
+  if (venueName) url.searchParams.set('venue', venueName);
+  if (mapUrl) url.searchParams.set('map', mapUrl);
+  return url.toString();
+}
+
+function formatConfirmedSessionInvite({
+  origin,
+  dateIso,
+  timeRangeText,
+  venueId,
+  customVenueName,
+  customMapUrl,
+  courtType,
+  format,
+}) {
+  const isOther = venueId === OTHER_VENUE_OPTION;
+  const matchedVenue = isOther ? null : VENUE_BY_ID.get(venueId) || null;
+  const displayVenue = isOther
+    ? customVenueName.trim() || '未定'
+    : matchedVenue?.fullName || '未定';
+  const effectiveCourtType = isOther
+    ? courtType
+    : matchedVenue?.courtType || courtType;
+
+  const [rawStart, rawEnd] = timeRangeText.split('-');
+  const startHour = parseHourValue(rawStart || '18:00');
+  const endHour = parseHourValue(rawEnd || '20:00');
+  const formattedTime =
+    `${formatHourSlot(startHour)}–${formatHourSlot(endHour)}`;
+
+  const dayMeta = getJstDayMeta(0);
+  const targetOffset = Math.round(
+    (new Date(`${dateIso}T00:00:00+09:00`).getTime() -
+      new Date(`${dayMeta.dateKey}T00:00:00+09:00`).getTime()) /
+      86_400_000
+  );
+  const targetDay =
+    Number.isFinite(targetOffset) && targetOffset >= 0 && targetOffset < 28
+      ? getJstDayMeta(targetOffset)
+      : null;
+
+  const jpDateText = targetDay
+    ? `${targetDay.jpDate}(${targetDay.dow})`
+    : dateIso;
+  const enDateText = targetDay
+    ? `${targetDay.dow}, ${targetDay.shortDate}`
+    : dateIso;
+
+  const eventUrl = buildShortEventUrl({
+    origin,
+    dateIso,
+    startHour,
+    endHour,
+    venueId: isOther ? '' : matchedVenue?.id || '',
+    venueName: isOther ? customVenueName.trim() : '',
+    mapUrl: isOther ? customMapUrl.trim() : '',
+  });
+
+  const isOutdoor = effectiveCourtType === 'outdoor';
+  const shoesJa = isOutdoor
+    ? '屋外コートのためテニス・ハードコート用シューズ推奨'
+    : '室内専用シューズ必須';
+  const shoesEn = isOutdoor
+    ? 'Outdoor court — tennis/court shoes recommended'
+    : 'Indoor shoes required';
+
+  if (format === 'en') {
+    return [
+      '🗓️ 岡大dinks | Session Confirmed',
+      `⏰ Date & Time: ${enDateText} · ${formattedTime}`,
+      `📍 Venue: ${displayVenue}`,
+      `👟 Shoes: ${shoesEn}`,
+      '📅 Calendar & Map:',
+      eventUrl,
+    ].join('\n');
+  }
+
+  if (format === 'ja') {
+    return [
+      '🗓️ 岡大dinks | 次回セッション確定案内',
+      `⏰ 日時: ${jpDateText} ${formattedTime}`,
+      `📍 会場: ${displayVenue}`,
+      `👟 シューズ: ${shoesJa}`,
+      '📅 カレンダー・地図:',
+      eventUrl,
+    ].join('\n');
+  }
+
+  return [
+    '🗓️ 岡大dinks | 次回セッション確定案内 (Session Confirmed)',
+    `⏰ 日時 / Time: ${jpDateText} ${formattedTime}`,
+    `📍 会場 / Venue: ${displayVenue}`,
+    `👟 シューズ / Shoes: ${shoesJa} (${shoesEn})`,
+    '📅 カレンダー・地図 / Calendar & Map:',
+    eventUrl,
+  ].join('\n');
 }
 
 function PickleballIcon({ className = 'w-7 h-7' }) {
@@ -359,12 +517,189 @@ function PickleballIcon({ className = 'w-7 h-7' }) {
 }
 
 /**
- * Renders the session availability matrix, voting bar, rankings, and SNS share modal.
+ * Renders a full-row booking card that cycles between going (`◯`) and
+ * unmarked while keeping a sticky inner bar anchored to the scroll viewport.
+ *
+ * @param {{
+ *   day: object,
+ *   booking: {
+ *     dateKey: string,
+ *     startHour: number,
+ *     endHour: number,
+ *     venueId?: string,
+ *     venueName?: string,
+ *   },
+ *   votes: Array<object>,
+ *   activeMap: Record<string, string>,
+ *   viewingVote: object | null,
+ *   viewportWidth: number,
+ *   isJa: boolean,
+ *   t: Record<string, any>,
+ *   onToggleBookingAvailability: (slotKeys: string[]) => void,
+ *   onShareBooking: (booking: object) => void,
+ *   onRequestClearBooking: (booking: object) => void,
+ * }} props
+ * @returns {JSX.Element}
+ */
+function BookedSessionFullRowCard({
+  day,
+  booking,
+  votes,
+  activeMap,
+  viewingVote,
+  viewportWidth,
+  isJa,
+  t,
+  onToggleBookingAvailability,
+  onShareBooking,
+  onRequestClearBooking,
+}) {
+  const venueLabel = resolveBookingVenueLabel(booking, t.venueTbd);
+  const sessionSlotKeys = TIME_BLOCKS.filter(
+    (block) =>
+      block.startHour >= booking.startHour &&
+      block.startHour + 1 <= booking.endHour
+  ).map((block) => `${day.dateKey}_${block.id}`);
+
+  const isGoing = sessionSlotKeys.some((key) => activeMap[key] === 'yes');
+
+  const goingVoters = votes.filter((vote) =>
+    sessionSlotKeys.every(
+      (key) => getMergedVoterChoice(vote.responses, key) === 'yes'
+    )
+  );
+  const maybeVoters = votes.filter((vote) =>
+    sessionSlotKeys.some(
+      (key) => getMergedVoterChoice(vote.responses, key) === 'maybe'
+    )
+  );
+
+  const timeRangeLabel =
+    `${formatHourSlot(booking.startHour)}–${formatHourSlot(booking.endHour)}`;
+
+  const badge = isGoing
+    ? { symbol: '◯', cls: 'bg-emerald-600 text-white' }
+    : {
+        symbol: '◯',
+        cls:
+          'bg-white text-[#1B365D] border border-dashed border-[#1B365D]/40',
+      };
+
+  const innerBarWidthPx =
+    viewportWidth > 0 ? Math.max(240, viewportWidth - 16) : null;
+
+  return (
+    <tr className="h-[96px] bg-emerald-50/85">
+      <td
+        colSpan={TIME_BLOCKS.length + 1}
+        className="h-[96px] p-1.5 sm:p-2 align-middle text-left"
+      >
+        <div
+          style={innerBarWidthPx ? { width: `${innerBarWidthPx}px` } : undefined}
+          className={`sticky left-2 max-w-full h-full rounded-xl border-2 px-2.5 sm:px-3.5 py-1.5 shadow-2xs flex items-center justify-between gap-2 overflow-hidden transition ${
+            isGoing
+              ? 'bg-emerald-50/60 border-emerald-500'
+              : 'bg-white border-emerald-400'
+          }`}
+        >
+          <div className="min-w-0 flex-1 space-y-1 text-left">
+            <div className="flex items-center gap-1.5 overflow-hidden">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-700 text-lime-300 text-[10px] font-extrabold shrink-0 whitespace-nowrap">
+                <CalendarCheck className="w-3 h-3 shrink-0" />
+                <span>{t.bookedBadge}</span>
+              </span>
+              <span
+                translate={isJa ? undefined : 'no'}
+                className="text-xs sm:text-sm font-extrabold text-slate-900 shrink-0 whitespace-nowrap"
+              >
+                {day.jpDate}({day.dow})
+              </span>
+              <span
+                translate="no"
+                className="inline-flex items-center gap-1 text-xs sm:text-sm font-extrabold text-[#1B365D] shrink-0 whitespace-nowrap"
+              >
+                <Clock className="w-3 h-3 text-emerald-700 shrink-0 hidden sm:inline" />
+                <span>{timeRangeLabel}</span>
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px] sm:text-xs text-slate-700 overflow-hidden">
+              <span className="inline-flex items-center gap-1 font-extrabold text-emerald-900 min-w-0 truncate">
+                <MapPin className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                <span className="truncate">{venueLabel}</span>
+              </span>
+              <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-bold text-slate-600 shrink-0 whitespace-nowrap">
+                <Check className="w-3 h-3 text-emerald-700 shrink-0" />
+                <span>
+                  {t.goingLabel}: ◯{goingVoters.length}
+                  {maybeVoters.length > 0 ? ` / △${maybeVoters.length}` : ''}
+                </span>
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => onShareBooking(booking)}
+              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-xl bg-lime-400 hover:bg-lime-300 text-[#1B365D] text-[10px] sm:text-[11px] font-extrabold border border-lime-500 cursor-pointer whitespace-nowrap"
+            >
+              <Share2 className="w-3 h-3 shrink-0" />
+            </button>
+
+            <button
+              type="button"
+              disabled={Boolean(viewingVote)}
+              onClick={() => onToggleBookingAvailability(sessionSlotKeys)}
+              className={`inline-flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-extrabold border transition whitespace-nowrap ${
+                viewingVote
+                  ? 'opacity-60 cursor-default bg-slate-100 border-slate-300 text-slate-500'
+                  : isGoing
+                    ? 'bg-emerald-100 hover:bg-emerald-200 border-emerald-400 text-emerald-950 cursor-pointer'
+                    : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-900 cursor-pointer'
+              }`}
+            >
+              <span>{t.setAvailabilityBtn}</span>
+              <span
+                translate="no"
+                className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full text-xs font-extrabold inline-flex items-center justify-center shrink-0 ${badge.cls}`}
+              >
+                {badge.symbol}
+              </span>
+            </button>
+
+            {!viewingVote && (
+              <button
+                type="button"
+                onClick={() =>
+                  onRequestClearBooking({
+                    dateKey: day.dateKey,
+                    label: `${day.jpDate}(${day.dow})`,
+                    venueLabel,
+                  })
+                }
+                aria-label={t.unmarkBookingBtn}
+                className="ml-0.5 px-2 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 text-[10px] sm:text-[11px] font-bold border border-slate-300 cursor-pointer whitespace-nowrap"
+              >
+                {t.unmarkBookingBtn}
+              </button>
+            )}
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+/**
+ * Renders the Okadai dinks pickleball availability scheduler where booked
+ * session cards cycle strictly between going (`◯`) and unmarked.
  * @returns {JSX.Element}
  */
 export default function App() {
   const [lang, setLang] = useState('ja');
   const t = COPY[lang] || COPY.ja;
+  const isJa = lang === 'ja';
 
   const [loadingVotes, setLoadingVotes] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -374,10 +709,13 @@ export default function App() {
   const [lastSyncedAt, setLastSyncedAt] = useState({ yoyacool: '', spacepad: '' });
 
   const [activeWeekIdx, setActiveWeekIdx] = useState(0);
-  const [areaFilter, setAreaFilter] = useState('all');
-  const [venueFilter, setVenueFilter] = useState('all');
+  const [showVenueList, setShowVenueList] = useState(false);
   const [gridViewMode, setGridViewMode] = useState('vote');
-  const [highlightPrimeOnly, setHighlightPrimeOnly] = useState(false);
+  const [dayWindowByDate, setDayWindowByDate] = useState({});
+  const [bookedSessionsByDate, setBookedSessionsByDate] = useState(
+    loadSavedBookings
+  );
+  const [tableViewportWidth, setTableViewportWidth] = useState(0);
 
   const [voterName, setVoterName] = useState('');
   const [voterNote, setVoterNote] = useState('');
@@ -388,25 +726,56 @@ export default function App() {
 
   const [inspectSlot, setInspectSlot] = useState(null);
   const [showEditPickerModal, setShowEditPickerModal] = useState(false);
+  const [showBookingModal, setShowBookingModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
-  const [shareTab, setShareTab] = useState('poll');
+
   const [bookingDate, setBookingDate] = useState(() => getTodayJstIsoDate());
-  const [bookingTime, setBookingTime] = useState('18:00-20:00');
-  const [bookingVenue, setBookingVenue] = useState('');
-  const [bookingMapUrl, setBookingMapUrl] = useState('');
+  const [bookingTime, setBookingTime] = useState('17:00-19:00');
+  const [selectedBookingVenueId, setSelectedBookingVenueId] = useState('');
+  const [customBookingVenue, setCustomBookingVenue] = useState('');
+  const [customBookingMapUrl, setCustomBookingMapUrl] = useState('');
   const [bookingCourtType, setBookingCourtType] = useState('indoor');
   const [bookingFormat, setBookingFormat] = useState('bilingual');
+  const [hasCustomizedBooking, setHasCustomizedBooking] = useState(false);
 
+  const [bookingToUnmark, setBookingToUnmark] = useState(null);
+  const [unmarkConfirmInput, setUnmarkConfirmInput] = useState('');
   const [voteToDelete, setVoteToDelete] = useState(null);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
   const [toastMessage, setToastMessage] = useState('');
   const [copiedShare, setCopiedShare] = useState(false);
 
+  const calendarSectionRef = useRef(null);
+  const tableScrollRef = useRef(null);
   const voterBarRef = useRef(null);
   const textareaRef = useRef(null);
 
   useEffect(() => {
     document.documentElement.lang = lang;
   }, [lang]);
+
+  useEffect(() => {
+    const el = tableScrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+
+    const updateWidth = () => setTableViewportWidth(el.clientWidth);
+    updateWidth();
+
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        BOOKED_STORAGE_KEY,
+        JSON.stringify(bookedSessionsByDate)
+      );
+    } catch {
+      // Ignore storage quota or private-mode errors.
+    }
+  }, [bookedSessionsByDate]);
 
   const triggerToast = useCallback((msg) => {
     setToastMessage(msg);
@@ -415,26 +784,15 @@ export default function App() {
     }, 3200);
   }, []);
 
-  const { okayamaCount, kurashikiCount, visibleVenues } = useMemo(() => {
+  const { okayamaCount, kurashikiCount } = useMemo(() => {
     let okayama = 0;
     let kurashiki = 0;
-    const filtered = [];
-
     for (const venue of VENUES) {
       if (venue.area === 'okayama') okayama += 1;
       else if (venue.area === 'kurashiki') kurashiki += 1;
-
-      if (areaFilter === 'all' || venue.area === areaFilter) {
-        filtered.push(venue);
-      }
     }
-
-    return {
-      okayamaCount: okayama,
-      kurashikiCount: kurashiki,
-      visibleVenues: filtered,
-    };
-  }, [areaFilter]);
+    return { okayamaCount: okayama, kurashikiCount: kurashiki };
+  }, []);
 
   const viewingResponsesMap = useMemo(
     () => (viewingVote ? normalizeResponsesMap(viewingVote.responses) : null),
@@ -470,7 +828,9 @@ export default function App() {
       for (let from = 0; ; from += AVAILABILITY_PAGE_SIZE) {
         const { data, error } = await supabase
           .from('court_availability')
-          .select('slot_key, slot_date, time_range, court_detail, status, updated_at')
+          .select(
+            'slot_key, slot_date, time_range, court_detail, status, updated_at'
+          )
           .gte('slot_date', minDate)
           .order('slot_key', { ascending: true })
           .range(from, from + AVAILABILITY_PAGE_SIZE - 1);
@@ -530,29 +890,6 @@ export default function App() {
     };
   }, [fetchVotes]);
 
-  const matchesFilter = useCallback(
-    (openVenueIds) => {
-      if (venueFilter !== 'all') return openVenueIds.has(venueFilter);
-      if (areaFilter !== 'all') {
-        for (const id of openVenueIds) {
-          if (VENUE_BY_ID.get(id)?.area === areaFilter) return true;
-        }
-        return false;
-      }
-      return openVenueIds.size > 0;
-    },
-    [areaFilter, venueFilter]
-  );
-
-  const filterVenueList = useCallback(
-    (venues) => {
-      if (venueFilter !== 'all') return venues.filter((v) => v.id === venueFilter);
-      if (areaFilter !== 'all') return venues.filter((v) => v.area === areaFilter);
-      return venues;
-    },
-    [areaFilter, venueFilter]
-  );
-
   const { calendarWeeks, allOpenSlots, hasLiveAvailability } = useMemo(() => {
     const hasLive =
       Object.keys(openVenuesBySlot).length > 0 ||
@@ -575,10 +912,10 @@ export default function App() {
         const bookedIds = bookedVenuesBySlot[key];
 
         const filteredOpenVenues = openIds
-          ? filterVenueList(VENUES.filter((v) => openIds.has(v.id)))
+          ? VENUES.filter((v) => openIds.has(v.id))
           : [];
         const filteredBookedVenues = bookedIds
-          ? filterVenueList(VENUES.filter((v) => bookedIds.has(v.id)))
+          ? VENUES.filter((v) => bookedIds.has(v.id))
           : [];
 
         const isOpen = filteredOpenVenues.length > 0;
@@ -601,8 +938,12 @@ export default function App() {
       const slice = days.slice(start, start + 7);
       return {
         id: `week${idx + 1}`,
-        shortTitle: `Week ${idx + 1}: ${slice[0].shortDate}–${slice[6].shortDate}`,
-        rangeLabel: `${slice[0].year}年 ${slice[0].jpDate}(${slice[0].dow}) 〜 ${slice[6].jpDate}(${slice[6].dow})`,
+        shortTitle: isJa
+          ? `第${idx + 1}週: ${slice[0].shortDate}–${slice[6].shortDate}`
+          : `Week ${idx + 1}: ${slice[0].shortDate}–${slice[6].shortDate}`,
+        rangeLabel:
+          `${slice[0].year}年 ${slice[0].jpDate}(${slice[0].dow}) 〜 ` +
+          `${slice[6].jpDate}(${slice[6].dow})`,
         days: slice,
       };
     });
@@ -610,9 +951,14 @@ export default function App() {
     const openSlots = [];
     weeks.forEach((week, weekIndex) => {
       for (const day of week.days) {
+        const bookedEntry = bookedSessionsByDate[day.dateKey];
         for (const block of TIME_BLOCKS) {
           const cell = day.slots[block.id];
-          if (!cell?.isOpen) continue;
+          const inBookedWindow =
+            bookedEntry &&
+            block.startHour >= bookedEntry.startHour &&
+            block.startHour + 1 <= bookedEntry.endHour;
+          if (!cell?.isOpen && !inBookedWindow) continue;
 
           openSlots.push({
             slotKey: `${day.dateKey}_${block.id}`,
@@ -625,10 +971,10 @@ export default function App() {
             blockId: block.id,
             startHour: block.startHour,
             timeLabel: block.label,
-            openVenues: cell.openVenues,
-            openVenueIds: cell.openVenueIds,
-            venueSummary: cell.summaryText,
-            studentPrime: cell.studentPrime,
+            openVenues: cell?.openVenues || [],
+            openVenueIds: cell?.openVenueIds || new Set(),
+            venueSummary: cell?.summaryText || '',
+            studentPrime: Boolean(cell?.studentPrime),
           });
         }
       }
@@ -639,7 +985,7 @@ export default function App() {
       allOpenSlots: openSlots,
       hasLiveAvailability: hasLive,
     };
-  }, [openVenuesBySlot, bookedVenuesBySlot, filterVenueList]);
+  }, [openVenuesBySlot, bookedVenuesBySlot, bookedSessionsByDate, isJa]);
 
   const activeVotes = useMemo(() => {
     const openKeySet = new Set(allOpenSlots.map((s) => s.slotKey));
@@ -668,9 +1014,7 @@ export default function App() {
           const ids2 = openVenuesBySlot[key2];
           if (!ids1 || !ids2) continue;
 
-          const shared = filterVenueList(
-            VENUES.filter((v) => ids1.has(v.id) && ids2.has(v.id))
-          );
+          const shared = VENUES.filter((v) => ids1.has(v.id) && ids2.has(v.id));
           if (!shared.length) continue;
 
           eligible.add(key1);
@@ -687,9 +1031,13 @@ export default function App() {
           candidates.push({
             key1,
             key2,
-            spanLabel: `${b1.shortLabel}–${String(b2.startHour + 1).padStart(2, '0')}:00`,
+            spanLabel:
+              `${b1.shortLabel}–${String(b2.startHour + 1).padStart(2, '0')}:00`,
             isIndoor: topVenue?.courtType === 'indoor' ? 1 : 0,
-            timePrefRank: getTwoHourPreferenceRank(b1.startHour, topVenue?.courtType),
+            timePrefRank: getTwoHourPreferenceRank(
+              b1.startHour,
+              topVenue?.courtType
+            ),
             facilityTier: topVenue?.facilityTier ?? 0,
             distanceKm: topVenue?.distanceKm ?? 99,
             topVenueName: topVenue?.shortName || '',
@@ -700,8 +1048,12 @@ export default function App() {
 
         candidates.sort((a, b) => {
           if (b.isIndoor !== a.isIndoor) return b.isIndoor - a.isIndoor;
-          if (a.timePrefRank !== b.timePrefRank) return a.timePrefRank - b.timePrefRank;
-          if (b.facilityTier !== a.facilityTier) return b.facilityTier - a.facilityTier;
+          if (a.timePrefRank !== b.timePrefRank) {
+            return a.timePrefRank - b.timePrefRank;
+          }
+          if (b.facilityTier !== a.facilityTier) {
+            return b.facilityTier - a.facilityTier;
+          }
           return a.distanceKm - b.distanceKm;
         });
 
@@ -731,7 +1083,7 @@ export default function App() {
     }
 
     return { twoHourHighlightMap: cellMeta, twoHourEligibleSlotKeys: eligible };
-  }, [calendarWeeks, openVenuesBySlot, filterVenueList]);
+  }, [calendarWeeks, openVenuesBySlot]);
 
   const slotTallies = useMemo(() => {
     const tallyMap = {};
@@ -757,10 +1109,12 @@ export default function App() {
       const nextHour = String(slot.startHour + 1).padStart(2, '0');
       const endPlusTwo = String(slot.startHour + 2).padStart(2, '0');
 
-      const prevIds = openVenuesBySlot[`${slot.dateKey}_${prevHour}:00-${currHour}:00`];
-      const nextIds = openVenuesBySlot[`${slot.dateKey}_${nextHour}:00-${endPlusTwo}:00`];
+      const prevIds =
+        openVenuesBySlot[`${slot.dateKey}_${prevHour}:00-${currHour}:00`];
+      const nextIds =
+        openVenuesBySlot[`${slot.dateKey}_${nextHour}:00-${endPlusTwo}:00`];
 
-      // Exclude venues open for only 1 hour since continuous 2h play is required.
+      // Exclude single-hour openings because sessions require 2 consecutive hours.
       const twoHourEligibleVenues = slot.openVenues.filter(
         (v) => prevIds?.has(v.id) || nextIds?.has(v.id)
       );
@@ -817,8 +1171,8 @@ export default function App() {
           const ids2 = openVenuesBySlot[slotKey2];
           if (!ids1 || !ids2) continue;
 
-          const filteredShared = filterVenueList(
-            VENUES.filter((v) => ids1.has(v.id) && ids2.has(v.id))
+          const filteredShared = VENUES.filter(
+            (v) => ids1.has(v.id) && ids2.has(v.id)
           );
           if (!filteredShared.length) continue;
 
@@ -846,7 +1200,9 @@ export default function App() {
           }
 
           const totalVotes =
-            bothYesPlayers.length + flexBothPlayers.length + partialYesPlayers.length;
+            bothYesPlayers.length +
+            flexBothPlayers.length +
+            partialYesPlayers.length;
           if (totalVotes < 3) continue;
 
           const score =
@@ -872,7 +1228,9 @@ export default function App() {
             jpDate: day.jpDate,
             dow: day.dow,
             holiday: day.holiday,
-            timeLabel: `${b1.shortLabel}–${String(b2.startHour + 1).padStart(2, '0')}:00 (2時間)`,
+            timeLabel:
+              `${b1.shortLabel}–${String(b2.startHour + 1).padStart(2, '0')}:00 ` +
+              `(2時間)`,
             isIndoor: topCourtType === 'indoor' ? 1 : 0,
             timePrefRank: getTwoHourPreferenceRank(b1.startHour, topCourtType),
             openVenues: filteredShared,
@@ -908,7 +1266,156 @@ export default function App() {
     }
 
     return bestByDate.sort((a, b) => b.score - a.score).slice(0, 5);
-  }, [calendarWeeks, openVenuesBySlot, filterVenueList, votes]);
+  }, [calendarWeeks, openVenuesBySlot, votes]);
+
+  const topPickDefaults = useMemo(() => {
+    const fallbackDate = getTodayJstIsoDate();
+    if (!rankedTwoHourBlocks.length) {
+      return {
+        date: fallbackDate,
+        time: '18:00-20:00',
+        venueId: VENUES[0]?.id || OTHER_VENUE_OPTION,
+        courtType: VENUES[0]?.courtType || 'indoor',
+      };
+    }
+
+    const bestBlock = [...rankedTwoHourBlocks].sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.dateKey.localeCompare(b.dateKey);
+    })[0];
+
+    const startHour = Number(bestBlock.slotKey1.slice(-11, -9));
+    const endHour = Math.min(22, startHour + 2);
+    const topVenue = bestBlock.recommendedVenues[0];
+    const resolvedVenueId =
+      topVenue?.id && VENUE_BY_ID.has(topVenue.id)
+        ? topVenue.id
+        : VENUES[0]?.id || OTHER_VENUE_OPTION;
+
+    return {
+      date: bestBlock.dateKey || fallbackDate,
+      time: `${formatHourSlot(startHour)}-${formatHourSlot(endHour)}`,
+      venueId: resolvedVenueId,
+      courtType: topVenue?.courtType || 'indoor',
+    };
+  }, [rankedTwoHourBlocks]);
+
+  useEffect(() => {
+    if (hasCustomizedBooking) return;
+    setBookingDate(topPickDefaults.date);
+    setBookingTime(topPickDefaults.time);
+    setSelectedBookingVenueId(topPickDefaults.venueId);
+    setBookingCourtType(topPickDefaults.courtType);
+  }, [topPickDefaults, hasCustomizedBooking]);
+
+  const applyDefaultBookingIfNeeded = () => {
+    if (hasCustomizedBooking) return;
+    setBookingDate(topPickDefaults.date);
+    setBookingTime(topPickDefaults.time);
+    setSelectedBookingVenueId(topPickDefaults.venueId);
+    setBookingCourtType(topPickDefaults.courtType);
+  };
+
+  const handleOpenBookingModal = () => {
+    applyDefaultBookingIfNeeded();
+    setShowBookingModal(true);
+  };
+
+  const handleOpenShareModal = () => {
+    setCopiedShare(false);
+    applyDefaultBookingIfNeeded();
+    setShowShareModal(true);
+  };
+
+  const handleShareBookingCard = useCallback((booking) => {
+    const hasCustomVenue = Boolean(booking.venueName?.trim());
+    const matchedVenue =
+      !hasCustomVenue && booking.venueId
+        ? VENUE_BY_ID.get(booking.venueId)
+        : null;
+
+    setHasCustomizedBooking(true);
+    setCopiedShare(false);
+    setBookingDate(booking.dateKey);
+    setBookingTime(
+      `${formatHourSlot(booking.startHour)}-${formatHourSlot(booking.endHour)}`
+    );
+    setSelectedBookingVenueId(
+      matchedVenue ? matchedVenue.id : OTHER_VENUE_OPTION
+    );
+    setCustomBookingVenue(hasCustomVenue ? booking.venueName.trim() : '');
+    setCustomBookingMapUrl('');
+    setBookingCourtType(matchedVenue?.courtType || 'indoor');
+    setShowShareModal(true);
+  }, []);
+
+  const handleSaveBookedSessionRow = () => {
+    const [rawStart, rawEnd] = bookingTime.split('-');
+    const startHour = parseHourValue(rawStart || '17:00');
+    const endHour = Math.max(startHour + 1, parseHourValue(rawEnd || '19:00'));
+    const isOther = selectedBookingVenueId === OTHER_VENUE_OPTION;
+
+    setBookedSessionsByDate((prev) => ({
+      ...prev,
+      [bookingDate]: {
+        dateKey: bookingDate,
+        startHour,
+        endHour,
+        venueId: isOther ? '' : selectedBookingVenueId,
+        venueName: isOther ? customBookingVenue.trim() : '',
+      },
+    }));
+
+    setShowBookingModal(false);
+    calendarSectionRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
+    triggerToast(t.toastMarkedBooked(bookingDate));
+  };
+
+  const openUnmarkBookingGuard = (targetBooking) => {
+    setUnmarkConfirmInput('');
+    setBookingToUnmark(targetBooking);
+  };
+
+  const handleConfirmClearBooking = useCallback(() => {
+    if (!bookingToUnmark || unmarkConfirmInput.trim() !== t.deleteKeyword) {
+      return;
+    }
+
+    const { dateKey } = bookingToUnmark;
+    setBookedSessionsByDate((prev) => {
+      const next = { ...prev };
+      delete next[dateKey];
+      return next;
+    });
+    setBookingToUnmark(null);
+    setUnmarkConfirmInput('');
+    triggerToast(t.toastUnmarkedBooked(dateKey));
+  }, [bookingToUnmark, unmarkConfirmInput, t, triggerToast]);
+
+  const handleToggleBookingAvailability = useCallback(
+    (slotKeys) => {
+      if (!slotKeys.length) return;
+      if (viewingVote) {
+        triggerToast(t.viewingBanner(viewingVote.name));
+        return;
+      }
+
+      setResponses((prev) => {
+        const next = { ...prev };
+        // Cycle only between 'yes' and unmarked so booked rows track attendees.
+        const currentlyGoing = next[slotKeys[0]] === 'yes';
+        for (const key of slotKeys) {
+          if (currentlyGoing) delete next[key];
+          else next[key] = 'yes';
+        }
+        return next;
+      });
+    },
+    [viewingVote, t, triggerToast]
+  );
 
   const handleCycleSlot = (slotKey) => {
     if (!slotTallies[slotKey]) return;
@@ -939,68 +1446,152 @@ export default function App() {
     });
   };
 
-  const applyQuickFill = (predicate, value, successMessage) => {
+  const handleSelectDayWindow = (day, windowMode) => {
     if (viewingVote) {
       triggerToast(t.viewingBanner(viewingVote.name));
       return;
     }
 
+    const currentMode = dayWindowByDate[day.dateKey];
+    const nextMode = currentMode === windowMode ? null : windowMode;
+
+    setDayWindowByDate((prev) => {
+      const next = { ...prev };
+      if (nextMode) next[day.dateKey] = nextMode;
+      else delete next[day.dateKey];
+      return next;
+    });
+
     setResponses((prev) => {
       const next = { ...prev };
-      for (const slot of allOpenSlots) {
-        if (!predicate(slot)) continue;
-        if (!matchesFilter(slot.openVenueIds)) continue;
-        if (value !== 'clear' && !twoHourEligibleSlotKeys.has(slot.slotKey)) continue;
+      for (const block of TIME_BLOCKS) {
+        const slotKey = `${day.dateKey}_${block.id}`;
+        const cell = day.slots[block.id];
+        if (!cell?.isOpen || !twoHourEligibleSlotKeys.has(slotKey)) continue;
 
-        if (value === 'clear') delete next[slot.slotKey];
-        else next[slot.slotKey] = value;
+        if (!nextMode) {
+          delete next[slotKey];
+          continue;
+        }
+
+        // Afternoon covers 12:00–17:00 and evening covers 18:00–22:00.
+        const matchesWindow =
+          nextMode === 'all' ||
+          (nextMode === 'afternoon' && block.startHour < 18) ||
+          (nextMode === 'evening' && block.startHour >= 18);
+
+        if (matchesWindow) next[slotKey] = 'yes';
+        else delete next[slotKey];
+      }
+      return next;
+    });
+  };
+
+  const handleFillActiveWeekAll = () => {
+    if (viewingVote) {
+      triggerToast(t.viewingBanner(viewingVote.name));
+      return;
+    }
+
+    const week = calendarWeeks[activeWeekIdx];
+    const nextWindows = {};
+
+    setResponses((prev) => {
+      const next = { ...prev };
+      for (const day of week.days) {
+        if (day.allBooked || bookedSessionsByDate[day.dateKey]) continue;
+        nextWindows[day.dateKey] = 'all';
+
+        for (const block of TIME_BLOCKS) {
+          const slotKey = `${day.dateKey}_${block.id}`;
+          const cell = day.slots[block.id];
+          if (!cell?.isOpen || !twoHourEligibleSlotKeys.has(slotKey)) continue;
+          next[slotKey] = 'yes';
+        }
       }
       return next;
     });
 
-    triggerToast(successMessage);
+    setDayWindowByDate((prev) => ({ ...prev, ...nextWindows }));
+    triggerToast(`${week.shortTitle}: ${t.weekFillAll}`);
   };
 
-  const handleQuickFillWeek = (val) => {
-    const currentWeek = calendarWeeks[activeWeekIdx];
-    const message =
-      val === 'clear'
-        ? `${t.clearBtn}: ${currentWeek.shortTitle}`
-        : `${currentWeek.shortTitle} (${val === 'yes' ? '◯' : '△'})`;
+  const handleClearActiveWeek = () => {
+    if (viewingVote) {
+      triggerToast(t.viewingBanner(viewingVote.name));
+      return;
+    }
 
-    applyQuickFill((slot) => slot.weekIndex === activeWeekIdx, val, message);
+    const week = calendarWeeks[activeWeekIdx];
+    const weekDateKeys = new Set(week.days.map((day) => day.dateKey));
+
+    setDayWindowByDate((prev) => {
+      const next = { ...prev };
+      for (const dateKey of weekDateKeys) {
+        delete next[dateKey];
+      }
+      return next;
+    });
+
+    setResponses((prev) => {
+      const next = { ...prev };
+      for (const slot of allOpenSlots) {
+        if (slot.weekIndex === activeWeekIdx) {
+          delete next[slot.slotKey];
+        }
+      }
+      return next;
+    });
+
+    triggerToast(`${t.weekClearAll}: ${week.shortTitle}`);
   };
 
   const resetVoterForm = () => {
     setVoterName('');
     setVoterNote('');
     setResponses({});
+    setDayWindowByDate({});
     setEditingVoteId(null);
     setViewingVote(null);
   };
 
-  const handleSelectVoterToView = (vote) => {
-    if (editingVoteId === vote.id) return;
-    setEditingVoteId(null);
-    setViewingVote(vote);
-    setGridViewMode('vote');
-    triggerToast(t.viewingBanner(vote.name));
-  };
+  const handleSelectVoterToView = useCallback(
+    (vote) => {
+      if (!vote || editingVoteId === vote.id) return;
+      setEditingVoteId(null);
+      setViewingVote(vote);
+      setGridViewMode('vote');
+      calendarSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+      triggerToast(t.viewingBanner(vote.name));
+    },
+    [editingVoteId, t, triggerToast]
+  );
 
-  const handleSelectVoterToEdit = (vote) => {
-    setViewingVote(null);
-    setEditingVoteId(vote.id);
-    setVoterName(vote.name || '');
-    setVoterNote(vote.note || '');
-    setResponses(normalizeResponsesMap(vote.responses));
-    setGridViewMode('vote');
-    setShowEditPickerModal(false);
-    voterBarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    triggerToast(t.editingBanner(vote.name));
-  };
+  const handleSelectVoterToEdit = useCallback(
+    (vote) => {
+      if (!vote) return;
+      setViewingVote(null);
+      setEditingVoteId(vote.id);
+      setVoterName(vote.name || '');
+      setVoterNote(vote.note || '');
+      setResponses(normalizeResponsesMap(vote.responses));
+      setGridViewMode('vote');
+      setShowEditPickerModal(false);
+      voterBarRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+      triggerToast(t.editingBanner(vote.name));
+    },
+    [t, triggerToast]
+  );
 
   const handleStartTimeChange = (nextStart) => {
-    const currentEnd = bookingTime.split('-')[1] || '20:00';
+    setHasCustomizedBooking(true);
+    const currentEnd = bookingTime.split('-')[1] || '19:00';
     const startHour = parseHourValue(nextStart);
     const endHour = parseHourValue(currentEnd);
     const adjustedEnd =
@@ -1011,13 +1602,23 @@ export default function App() {
   };
 
   const handleEndTimeChange = (nextEnd) => {
-    const currentStart = bookingTime.split('-')[0] || '18:00';
+    setHasCustomizedBooking(true);
+    const currentStart = bookingTime.split('-')[0] || '17:00';
     const startHour = parseHourValue(currentStart);
     const endHour = parseHourValue(nextEnd);
     const minEndHour = Math.min(22, startHour + 1);
     const clampedEnd =
       endHour <= startHour ? formatHourSlot(minEndHour) : nextEnd;
     setBookingTime(`${currentStart}-${clampedEnd}`);
+  };
+
+  const handleBookingVenueSelect = (nextId) => {
+    setHasCustomizedBooking(true);
+    setSelectedBookingVenueId(nextId);
+    const presetVenue = VENUE_BY_ID.get(nextId);
+    if (presetVenue?.courtType) {
+      setBookingCourtType(presetVenue.courtType);
+    }
   };
 
   const handleSubmitVote = async (e) => {
@@ -1067,8 +1668,16 @@ export default function App() {
     }
   };
 
+  const openDeleteVoteGuard = (targetVote) => {
+    setDeleteConfirmInput('');
+    setVoteToDelete(targetVote);
+  };
+
   const handleConfirmDeleteVote = async () => {
-    if (!voteToDelete) return;
+    if (!voteToDelete || deleteConfirmInput.trim() !== t.deleteKeyword) {
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('calendar_votes')
@@ -1077,7 +1686,10 @@ export default function App() {
 
       if (error) throw error;
 
-      if (editingVoteId === voteToDelete.id || viewingVote?.id === voteToDelete.id) {
+      if (
+        editingVoteId === voteToDelete.id ||
+        viewingVote?.id === voteToDelete.id
+      ) {
         resetVoterForm();
       }
       await fetchVotes();
@@ -1087,111 +1699,45 @@ export default function App() {
       triggerToast(t.toastDeleteError);
     } finally {
       setVoteToDelete(null);
+      setDeleteConfirmInput('');
     }
   };
 
-  const shareSummaryText = useMemo(() => {
-    if (!rankedTwoHourBlocks.length) {
-      return lang === 'en'
-        ? [
-            '🏓 岡大dinks | Next Session Poll',
-            'No 2-hour continuous slots with votes yet — pick your available times via the link!',
-            window.location.origin,
-          ].join('\n')
-        : [
-            '🏓 岡大dinks | 次回セッション日程調整',
-            'まだ2時間連続の投票がありません — リンクから参加できる時間帯を選んでください！',
-            window.location.origin,
-          ].join('\n');
-    }
-
-    const bestBlock = [...rankedTwoHourBlocks].sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.dateKey.localeCompare(b.dateKey);
-    })[0];
-
-    const topVenue = bestBlock.recommendedVenues[0];
-    const hol = bestBlock.holiday ? `(${bestBlock.holiday})` : '';
-    const jpDateLabel = `${bestBlock.jpDate}(${bestBlock.dow})${hol}`;
-    const startHour = Number(bestBlock.slotKey1.slice(-11, -9));
-
-    const eventUrl = new URL('/api/event', window.location.origin);
-    if (topVenue?.id) eventUrl.searchParams.set('v', topVenue.id);
-    eventUrl.searchParams.set('date', bestBlock.dateKey);
-    eventUrl.searchParams.set('start', String(startHour));
-    eventUrl.searchParams.set('end', String(startHour + 2));
-
-    const flexTotal = bestBlock.flexBothCount + bestBlock.partialYesCount;
-
-    if (lang === 'en') {
-      const footwearEn =
-        topVenue?.courtType === 'outdoor'
-          ? '👟 Outdoor hard court — tennis/court shoes recommended'
-          : '👟 Indoor gym — indoor-only court shoes required';
-      const flexEn = flexTotal > 0 ? ` (Maybe/1h: ${flexTotal})` : '';
-
-      return [
-        '🏓 岡大dinks | Next Session Invite',
-        `📅 Date & Time: ${bestBlock.dateKey} (${bestBlock.dow}) ${bestBlock.timeLabel}`,
-        `🏟 Venue: ${topVenue?.fullName || bestBlock.venueSummary}`,
-        `👥 Going: ${bestBlock.bothYesCount}${flexEn} players`,
-        footwearEn,
-        '🗓 Add to Calendar & Map 👇',
-        eventUrl.toString(),
-      ].join('\n');
-    }
-
-    const footwearJa =
-      topVenue?.courtType === 'outdoor'
-        ? '👟 屋外コートのためテニス・ハードコート用シューズ推奨'
-        : '👟 体育館のため室内専用シューズ必須';
-    const flexJa = flexTotal > 0 ? ` (調整可 ${flexTotal}名)` : '';
-
-    return [
-      '🏓 岡大dinks | 次回セッション案内',
-      `📅 日時: ${jpDateLabel} ${bestBlock.timeLabel}`,
-      `🏟 会場: ${topVenue?.fullName || bestBlock.venueSummary}`,
-      `👥 参加予定: ◯${bestBlock.bothYesCount}名${flexJa}`,
-      footwearJa,
-      '🗓 カレンダー追加・地図はこちら 👇',
-      eventUrl.toString(),
-    ].join('\n');
-  }, [rankedTwoHourBlocks, lang]);
+  const isOtherVenue = selectedBookingVenueId === OTHER_VENUE_OPTION;
 
   const confirmedBookingText = useMemo(
     () =>
-      buildConfirmedBookingInvite({
+      formatConfirmedSessionInvite({
         origin: window.location.origin,
         dateIso: bookingDate,
         timeRangeText: bookingTime,
-        venueName: bookingVenue,
-        mapUrl: bookingMapUrl,
+        venueId: selectedBookingVenueId,
+        customVenueName: customBookingVenue,
+        customMapUrl: customBookingMapUrl,
         courtType: bookingCourtType,
         format: bookingFormat,
       }),
     [
       bookingDate,
       bookingTime,
-      bookingVenue,
-      bookingMapUrl,
+      selectedBookingVenueId,
+      customBookingVenue,
+      customBookingMapUrl,
       bookingCourtType,
       bookingFormat,
     ]
   );
 
-  const activeShareText =
-    shareTab === 'confirmed' ? confirmedBookingText : shareSummaryText;
-
   const handleCopyShareText = async () => {
     if (navigator.clipboard && window.isSecureContext) {
       try {
-        await navigator.clipboard.writeText(activeShareText);
+        await navigator.clipboard.writeText(confirmedBookingText);
         setCopiedShare(true);
         triggerToast(t.toastCopiedShare);
         setTimeout(() => setCopiedShare(false), 2500);
         return;
       } catch {
-        // Fall through to manual textarea selection when clipboard API is blocked.
+        // Fallback to manual selection when clipboard access is unavailable.
       }
     }
 
@@ -1208,7 +1754,175 @@ export default function App() {
     !voterName.trim() &&
     selectedSlotCount === 0;
   const [selectedStartHour, selectedEndHour] = bookingTime.split('-');
-  const activeStartHour = parseHourValue(selectedStartHour || '18:00');
+  const activeStartHour = parseHourValue(selectedStartHour || '17:00');
+  const activeMap = viewingResponsesMap || responses;
+  const isDeleteKeywordMatched =
+    deleteConfirmInput.trim() === t.deleteKeyword;
+  const isUnmarkKeywordMatched =
+    unmarkConfirmInput.trim() === t.deleteKeyword;
+
+  const renderBookingFormFields = () => (
+    <div className="space-y-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden">
+      <div className="min-w-0 overflow-hidden">
+        <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
+          {isJa ? '日付' : 'Date'}
+        </label>
+        <input
+          type="date"
+          value={bookingDate}
+          onChange={(e) => {
+            setHasCustomizedBooking(true);
+            setBookingDate(e.target.value);
+          }}
+          className="block w-full max-w-full min-w-0 box-border px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs appearance-none"
+        />
+      </div>
+
+      <div className="min-w-0">
+        <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
+          {isJa ? '時間' : 'Time'}
+        </label>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <select
+            aria-label="Start time"
+            value={selectedStartHour || '17:00'}
+            onChange={(e) => handleStartTimeChange(e.target.value)}
+            translate="no"
+            className="flex-1 min-w-0 px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs cursor-pointer"
+          >
+            {START_HOUR_OPTIONS.map((slot) => (
+              <option key={`start-${slot}`} value={slot}>
+                {slot}
+              </option>
+            ))}
+          </select>
+
+          <span
+            translate="no"
+            className="text-xs font-extrabold text-slate-500 shrink-0 px-0.5"
+          >
+            ~
+          </span>
+
+          <select
+            aria-label="End time"
+            value={selectedEndHour || '19:00'}
+            onChange={(e) => handleEndTimeChange(e.target.value)}
+            translate="no"
+            className="flex-1 min-w-0 px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs cursor-pointer"
+          >
+            {END_HOUR_OPTIONS.map((slot) => (
+              <option
+                key={`end-${slot}`}
+                value={slot}
+                disabled={parseHourValue(slot) <= activeStartHour}
+              >
+                {slot}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="min-w-0">
+        <label
+          htmlFor="confirmed-venue-select"
+          className="block text-[11px] font-extrabold text-slate-600 mb-1"
+        >
+          {isJa ? '会場' : 'Venue'}
+        </label>
+        <div className="relative">
+          <select
+            id="confirmed-venue-select"
+            value={selectedBookingVenueId}
+            onChange={(e) => handleBookingVenueSelect(e.target.value)}
+            className="w-full appearance-none box-border px-3 py-2 pr-8 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs cursor-pointer"
+          >
+            {VENUES.map((venue) => (
+              <option key={venue.id} value={venue.id}>
+                [{venue.courtType === 'outdoor'
+                  ? t.outdoorShort
+                  : t.indoorShort}] {venue.fullName}
+              </option>
+            ))}
+            <option value={OTHER_VENUE_OPTION}>{t.otherVenueOption}</option>
+          </select>
+          <ChevronDown className="w-4 h-4 text-slate-500 pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" />
+        </div>
+      </div>
+
+      {isOtherVenue && (
+        <>
+          <div className="min-w-0">
+            <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
+              {t.customVenueLabel}
+            </label>
+            <input
+              type="text"
+              value={customBookingVenue}
+              onChange={(e) => {
+                setHasCustomizedBooking(true);
+                setCustomBookingVenue(e.target.value);
+              }}
+              placeholder={t.customVenuePlaceholder}
+              className="w-full min-w-0 box-border px-3 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs"
+            />
+          </div>
+
+          <div className="min-w-0">
+            <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
+              {t.customMapLabel}
+            </label>
+            <input
+              type="url"
+              value={customBookingMapUrl}
+              onChange={(e) => {
+                setHasCustomizedBooking(true);
+                setCustomBookingMapUrl(e.target.value);
+              }}
+              placeholder="https://maps.google.com/?q=..."
+              className="w-full min-w-0 box-border px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs"
+            />
+          </div>
+        </>
+      )}
+
+      {isOtherVenue && (
+        <div className="flex items-center justify-start pt-1">
+          <div className="inline-flex rounded-lg bg-white p-0.5 border border-slate-300 font-extrabold text-[11px] shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setHasCustomizedBooking(true);
+                setBookingCourtType('indoor');
+              }}
+              className={`px-2.5 py-1 rounded cursor-pointer ${
+                bookingCourtType === 'indoor'
+                  ? 'bg-sky-100 text-sky-900'
+                  : 'text-slate-500'
+              }`}
+            >
+              {isJa ? '屋内' : 'Indoor'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setHasCustomizedBooking(true);
+                setBookingCourtType('outdoor');
+              }}
+              className={`px-2.5 py-1 rounded cursor-pointer ${
+                bookingCourtType === 'outdoor'
+                  ? 'bg-amber-100 text-amber-900'
+                  : 'text-slate-500'
+              }`}
+            >
+              {isJa ? '屋外' : 'Outdoor'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#eef2f6] text-slate-900 pb-16 font-sans selection:bg-lime-300 selection:text-slate-950">
@@ -1233,13 +1947,13 @@ export default function App() {
                   </span>
                   {hasLiveAvailability ? (
                     <span
-                      translate="no"
+                      translate={isJa ? undefined : 'no'}
                       className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-white/10 text-[10px] text-lime-200 font-semibold whitespace-nowrap"
                     >
                       <RefreshCw className="w-2.5 h-2.5 shrink-0" />
                       <span>
-                        yoyacool({lastSyncedAt.yoyacool || '同期済'}) / Spacepad(
-                        {lastSyncedAt.spacepad || '同期済'})
+                        yoyacool({lastSyncedAt.yoyacool || '同期済'}) /
+                        Spacepad({lastSyncedAt.spacepad || '同期済'})
                       </span>
                     </span>
                   ) : (
@@ -1256,7 +1970,11 @@ export default function App() {
                 <p className="text-[11px] sm:text-xs text-sky-200 flex items-center gap-1.5 mt-1">
                   <MapPin className="w-3.5 h-3.5 text-lime-300 shrink-0" />
                   <span>
-                    {t.venuesSummary(VENUES.length, okayamaCount, kurashikiCount)}
+                    {t.venuesSummary(
+                      VENUES.length,
+                      okayamaCount,
+                      kurashikiCount
+                    )}
                   </span>
                 </p>
               </div>
@@ -1272,7 +1990,7 @@ export default function App() {
                   type="button"
                   onClick={() => setLang('ja')}
                   className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition cursor-pointer ${
-                    lang === 'ja'
+                    isJa
                       ? 'bg-lime-400 text-[#1B365D] shadow-xs'
                       : 'text-sky-100 hover:text-white'
                   }`}
@@ -1284,7 +2002,7 @@ export default function App() {
                   type="button"
                   onClick={() => setLang('en')}
                   className={`px-2.5 py-1.5 rounded-lg transition cursor-pointer ${
-                    lang === 'en'
+                    !isJa
                       ? 'bg-white text-[#1B365D] shadow-xs'
                       : 'text-sky-100 hover:text-white'
                   }`}
@@ -1295,7 +2013,7 @@ export default function App() {
 
               <button
                 type="button"
-                onClick={() => setShowShareModal(true)}
+                onClick={handleOpenShareModal}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-lime-400 hover:bg-lime-300 active:scale-95 text-[#1B365D] text-xs sm:text-sm font-extrabold shadow transition cursor-pointer whitespace-nowrap"
               >
                 <Share2 className="w-4 h-4 shrink-0" />
@@ -1315,257 +2033,9 @@ export default function App() {
         )}
 
         <section
-          ref={voterBarRef}
-          className={`rounded-2xl shadow-sm border-2 transition overflow-hidden ${
-            editingVoteId
-              ? 'bg-amber-50/90 border-amber-400'
-              : viewingVote
-                ? 'bg-sky-50/90 border-sky-400'
-                : 'bg-white border-[#1B365D]/20'
-          }`}
+          ref={calendarSectionRef}
+          className="bg-white rounded-2xl shadow-sm border border-slate-300 overflow-hidden"
         >
-          <div
-            className={`px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold ${
-              editingVoteId
-                ? 'bg-amber-200/80 text-amber-950'
-                : viewingVote
-                  ? 'bg-sky-700 text-white'
-                  : 'bg-[#264673] text-white'
-            }`}
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              {viewingVote ? (
-                <Eye className="w-3.5 h-3.5 text-lime-300 shrink-0" />
-              ) : (
-                <Edit3 className="w-3.5 h-3.5 text-lime-300 shrink-0" />
-              )}
-              <span>
-                {editingVoteId
-                  ? t.editingBanner(voterName)
-                  : viewingVote
-                    ? t.viewingBanner(viewingVote.name)
-                    : t.defaultBanner(VENUES.length)}
-              </span>
-            </div>
-
-            {editingVoteId && (
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setVoteToDelete({ id: editingVoteId, name: voterName })
-                  }
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-rose-600 text-white hover:bg-rose-700 cursor-pointer whitespace-nowrap"
-                >
-                  <Trash2 className="w-3 h-3 shrink-0" />
-                  <span>{t.deleteBtn}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={resetVoterForm}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white text-slate-800 border border-slate-300 hover:bg-slate-100 cursor-pointer whitespace-nowrap"
-                >
-                  <RotateCcw className="w-3 h-3 shrink-0" />
-                  <span>{t.cancelBtn}</span>
-                </button>
-              </div>
-            )}
-
-            {viewingVote && !editingVoteId && (
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => handleSelectVoterToEdit(viewingVote)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-amber-400 text-slate-950 hover:bg-amber-300 cursor-pointer whitespace-nowrap"
-                >
-                  <Edit3 className="w-3 h-3 shrink-0" />
-                  <span>{t.editThisBtn}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewingVote(null)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white text-slate-800 hover:bg-slate-100 cursor-pointer whitespace-nowrap"
-                >
-                  <X className="w-3 h-3 shrink-0" />
-                  <span>{t.exitViewBtn}</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          <form onSubmit={handleSubmitVote} className="p-3.5 sm:p-4 space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-              <div className="sm:col-span-4">
-                <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
-                  {t.nameLabel} <span className="text-rose-600">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  pattern=".*\S+.*"
-                  title={t.nameTitle}
-                  value={voterName}
-                  onChange={(e) => {
-                    if (viewingVote) setViewingVote(null);
-                    setVoterName(e.target.value.replace(/^\s+/, ''));
-                  }}
-                  onBlur={(e) => setVoterName(e.target.value.trim())}
-                  placeholder={t.namePlaceholder}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:border-[#1B365D] focus:ring-2 focus:ring-[#1B365D]/20 outline-none text-sm font-bold"
-                />
-              </div>
-
-              <div className="sm:col-span-5">
-                <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
-                  {t.noteLabel}
-                </label>
-                <input
-                  type="text"
-                  value={voterNote}
-                  onChange={(e) => {
-                    if (viewingVote) setViewingVote(null);
-                    setVoterNote(e.target.value);
-                  }}
-                  placeholder={t.notePlaceholder}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:border-[#1B365D] focus:ring-2 focus:ring-[#1B365D]/20 outline-none text-sm"
-                />
-              </div>
-
-              <div className="sm:col-span-3 flex items-end">
-                {showEditExistingButton ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowEditPickerModal(true)}
-                    className="w-full py-2.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-[0.99] text-slate-950 font-extrabold text-xs sm:text-sm shadow border border-amber-500 transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
-                  >
-                    <UserCheck className="w-4 h-4 shrink-0" />
-                    <span>{t.editExistingBtn}</span>
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full py-2.5 px-4 rounded-xl bg-[#1B365D] hover:bg-[#274b7d] active:scale-[0.99] text-lime-300 font-extrabold text-xs sm:text-sm shadow transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
-                  >
-                    <Check className="w-4 h-4 shrink-0" />
-                    <span>
-                      {isSubmitting
-                        ? t.submittingBtn
-                        : editingVoteId
-                          ? t.updateVoteBtn
-                          : t.submitVoteBtn(selectedSlotCount)}
-                    </span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/80">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-bold text-slate-500 mr-1 whitespace-nowrap">
-                  {t.quickFillLabel}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleQuickFillWeek('yes')}
-                  className="px-2.5 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-extrabold text-xs border border-emerald-300 cursor-pointer whitespace-nowrap"
-                >
-                  {t.weekAllYes}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickFillWeek('maybe')}
-                  className="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold text-xs border border-amber-300 cursor-pointer whitespace-nowrap"
-                >
-                  {t.weekAllMaybe}
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    applyQuickFill(
-                      (slot) => slot.studentPrime,
-                      'yes',
-                      t.studentPrimeYes
-                    )
-                  }
-                  className="px-2.5 py-1 rounded-lg bg-sky-100 hover:bg-sky-200 text-sky-900 font-extrabold text-xs border border-sky-300 cursor-pointer whitespace-nowrap"
-                >
-                  {t.studentPrimeYes}
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    applyQuickFill(
-                      (slot) =>
-                        Boolean(twoHourHighlightMap[slot.slotKey]?.isPriorityTwoHour),
-                      'yes',
-                      t.twoHourPriorityYes
-                    )
-                  }
-                  className="px-2.5 py-1 rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-950 font-extrabold text-xs border border-indigo-300 cursor-pointer whitespace-nowrap"
-                >
-                  {t.twoHourPriorityYes}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickFillWeek('clear')}
-                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-300 cursor-pointer whitespace-nowrap"
-                >
-                  {t.clearBtn}
-                </button>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1 whitespace-nowrap">
-                  <Users className="w-3.5 h-3.5 text-[#1B365D] shrink-0" />
-                  <span>{t.votedLabel(activeVotes.length)}</span>
-                </span>
-                {!activeVotes.length ? (
-                  <span className="text-[11px] text-slate-400 italic">
-                    {t.noVotesYet}
-                  </span>
-                ) : (
-                  activeVotes.map((v) => {
-                    const isViewing = viewingVote?.id === v.id;
-                    const isEditing = editingVoteId === v.id;
-                    return (
-                      <button
-                        key={v.id}
-                        type="button"
-                        onClick={() =>
-                          isViewing ? setViewingVote(null) : handleSelectVoterToView(v)
-                        }
-                        title={
-                          isViewing
-                            ? t.viewToggleTitle
-                            : isEditing
-                              ? t.editModeTitle
-                              : t.viewModeTitle
-                        }
-                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border transition cursor-pointer whitespace-nowrap ${
-                          isEditing
-                            ? 'bg-amber-400 text-slate-950 border-amber-600'
-                            : isViewing
-                              ? 'bg-sky-700 text-white border-sky-900 shadow-2xs'
-                              : 'bg-slate-100 hover:bg-sky-100 text-[#1B365D] border-slate-300'
-                        }`}
-                      >
-                        <span translate="no">{v.name}</span>
-                        {isEditing ? (
-                          <Edit3 className="w-2.5 h-2.5 opacity-80 shrink-0" />
-                        ) : (
-                          <Eye className="w-2.5 h-2.5 opacity-70 shrink-0" />
-                        )}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          </form>
-        </section>
-
-        <section className="bg-white rounded-2xl shadow-sm border border-slate-300 overflow-hidden">
           <div className="bg-[#1B365D] px-3 py-2.5 flex flex-wrap items-center justify-between gap-2 text-white">
             <button
               type="button"
@@ -1574,7 +2044,6 @@ export default function App() {
               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#2B547E] hover:bg-[#366799] disabled:opacity-40 disabled:pointer-events-none text-xs font-extrabold border border-white/20 cursor-pointer whitespace-nowrap shrink-0"
             >
               <ChevronLeft className="w-4 h-4 shrink-0" />
-              <span>{t.prevWeek}</span>
             </button>
 
             <div className="text-center min-w-0">
@@ -1582,7 +2051,7 @@ export default function App() {
                 {t.oneHourSubLabel}
               </div>
               <div
-                translate="no"
+                translate={isJa ? undefined : 'no'}
                 className="text-sm sm:text-base font-extrabold tracking-tight text-white"
               >
                 {currentWeek.rangeLabel}
@@ -1593,11 +2062,12 @@ export default function App() {
               type="button"
               disabled={activeWeekIdx === calendarWeeks.length - 1}
               onClick={() =>
-                setActiveWeekIdx((i) => Math.min(calendarWeeks.length - 1, i + 1))
+                setActiveWeekIdx((i) =>
+                  Math.min(calendarWeeks.length - 1, i + 1)
+                )
               }
               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#2B547E] hover:bg-[#366799] disabled:opacity-40 disabled:pointer-events-none text-xs font-extrabold border border-white/20 cursor-pointer whitespace-nowrap shrink-0"
             >
-              <span>{t.nextWeek}</span>
               <ChevronRight className="w-4 h-4 shrink-0" />
             </button>
           </div>
@@ -1615,91 +2085,61 @@ export default function App() {
                       : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                   }`}
                 >
-                  <span translate="no">{w.shortTitle}</span>
+                  <span translate={isJa ? undefined : 'no'}>
+                    {w.shortTitle}
+                  </span>
                 </button>
               ))}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              {okayamaCount > 0 && kurashikiCount > 0 && (
-                <div className="inline-flex rounded-xl bg-slate-200 p-0.5 border border-slate-300 text-xs font-extrabold">
-                  {[
-                    { id: 'all', label: t.allAreas, activeClass: 'bg-white text-[#1B365D]' },
-                    {
-                      id: 'okayama',
-                      label: t.okayamaArea,
-                      activeClass: 'bg-lime-400 text-[#1B365D]',
-                    },
-                    {
-                      id: 'kurashiki',
-                      label: t.kurashikiArea,
-                      activeClass: 'bg-sky-300 text-[#1B365D]',
-                    },
-                  ].map((area) => (
-                    <button
-                      key={area.id}
-                      type="button"
-                      onClick={() => {
-                        setAreaFilter(area.id);
-                        setVenueFilter('all');
-                      }}
-                      className={`px-2.5 py-1 rounded-lg transition cursor-pointer whitespace-nowrap ${
-                        areaFilter === area.id
-                          ? `${area.activeClass} shadow-xs`
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      {area.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <select
-                aria-label="Venue filter"
-                value={venueFilter}
-                onChange={(e) => setVenueFilter(e.target.value)}
-                className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 text-xs font-extrabold text-[#1B365D] focus:border-[#1B365D] outline-none cursor-pointer max-w-[220px]"
-              >
-                <option value="all">{t.allVenuesOption(visibleVenues.length)}</option>
-                {visibleVenues.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.shortName} ({v.courtType === 'outdoor' ? t.outdoorShort : t.indoorShort})
-                  </option>
-                ))}
-              </select>
-
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => setHighlightPrimeOnly((p) => !p)}
-                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer whitespace-nowrap ${
-                  highlightPrimeOnly
-                    ? 'bg-amber-100 text-amber-950 border-amber-400'
-                    : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
-                }`}
+                onClick={handleOpenBookingModal}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-lime-300 font-extrabold text-xs border border-emerald-900 transition cursor-pointer whitespace-nowrap"
               >
-                <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                <span>{t.studentPrimeFilter}</span>
+                <CalendarCheck className="w-3.5 h-3.5 shrink-0" />
+                <span>{t.bookSessionBtn}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleFillActiveWeekAll}
+                className="px-2.5 py-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-extrabold text-xs border border-emerald-300 transition cursor-pointer whitespace-nowrap"
+              >
+                {t.weekFillAll}
+              </button>
+              <button
+                type="button"
+                onClick={handleClearActiveWeek}
+                className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 font-extrabold text-xs border border-slate-300 transition cursor-pointer whitespace-nowrap"
+              >
+                {t.weekClearAll}
               </button>
 
-              <div className="inline-flex rounded-xl bg-slate-200 p-0.5 border border-slate-300">
+              <div className="inline-flex rounded-xl bg-slate-200 p-0.5 border border-slate-300 ml-1">
                 <button
                   type="button"
-                  onClick={() => setGridViewMode('vote')}
+                  onClick={() => {
+                    setViewingVote(null);
+                    setGridViewMode('vote');
+                  }}
                   className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
-                    gridViewMode === 'vote'
+                    gridViewMode === 'vote' && !viewingVote
                       ? 'bg-white text-[#1B365D] shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   <Grid className="w-3.5 h-3.5 shrink-0" />
-                  <span>{t.myVoteTab(viewingVote?.name)}</span>
+                  <span>{t.myVoteTab(null)}</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setGridViewMode('heatmap')}
+                  onClick={() => {
+                    setViewingVote(null);
+                    setGridViewMode('heatmap');
+                  }}
                   className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
-                    gridViewMode === 'heatmap'
+                    gridViewMode === 'heatmap' && !viewingVote
                       ? 'bg-[#1B365D] text-lime-300 shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
@@ -1708,6 +2148,54 @@ export default function App() {
                   <span>{t.tallyTab}</span>
                 </button>
               </div>
+
+              {viewingVote ? (
+                <div className="inline-flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectVoterToEdit(viewingVote)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-extrabold border border-amber-500 shadow-xs transition cursor-pointer whitespace-nowrap"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 shrink-0" />
+                    <span>{t.editThisBtn}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewingVote(null)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-sky-700 hover:bg-sky-800 text-white text-xs font-extrabold border border-sky-900 shadow-xs transition cursor-pointer whitespace-nowrap"
+                  >
+                    <X className="w-3.5 h-3.5 shrink-0" />
+                    <span>{t.exitViewBtn}</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <select
+                    aria-label="Select player response to view"
+                    disabled={!activeVotes.length}
+                    value=""
+                    onChange={(e) => {
+                      const chosen = activeVotes.find(
+                        (v) => String(v.id) === e.target.value
+                      );
+                      if (chosen) handleSelectVoterToView(chosen);
+                    }}
+                    className="appearance-none px-3 py-1.5 pr-8 rounded-lg bg-white disabled:opacity-50 border border-slate-300 text-xs font-extrabold text-[#1B365D] focus:border-[#1B365D] outline-none cursor-pointer max-w-[200px]"
+                  >
+                    <option value="">
+                      {activeVotes.length
+                        ? t.viewPlayerPlaceholder
+                        : t.noVotesYet}
+                    </option>
+                    {activeVotes.map((v) => (
+                      <option key={v.id} value={String(v.id)}>
+                        {v.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-500 pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" />
+                </div>
+              )}
             </div>
           </div>
 
@@ -1770,18 +2258,18 @@ export default function App() {
             <span className="font-bold text-[#1B365D]">{t.legendHint}</span>
           </div>
 
-          <div className="overflow-x-auto">
+          <div ref={tableScrollRef} className="overflow-x-auto">
             <table className="w-full border-collapse text-center">
               <thead>
                 <tr className="bg-[#eef3f8] border-b-2 border-slate-300 text-slate-800">
-                  <th className="sticky left-0 z-20 bg-[#dce5f0] py-2.5 px-2 min-w-[104px] sm:min-w-[120px] text-left text-xs font-extrabold text-[#1B365D] border-r-2 border-slate-300 whitespace-nowrap">
+                  <th className="sticky left-0 z-20 bg-[#dce5f0] py-2.5 px-2 min-w-[116px] sm:min-w-[140px] text-left text-xs font-extrabold text-[#1B365D] border-r-2 border-slate-300 whitespace-nowrap">
                     {t.dateColHeader}
                   </th>
                   {TIME_BLOCKS.map((block) => (
                     <th
                       key={block.id}
                       title={block.label}
-                      className={`py-2.5 px-1 min-w-[70px] sm:min-w-[82px] border-r border-slate-300 last:border-r-0 transition ${
+                      className={`py-2.5 px-1 min-w-[60px] sm:min-w-[82px] border-r border-slate-300 last:border-r-0 transition ${
                         block.isStudentPrime
                           ? 'bg-amber-100/90 border-b-2 border-b-amber-400'
                           : ''
@@ -1800,6 +2288,28 @@ export default function App() {
 
               <tbody className="divide-y divide-slate-300">
                 {currentWeek.days.map((day) => {
+                  const bookedEntry = bookedSessionsByDate[day.dateKey];
+                  if (bookedEntry) {
+                    return (
+                      <BookedSessionFullRowCard
+                        key={day.dateKey}
+                        day={day}
+                        booking={bookedEntry}
+                        votes={votes}
+                        activeMap={activeMap}
+                        viewingVote={viewingVote}
+                        viewportWidth={tableViewportWidth}
+                        isJa={isJa}
+                        t={t}
+                        onToggleBookingAvailability={
+                          handleToggleBookingAvailability
+                        }
+                        onShareBooking={handleShareBookingCard}
+                        onRequestClearBooking={openUnmarkBookingGuard}
+                      />
+                    );
+                  }
+
                   const dateTextColor =
                     day.dayType === 'saturday'
                       ? 'text-blue-700'
@@ -1812,15 +2322,19 @@ export default function App() {
                       : day.dayType === 'sunday' || day.dayType === 'holiday'
                         ? 'bg-red-50'
                         : 'bg-[#f8fafc]';
+                  const activeWindowMode = dayWindowByDate[day.dateKey] || null;
 
                   return (
-                    <tr key={day.dateKey} className="h-[88px] divide-x divide-slate-300">
+                    <tr
+                      key={day.dateKey}
+                      className="h-[96px] divide-x divide-slate-300"
+                    >
                       <td
-                        className={`sticky left-0 z-10 ${dateBgColor} h-full px-2 text-left border-r-2 border-slate-300 align-middle`}
+                        className={`sticky left-0 z-10 ${dateBgColor} h-full px-2 py-1.5 text-left border-r-2 border-slate-300 align-middle`}
                       >
                         <div className="flex items-center gap-1 flex-wrap">
                           <span
-                            translate="no"
+                            translate={isJa ? undefined : 'no'}
                             className={`text-xs sm:text-sm font-extrabold underline decoration-slate-300 whitespace-nowrap ${dateTextColor}`}
                           >
                             {day.jpDate}({day.dow})
@@ -1834,10 +2348,42 @@ export default function App() {
                             </span>
                           )}
                         </div>
-                        {day.allBooked && (
+                        {day.allBooked ? (
                           <span className="inline-block mt-0.5 text-[10px] font-bold text-slate-400 leading-tight">
                             {t.allBookedDay}
                           </span>
+                        ) : (
+                          <div
+                            role="group"
+                            aria-label={`${day.jpDate} ${t.dateColHeader}`}
+                            className="mt-1 inline-flex rounded-lg bg-white/90 p-0.5 border border-slate-300 text-[10px] font-extrabold"
+                          >
+                            {[
+                              { id: 'all', label: t.dayAllFree },
+                              { id: 'afternoon', label: t.dayAfternoonOnly },
+                              { id: 'evening', label: t.dayEveningOnly },
+                            ].map((opt) => (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                disabled={Boolean(viewingVote)}
+                                onClick={() =>
+                                  handleSelectDayWindow(day, opt.id)
+                                }
+                                className={`px-1.5 py-0.5 rounded transition whitespace-nowrap ${
+                                  viewingVote
+                                    ? 'opacity-50 cursor-default'
+                                    : 'cursor-pointer'
+                                } ${
+                                  activeWindowMode === opt.id
+                                    ? 'bg-[#1B365D] text-lime-300'
+                                    : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
                         )}
                       </td>
 
@@ -1902,9 +2448,7 @@ export default function App() {
                           );
                         }
 
-                        const activeChoice = viewingResponsesMap
-                          ? viewingResponsesMap[slotKey]
-                          : responses[slotKey];
+                        const activeChoice = activeMap[slotKey];
                         const twoHourInfo = twoHourHighlightMap[slotKey];
                         const tally = slotTallies[slotKey] || {
                           yesCount: 0,
@@ -1912,10 +2456,6 @@ export default function App() {
                           noCount: 0,
                           isTopPick: false,
                         };
-
-                        const isDimmed =
-                          (highlightPrimeOnly && !cellData.studentPrime) ||
-                          !matchesFilter(cellData.openVenueIds);
 
                         let cellBg = twoHourInfo?.isPriorityTwoHour
                           ? 'bg-indigo-50/70 hover:bg-indigo-100/70'
@@ -1950,9 +2490,7 @@ export default function App() {
                         return (
                           <td
                             key={block.id}
-                            className={`p-1 h-full align-middle transition ${cellBg} ${
-                              isDimmed ? 'opacity-25' : ''
-                            } ${highlightRing}`}
+                            className={`p-1 h-full align-middle transition ${cellBg} ${highlightRing}`}
                           >
                             <div className="h-full flex flex-col items-center justify-center gap-1">
                               <button
@@ -2047,12 +2585,141 @@ export default function App() {
           </div>
         </section>
 
+        <section
+          ref={voterBarRef}
+          className={`rounded-2xl shadow-sm border-2 transition overflow-hidden ${
+            editingVoteId
+              ? 'bg-amber-50/90 border-amber-400'
+              : viewingVote
+                ? 'bg-sky-50/90 border-sky-400'
+                : 'bg-white border-[#1B365D]/20'
+          }`}
+        >
+          <div
+            className={`px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold ${
+              editingVoteId
+                ? 'bg-amber-200/80 text-amber-950'
+                : viewingVote
+                  ? 'bg-sky-700 text-white'
+                  : 'bg-[#264673] text-white'
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              {viewingVote ? (
+                <Eye className="w-3.5 h-3.5 text-lime-300 shrink-0" />
+              ) : (
+                <Edit3 className="w-3.5 h-3.5 text-lime-300 shrink-0" />
+              )}
+              <span>
+                {editingVoteId
+                  ? t.editingBanner(voterName)
+                  : viewingVote
+                    ? t.viewingBanner(viewingVote.name)
+                    : t.defaultBanner()}
+              </span>
+            </div>
+
+            {editingVoteId && (
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() =>
+                    openDeleteVoteGuard({ id: editingVoteId, name: voterName })
+                  }
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-rose-600 text-white hover:bg-rose-700 cursor-pointer whitespace-nowrap"
+                >
+                  <Trash2 className="w-3 h-3 shrink-0" />
+                  <span>{t.deleteBtn}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={resetVoterForm}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white text-slate-800 border border-slate-300 hover:bg-slate-100 cursor-pointer whitespace-nowrap"
+                >
+                  <RotateCcw className="w-3 h-3 shrink-0" />
+                  <span>{t.cancelBtn}</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          <form onSubmit={handleSubmitVote} className="p-3.5 sm:p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+              <div className="sm:col-span-4">
+                <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
+                  {t.nameLabel} <span className="text-rose-600">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  pattern=".*\S+.*"
+                  title={t.nameTitle}
+                  value={voterName}
+                  onChange={(e) => {
+                    if (viewingVote) setViewingVote(null);
+                    setVoterName(e.target.value.replace(/^\s+/, ''));
+                  }}
+                  onBlur={(e) => setVoterName(e.target.value.trim())}
+                  placeholder={t.namePlaceholder}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:border-[#1B365D] focus:ring-2 focus:ring-[#1B365D]/20 outline-none text-sm font-bold"
+                />
+              </div>
+
+              <div className="sm:col-span-5">
+                <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
+                  {t.noteLabel}
+                </label>
+                <input
+                  type="text"
+                  value={voterNote}
+                  onChange={(e) => {
+                    if (viewingVote) setViewingVote(null);
+                    setVoterNote(e.target.value);
+                  }}
+                  placeholder={t.notePlaceholder}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:border-[#1B365D] focus:ring-2 focus:ring-[#1B365D]/20 outline-none text-sm"
+                />
+              </div>
+
+              <div className="sm:col-span-3 flex items-end">
+                {showEditExistingButton ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPickerModal(true)}
+                    className="w-full py-2.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-[0.99] text-slate-950 font-extrabold text-xs sm:text-sm shadow border border-amber-500 transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                  >
+                    <UserCheck className="w-4 h-4 shrink-0" />
+                    <span>{t.editExistingBtn}</span>
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full py-2.5 px-4 rounded-xl bg-[#1B365D] hover:bg-[#274b7d] active:scale-[0.99] text-lime-300 font-extrabold text-xs sm:text-sm shadow transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                  >
+                    <Check className="w-4 h-4 shrink-0" />
+                    <span>
+                      {isSubmitting
+                        ? t.submittingBtn
+                        : editingVoteId
+                          ? t.updateVoteBtn
+                          : t.submitVoteBtn(selectedSlotCount)}
+                    </span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </form>
+        </section>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <section className="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 bg-[#1B365D] text-white flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <Trophy className="w-4 h-4 text-lime-300 shrink-0" />
-                <h2 className="font-extrabold text-xs sm:text-sm">{t.top5Title}</h2>
+                <h2 className="font-extrabold text-xs sm:text-sm">
+                  {t.top5Title}
+                </h2>
               </div>
               <span className="text-[11px] text-sky-200 whitespace-nowrap shrink-0">
                 {t.top5Subtitle}
@@ -2066,7 +2733,9 @@ export default function App() {
                 </p>
               ) : !rankedTwoHourBlocks.length ? (
                 <div className="text-center py-6 text-xs text-slate-500 space-y-1">
-                  <p className="font-bold text-slate-700">{t.noRankedBlocksTitle}</p>
+                  <p className="font-bold text-slate-700">
+                    {t.noRankedBlocksTitle}
+                  </p>
                   <p>{t.noRankedBlocksDesc}</p>
                 </div>
               ) : (
@@ -2106,7 +2775,9 @@ export default function App() {
                         </div>
                         <div className="text-[11px] text-slate-600 flex flex-wrap items-center gap-1.5 mt-1">
                           <span className="font-bold text-[#1B365D]">
-                            {t.firstChoice(block.recommendedVenues[0]?.shortName)}
+                            {t.firstChoice(
+                              block.recommendedVenues[0]?.shortName
+                            )}
                           </span>
                           {block.openVenues.length > 1 && (
                             <span className="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700 font-bold text-[10px] whitespace-nowrap">
@@ -2144,7 +2815,9 @@ export default function App() {
                           translate="no"
                           className="px-2 py-1 rounded-lg bg-amber-100 text-amber-900 font-bold text-xs border border-amber-300 whitespace-nowrap"
                         >
-                          {t.flexPill(block.flexBothCount + block.partialYesCount)}
+                          {t.flexPill(
+                            block.flexBothCount + block.partialYesCount
+                          )}
                         </span>
                       )}
                     </div>
@@ -2158,10 +2831,12 @@ export default function App() {
             <div className="px-4 py-3 bg-[#264673] text-white flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <MessageSquare className="w-4 h-4 text-lime-300 shrink-0" />
-                <h2 className="font-extrabold text-xs sm:text-sm">{t.notesTitle}</h2>
+                <h2 className="font-extrabold text-xs sm:text-sm">
+                  {t.notesTitle}
+                </h2>
               </div>
               <span
-                translate="no"
+                translate={isJa ? undefined : 'no'}
                 className="text-[11px] text-sky-200 whitespace-nowrap shrink-0"
               >
                 {t.playerCountSuffix(activeVotes.length)}
@@ -2189,7 +2864,9 @@ export default function App() {
                       </div>
                       <p className="text-xs text-slate-600 mt-0.5 break-words">
                         {v.note || (
-                          <span className="text-slate-400 italic">{t.noNoteText}</span>
+                          <span className="text-slate-400 italic">
+                            {t.noNoteText}
+                          </span>
                         )}
                       </p>
                     </div>
@@ -2203,52 +2880,112 @@ export default function App() {
 
         <footer className="bg-white border border-slate-200 rounded-2xl p-3.5 text-[11px] sm:text-xs text-slate-600 space-y-2.5">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <span className="font-extrabold text-slate-800 inline-flex items-center gap-1.5">
-              <Info className="w-4 h-4 text-[#1B365D] shrink-0" />
-              <span>{t.directoryTitle(VENUES.length)}</span>
-            </span>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="font-extrabold text-slate-800 inline-flex items-center gap-1.5">
+                <Info className="w-4 h-4 text-[#1B365D] shrink-0" />
+                <span>{t.directoryTitle(VENUES.length)}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowVenueList((prev) => !prev)}
+                aria-expanded={showVenueList}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-[#1B365D] font-extrabold text-xs border border-slate-300 transition cursor-pointer whitespace-nowrap"
+              >
+                <span>{showVenueList ? t.hideVenueList : t.showVenueList}</span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 shrink-0 transition-transform ${
+                    showVenueList ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+            </div>
             <span>{t.footwearNote}</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {VENUES.map((v) => (
-              <div
-                key={v.id}
-                className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
-              >
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold shrink-0 whitespace-nowrap ${
-                      v.courtType === 'outdoor'
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-sky-100 text-sky-800'
-                    }`}
-                  >
-                    {v.courtType === 'outdoor' ? t.outdoorShort : t.indoorShort}
-                  </span>
+          {showVenueList && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {VENUES.map((v) => (
+                <div
+                  key={v.id}
+                  className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
+                >
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold shrink-0 whitespace-nowrap ${
+                        v.courtType === 'outdoor'
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-sky-100 text-sky-800'
+                      }`}
+                    >
+                      {v.courtType === 'outdoor'
+                        ? t.outdoorShort
+                        : t.indoorShort}
+                    </span>
+                    <a
+                      href={v.mapUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-bold text-slate-800 hover:text-[#1B365D] underline truncate"
+                    >
+                      {v.fullName}
+                    </a>
+                  </div>
                   <a
-                    href={v.mapUrl}
+                    href={v.bookingUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-bold text-slate-800 hover:text-[#1B365D] underline truncate"
+                    className="inline-flex items-center gap-0.5 text-[#1B365D] font-extrabold underline shrink-0 whitespace-nowrap"
                   >
-                    {v.fullName}
+                    <span>{t.bookLink}</span>
+                    <ExternalLink className="w-3 h-3 shrink-0" />
                   </a>
                 </div>
-                <a
-                  href={v.bookingUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-0.5 text-[#1B365D] font-extrabold underline shrink-0 whitespace-nowrap"
-                >
-                  <span>{t.bookLink}</span>
-                  <ExternalLink className="w-3 h-3 shrink-0" />
-                </a>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </footer>
       </main>
+
+      {showBookingModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3.5 bg-emerald-900 text-white flex items-center justify-between gap-2">
+              <h3 className="font-extrabold text-sm sm:text-base flex items-center gap-2">
+                <CalendarCheck className="w-4 h-4 text-lime-300 shrink-0" />
+                <span>{t.bookModalTitle}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowBookingModal(false)}
+                className="p-1 rounded-lg hover:bg-white/15 text-slate-200 cursor-pointer shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3 max-h-[85vh] overflow-y-auto text-xs">
+              {renderBookingFormFields()}
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowBookingModal(false)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer whitespace-nowrap"
+                >
+                  {t.cancelBtn}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveBookedSessionRow}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-lime-300 font-extrabold cursor-pointer whitespace-nowrap"
+                >
+                  {t.saveBookedRowBtn}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {inspectSlot && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -2258,8 +2995,12 @@ export default function App() {
                 <div className="text-[11px] text-lime-300 font-bold">
                   {t.modalTopTitle}
                 </div>
-                <h3 translate="no" className="font-extrabold text-sm sm:text-base">
-                  {inspectSlot.jpDate}({inspectSlot.dow}) {inspectSlot.timeLabel}
+                <h3
+                  translate="no"
+                  className="font-extrabold text-sm sm:text-base"
+                >
+                  {inspectSlot.jpDate}({inspectSlot.dow}){' '}
+                  {inspectSlot.timeLabel}
                 </h3>
               </div>
               <button
@@ -2283,9 +3024,15 @@ export default function App() {
                       className="font-extrabold text-slate-900 truncate"
                     >
                       {inspectSlot.alternativeTwoHourBlock.timeLabel} —{' '}
-                      {inspectSlot.alternativeTwoHourBlock.recommendedVenues[0]?.shortName}
+                      {
+                        inspectSlot.alternativeTwoHourBlock
+                          .recommendedVenues[0]?.shortName
+                      }
                     </div>
-                    <div translate="no" className="text-[10px] text-slate-600">
+                    <div
+                      translate="no"
+                      className="text-[10px] text-slate-600"
+                    >
                       2h◯ {inspectSlot.alternativeTwoHourBlock.bothYesCount} /{' '}
                       {inspectSlot.alternativeTwoHourBlock.totalVotes}
                     </div>
@@ -2313,7 +3060,9 @@ export default function App() {
                   <span className="font-extrabold text-[#1B365D] inline-flex items-center gap-1">
                     <Award className="w-4 h-4 text-amber-500 shrink-0" />
                     <span>
-                      {t.recTopHeading(inspectSlot.recommendedVenues?.length || 0)}
+                      {t.recTopHeading(
+                        inspectSlot.recommendedVenues?.length || 0
+                      )}
                     </span>
                   </span>
                   <span className="text-[10px] text-slate-500 whitespace-nowrap">
@@ -2488,7 +3237,9 @@ export default function App() {
 
               <div className="space-y-1.5 max-h-72 overflow-y-auto">
                 {activeVotes.map((v) => {
-                  const count = Object.keys(normalizeResponsesMap(v.responses)).length;
+                  const count = Object.keys(
+                    normalizeResponsesMap(v.responses)
+                  ).length;
                   return (
                     <button
                       key={v.id}
@@ -2555,176 +3306,31 @@ export default function App() {
             </div>
 
             <div className="p-4 space-y-3 max-h-[85vh] overflow-y-auto text-xs">
-              <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 font-extrabold">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShareTab('poll');
-                    setCopiedShare(false);
-                  }}
-                  className={`py-1.5 rounded-lg transition cursor-pointer ${
-                    shareTab === 'poll'
-                      ? 'bg-[#1B365D] text-lime-300 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {lang === 'ja' ? '日程調整リンク' : 'Poll Top Pick'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShareTab('confirmed');
-                    setCopiedShare(false);
-                  }}
-                  className={`py-1.5 rounded-lg transition cursor-pointer ${
-                    shareTab === 'confirmed'
-                      ? 'bg-[#1B365D] text-lime-300 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {lang === 'ja' ? '予約確定案内' : 'Confirmed Booking'}
-                </button>
+              {renderBookingFormFields()}
+
+              <div className="flex items-center justify-end gap-1.5 pt-1">
+                {[
+                  { id: 'ja', label: 'JA' },
+                  { id: 'en', label: 'EN' },
+                  { id: 'bilingual', label: 'JA/EN' },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setHasCustomizedBooking(true);
+                      setBookingFormat(item.id);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg border font-extrabold text-[11px] cursor-pointer ${
+                      bookingFormat === item.id
+                        ? 'bg-[#1B365D] text-lime-300 border-[#1B365D]'
+                        : 'bg-white text-slate-600 border-slate-300'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
               </div>
-
-              {shareTab === 'confirmed' && (
-                <div className="space-y-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden">
-                  <div className="min-w-0 overflow-hidden">
-                    <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
-                      {lang === 'ja' ? '日付' : 'Date'}
-                    </label>
-                    <input
-                      type="date"
-                      value={bookingDate}
-                      onChange={(e) => setBookingDate(e.target.value)}
-                      className="block w-full max-w-full min-w-0 box-border px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs appearance-none"
-                    />
-                  </div>
-
-                  <div className="min-w-0">
-                    <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
-                      {lang === 'ja' ? '時間' : 'Time'}
-                    </label>
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <select
-                        aria-label="Start time"
-                        value={selectedStartHour || '18:00'}
-                        onChange={(e) => handleStartTimeChange(e.target.value)}
-                        translate="no"
-                        className="flex-1 min-w-0 px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs cursor-pointer"
-                      >
-                        {START_HOUR_OPTIONS.map((slot) => (
-                          <option key={`start-${slot}`} value={slot}>
-                            {slot}
-                          </option>
-                        ))}
-                      </select>
-
-                      <span
-                        translate="no"
-                        className="text-xs font-extrabold text-slate-500 shrink-0 px-0.5"
-                      >
-                        ~
-                      </span>
-
-                      <select
-                        aria-label="End time"
-                        value={selectedEndHour || '20:00'}
-                        onChange={(e) => handleEndTimeChange(e.target.value)}
-                        translate="no"
-                        className="flex-1 min-w-0 px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs cursor-pointer"
-                      >
-                        {END_HOUR_OPTIONS.map((slot) => (
-                          <option
-                            key={`end-${slot}`}
-                            value={slot}
-                            disabled={parseHourValue(slot) <= activeStartHour}
-                          >
-                            {slot}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="min-w-0">
-                    <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
-                      {lang === 'ja' ? '会場名' : 'Venue Name'}
-                    </label>
-                    <input
-                      type="text"
-                      value={bookingVenue}
-                      onChange={(e) => setBookingVenue(e.target.value)}
-                      placeholder={
-                        lang === 'ja'
-                          ? '例: 岡山市立〇〇体育館'
-                          : 'e.g. Municipal Gym / Pitch'
-                      }
-                      className="w-full min-w-0 box-border px-3 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs"
-                    />
-                  </div>
-
-                  <div className="min-w-0">
-                    <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
-                      {lang === 'ja' ? 'Googleマップ リンク' : 'Google Maps Link'}
-                    </label>
-                    <input
-                      type="url"
-                      value={bookingMapUrl}
-                      onChange={(e) => setBookingMapUrl(e.target.value)}
-                      placeholder="https://maps.google.com/?q=..."
-                      className="w-full min-w-0 box-border px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs"
-                    />
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                    <div className="inline-flex rounded-lg bg-white p-0.5 border border-slate-300 font-extrabold text-[11px] shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setBookingCourtType('indoor')}
-                        className={`px-2.5 py-1 rounded cursor-pointer ${
-                          bookingCourtType === 'indoor'
-                            ? 'bg-sky-100 text-sky-900'
-                            : 'text-slate-500'
-                        }`}
-                      >
-                        {lang === 'ja' ? '屋内' : 'Indoor'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setBookingCourtType('outdoor')}
-                        className={`px-2.5 py-1 rounded cursor-pointer ${
-                          bookingCourtType === 'outdoor'
-                            ? 'bg-amber-100 text-amber-900'
-                            : 'text-slate-500'
-                        }`}
-                      >
-                        {lang === 'ja' ? '屋外' : 'Outdoor'}
-                      </button>
-                    </div>
-
-                    <div className="inline-flex rounded-lg bg-white p-0.5 border border-slate-300 font-extrabold text-[11px] shrink-0">
-                      {[
-                        { id: 'ja', label: 'JA' },
-                        { id: 'en', label: 'EN' },
-                        { id: 'bilingual', label: 'JA/EN' },
-                      ].map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => setBookingFormat(item.id)}
-                          className={`px-2.5 py-1 rounded cursor-pointer ${
-                            bookingFormat === item.id
-                              ? 'bg-[#1B365D] text-lime-300'
-                              : 'text-slate-500'
-                          }`}
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
 
               <p className="text-xs text-slate-600">{t.sharePrompt}</p>
 
@@ -2732,7 +3338,7 @@ export default function App() {
                 ref={textareaRef}
                 readOnly
                 rows={10}
-                value={activeShareText}
+                value={confirmedBookingText}
                 onFocus={(e) => e.target.select()}
                 className="w-full p-3 rounded-xl bg-slate-50 border border-slate-300 text-xs font-sans leading-relaxed text-slate-800 focus:outline-none break-all"
               />
@@ -2759,27 +3365,93 @@ export default function App() {
         </div>
       )}
 
-      {voteToDelete && (
+      {bookingToUnmark && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4">
-            <h3 className="font-extrabold text-slate-900 text-base">
-              {t.deleteModalTitle}
+            <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>{t.unmarkModalTitle}</span>
             </h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              {t.deleteModalBody(voteToDelete.name)}
+              {t.unmarkModalBody(
+                bookingToUnmark.label,
+                bookingToUnmark.venueLabel
+              )}
             </p>
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold text-slate-700">
+                {t.deleteKeywordHint(t.deleteKeyword)}
+              </label>
+              <input
+                type="text"
+                value={unmarkConfirmInput}
+                onChange={(e) => setUnmarkConfirmInput(e.target.value)}
+                placeholder={t.deleteKeywordPlaceholder(t.deleteKeyword)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-900 focus:border-amber-500 outline-none"
+              />
+            </div>
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setVoteToDelete(null)}
+                onClick={() => {
+                  setBookingToUnmark(null);
+                  setUnmarkConfirmInput('');
+                }}
                 className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 cursor-pointer whitespace-nowrap"
               >
                 {t.cancelBtn}
               </button>
               <button
                 type="button"
+                disabled={!isUnmarkKeywordMatched}
+                onClick={handleConfirmClearBooking}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:pointer-events-none text-white text-xs font-bold cursor-pointer whitespace-nowrap"
+              >
+                {t.confirmUnmarkBtn}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {voteToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+            <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{t.deleteModalTitle}</span>
+            </h3>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              {t.deleteModalBody(voteToDelete.name)}
+            </p>
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold text-slate-700">
+                {t.deleteKeywordHint(t.deleteKeyword)}
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmInput}
+                onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                placeholder={t.deleteKeywordPlaceholder(t.deleteKeyword)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-900 focus:border-rose-500 outline-none"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setVoteToDelete(null);
+                  setDeleteConfirmInput('');
+                }}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 cursor-pointer whitespace-nowrap"
+              >
+                {t.cancelBtn}
+              </button>
+              <button
+                type="button"
+                disabled={!isDeleteKeywordMatched}
                 onClick={handleConfirmDeleteVote}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer whitespace-nowrap"
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:pointer-events-none text-white text-xs font-bold cursor-pointer whitespace-nowrap"
               >
                 {t.confirmDeleteBtn}
               </button>
