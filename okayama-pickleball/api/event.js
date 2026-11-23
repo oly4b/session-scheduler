@@ -1,7 +1,71 @@
 import { VENUES } from '../src/config/venues.js';
 
 const DOW_JP = ['日', '月', '火', '水', '木', '金', '土'];
+const DOW_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const VENUE_BY_ID = new Map(VENUES.map((venue) => [venue.id, venue]));
+const IN_APP_UA_PATTERN =
+  /LINE|FBAN|FBAV|Instagram|FB_IAB|Twitter|MicroMessenger|KAKAOTALK|GSA|wv/i;
+
+const EVENT_COPY = {
+  ja: {
+    sessionLabel: '岡大dinks セッション',
+    inviteHeading: '🗓️ 岡大dinks セッション案内',
+    gateBadge: '🔒 外部ブラウザ専用',
+    gateTitle: '🌐 外部ブラウザで開いてください',
+    gateBody:
+      'アプリ内ブラウザではカレンダー追加が制限されるため、外部ブラウザで開いてください。',
+    gateStepsTitle: '開き方の手順:',
+    gateStepOne: '1. 下の「リンクをコピー」を押す',
+    gateStepTwo:
+      '2. 画面右上・下部のメニュー（… / ︙ / 共有アイコン）から「Safariで開く」や' +
+      '「ブラウザで開く」を選ぶか、Safari / Chrome に貼り付けて開く',
+    copyBtn: '📋 リンクをコピー',
+    copiedText: '✅ コピーしました',
+    manualCopyText: '📋 URLを長押ししてコピーしてください',
+    openMapBtn: '🗺️ Google マップで場所を開く',
+    appleCalBtn: '🗓️ Apple カレンダーに追加',
+    googleCalBtn: '📅 Google カレンダーに追加',
+    venueLabel: '📍 会場:',
+    addressLabel: '🏠 住所:',
+    dateLinePrefix: '⏰ 日時:',
+    venueLinePrefix: '📍 会場:',
+    mapLinePrefix: '🗺️ Googleマップ:',
+    undecidedVenue: '未定',
+    outdoorGeneralShoes: '👟 屋外コートのため適切なシューズ推奨',
+    outdoorCourtShoes: '👟 屋外コートのためテニス・ハードコート用シューズ推奨',
+    indoorShoes: '👟 体育館のため室内専用シューズ必須',
+  },
+  en: {
+    sessionLabel: '岡大dinks Session',
+    inviteHeading: '🗓️ 岡大dinks Session Details',
+    gateBadge: '🔒 External Browser Only',
+    gateTitle: '🌐 Open in an External Browser',
+    gateBody:
+      'Calendar additions are restricted inside in-app browsers. Please open this link' +
+      ' in an external browser.',
+    gateStepsTitle: 'How to open:',
+    gateStepOne: '1. Tap "Copy Link" below',
+    gateStepTwo:
+      '2. Choose "Open in Safari" or "Open in Browser" from the menu (… / ︙ / Share)' +
+      ' or paste the link into Safari or Chrome',
+    copyBtn: '📋 Copy Link',
+    copiedText: '✅ Link copied',
+    manualCopyText: '📋 Long-press the URL to copy',
+    openMapBtn: '🗺️ Open Venue in Google Maps',
+    appleCalBtn: '🗓️ Add to Apple Calendar',
+    googleCalBtn: '📅 Add to Google Calendar',
+    venueLabel: '📍 Venue:',
+    addressLabel: '🏠 Address:',
+    dateLinePrefix: '⏰ Date & Time:',
+    venueLinePrefix: '📍 Venue:',
+    mapLinePrefix: '🗺️ Google Maps:',
+    undecidedVenue: 'TBD',
+    outdoorGeneralShoes: '👟 Appropriate court shoes recommended for outdoor courts',
+    outdoorCourtShoes:
+      '👟 Tennis or hard-court shoes recommended for outdoor courts',
+    indoorShoes: '👟 Indoor-only court shoes required for gymnasiums',
+  },
+};
 
 // Supplement venues.js entries with street addresses and coordinates for
 // calendar LOCATION/GEO fields and map queries when a known venue ID is passed.
@@ -117,17 +181,22 @@ function extractVenueFromMapUrl(rawMapUrl) {
   return '';
 }
 
-function buildGoogleMapsFallbackUrl(query) {
-  if (!query || query === '未定') return '';
+function buildGoogleMapsFallbackUrl(query, undecidedLabel) {
+  if (!query || query === undecidedLabel || query === '未定' || query === 'TBD') {
+    return '';
+  }
   const url = new URL('https://www.google.com/maps/search/');
   url.searchParams.set('api', '1');
   url.searchParams.set('query', query);
   return url.toString();
 }
 
-function formatJpDateFromIso(dateStr) {
+function formatDateFromIso(dateStr, lang) {
   const dateObj = new Date(`${dateStr}T00:00:00Z`);
   if (Number.isNaN(dateObj.getTime())) return dateStr;
+  if (lang === 'en') {
+    return `${DOW_EN[dateObj.getUTCDay()]}, ${dateObj.getUTCMonth() + 1}/${dateObj.getUTCDate()}`;
+  }
   return (
     `${dateObj.getUTCMonth() + 1}月${dateObj.getUTCDate()}日` +
     `(${DOW_JP[dateObj.getUTCDay()]})`
@@ -189,71 +258,61 @@ function buildIcsCalendar({
     .join('\r\n');
 }
 
-function buildExternalBrowserUrl(rawUrl) {
-  const url = new URL(rawUrl);
-  url.searchParams.set('ext', '1');
-  return url.toString();
-}
+function buildCopyAndMapGateScript({ sharePageUrl, copiedText, manualCopyText }) {
+  return `<script>
+(function() {
+  var ua = navigator.userAgent || '';
+  var isInApp = ${IN_APP_UA_PATTERN.toString()}.test(ua);
+  var lockedGate = document.getElementById('locked-gate');
+  var eventCard = document.getElementById('event-card');
 
-function buildAndroidIntentUrl(httpsUrl) {
-  const parsed = new URL(httpsUrl);
-  const scheme = parsed.protocol.replace(':', '') || 'https';
-  return (
-    `intent://${httpsUrl.replace(/^https?:\/\//i, '')}` +
-    `#Intent;scheme=${scheme};package=com.android.chrome;` +
-    `S.browser_fallback_url=${encodeURIComponent(httpsUrl)};end`
-  );
-}
+  if (!isInApp) {
+    if (lockedGate) lockedGate.style.display = 'none';
+    if (eventCard) eventCard.style.display = 'block';
+    return;
+  }
 
-function renderBlankExternalGateHtml({ title, externalUrl, androidIntentUrl }) {
-  return `<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(title)}</title>
-  <style>
-    body { margin: 0; background: #fff; color: #0f172a; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: flex; min-height: 100vh; align-items: center; justify-content: center; padding: 24px; text-align: center; }
-    .gate { max-width: 320px; width: 100%; }
-    .open-btn { display: inline-block; padding: 12px 18px; border-radius: 12px; background: #1B365D; color: #bef264; font-weight: 800; text-decoration: none; font-size: 14px; }
-  </style>
-</head>
-<body>
-  <div class="gate">
-    <a id="ext-link" class="open-btn" href="${escapeHtml(externalUrl)}" target="_blank" rel="noopener noreferrer">🌐 外部ブラウザで開く</a>
-  </div>
-  <script>
-  (function() {
-    var ua = navigator.userAgent || '';
-    var isAndroid = /Android/i.test(ua);
-    var isIos = /iPhone|iPad|iPod/i.test(ua);
-    var isInApp =
-      /LINE|FBAN|FBAV|Instagram|Twitter|MicroMessenger|KAKAOTALK|GSA|CriOS.*FB|wv/i.test(
-        ua
-      ) || (isIos && !/Safari/i.test(ua));
+  var copyBtn = document.getElementById('copy-link-btn');
+  var statusEl = document.getElementById('copy-status');
+  var shareUrl = ${JSON.stringify(sharePageUrl)};
+  var copiedLabel = ${JSON.stringify(copiedText)};
+  var manualCopyLabel = ${JSON.stringify(manualCopyText)};
 
-    var extLink = document.getElementById('ext-link');
-    var externalUrl = ${JSON.stringify(externalUrl)};
-    var androidIntentUrl = ${JSON.stringify(androidIntentUrl)};
+  function markCopied() {
+    if (statusEl) statusEl.textContent = copiedLabel;
+  }
 
-    if (isAndroid && isInApp && extLink) {
-      extLink.setAttribute('href', androidIntentUrl);
-      window.location.replace(androidIntentUrl);
-      return;
+  if (copyBtn) {
+    copyBtn.addEventListener('click', function() {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(shareUrl).then(markCopied).catch(fallbackCopy);
+      } else {
+        fallbackCopy();
+      }
+    });
+  }
+
+  function fallbackCopy() {
+    var input = document.getElementById('fallback-url-input');
+    if (!input) return;
+    input.style.display = 'block';
+    input.focus();
+    input.select();
+    try {
+      document.execCommand('copy');
+      markCopied();
+    } catch (_) {
+      if (statusEl) statusEl.textContent = manualCopyLabel;
     }
-
-    if (!isInApp) {
-      window.location.replace(externalUrl);
-    }
-  })();
-  </script>
-</body>
-</html>`;
+  }
+})();
+</script>`;
 }
 
 /**
- * Serves `.ics` calendar invites, a blank external-browser gate when `ext` is
- * not `'1'`, and HTML event pages once opened externally (`ext=1`).
+ * Serves `.ics` calendar invites and bilingual (`ja`/`en`) HTML event pages,
+ * locking the event card behind a Copy Link and Google Maps gate when opened
+ * inside an in-app browser.
  *
  * @param {import('http').IncomingMessage & { query?: Record<string, string> }} req
  * @param {import('http').ServerResponse & { status: (code: number) => any }} res
@@ -271,7 +330,7 @@ export default function handler(req, res) {
     sport: rawSport = 'pickleball',
     title: rawTitle = '',
     ics = '',
-    ext = '',
+    lang: rawLang = 'ja',
   } = req.query || {};
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !start || !end) {
@@ -292,6 +351,9 @@ export default function handler(req, res) {
     return;
   }
 
+  const lang = String(rawLang || 'ja').toLowerCase() === 'en' ? 'en' : 'ja';
+  const copy = EVENT_COPY[lang];
+
   const venueId = String(v || '').trim();
   const venueRecord = VENUE_BY_ID.get(venueId) || null;
   const fallbackMeta = VENUE_META_BY_ID[venueId] || null;
@@ -302,7 +364,7 @@ export default function handler(req, res) {
     venueRecord?.shortName ||
     String(rawVenue || '').trim() ||
     extractVenueFromMapUrl(rawMap) ||
-    '未定';
+    copy.undecidedVenue;
 
   const address = venueRecord?.address || fallbackMeta?.address || '';
   const lat =
@@ -314,7 +376,10 @@ export default function handler(req, res) {
   const mapUrl =
     sanitizeSafeUrl(venueRecord?.mapUrl) ||
     sanitizeSafeUrl(rawMap) ||
-    buildGoogleMapsFallbackUrl(address ? `${venueName} ${address}` : venueName);
+    buildGoogleMapsFallbackUrl(
+      address ? `${venueName} ${address}` : venueName,
+      copy.undecidedVenue
+    );
 
   const sport = String(rawSport || 'pickleball').trim().toLowerCase();
   const sportLabelMap = { futsal: 'Futsal', football: 'Football' };
@@ -323,14 +388,14 @@ export default function handler(req, res) {
   const fallbackNote = venueRecord
     ? venueRecord.courtType === 'outdoor'
       ? sport === 'futsal' || sport === 'football'
-        ? '👟 屋外コートのため適切なシューズ推奨'
-        : '👟 屋外コートのためテニス・ハードコート用シューズ推奨'
-      : '👟 体育館のため室内専用シューズ必須'
+        ? copy.outdoorGeneralShoes
+        : copy.outdoorCourtShoes
+      : copy.indoorShoes
     : '';
 
   const note = String(rawNote || '').trim() || fallbackNote;
   const displayDate =
-    String(jpDate || '').trim() || formatJpDateFromIso(date);
+    String(jpDate || '').trim() || formatDateFromIso(date, lang);
 
   const compactDate = date.replace(/-/g, '');
   const startStr = `${compactDate}T${String(startHour).padStart(2, '0')}0000`;
@@ -343,11 +408,13 @@ export default function handler(req, res) {
     `🏓 岡大dinks ${defaultSportLabel} (${venueName})`;
 
   const descriptionLines = [
-    '🏓 岡大dinks セッション',
-    displayDate ? `⏰ 日時: ${displayDate} ${startHour}:00–${endHour}:00` : '',
-    `📍 会場: ${venueName}${address ? ` (${address})` : ''}`,
+    `🏓 ${copy.sessionLabel}`,
+    displayDate
+      ? `${copy.dateLinePrefix} ${displayDate} ${startHour}:00–${endHour}:00`
+      : '',
+    `${copy.venueLinePrefix} ${venueName}${address ? ` (${address})` : ''}`,
     note,
-    mapUrl ? `🗺️ Googleマップ: ${mapUrl}` : '',
+    mapUrl ? `${copy.mapLinePrefix} ${mapUrl}` : '',
   ].filter(Boolean);
   const descriptionText = descriptionLines.join('\n');
 
@@ -379,27 +446,12 @@ export default function handler(req, res) {
 
   const originUrl = `https://${req.headers.host}`;
   const currentFullUrl = `${originUrl}${req.url}`;
-
-  if (ext !== '1') {
-    const externalUrl = buildExternalBrowserUrl(currentFullUrl);
-    const androidIntentUrl = buildAndroidIntentUrl(externalUrl);
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.status(200).send(
-      renderBlankExternalGateHtml({
-        title: summary,
-        externalUrl,
-        androidIntentUrl,
-      })
-    );
-    return;
-  }
-
   const ogImageUrl = `${originUrl}/og-image.png`;
   const pageDescription = descriptionLines.join(' · ');
 
   const downloadUrl = new URL(currentFullUrl);
   downloadUrl.searchParams.set('ics', '1');
-  downloadUrl.searchParams.set('ext', '1');
+  downloadUrl.searchParams.set('lang', lang);
 
   const googleCalUrl = new URL('https://calendar.google.com/calendar/render');
   googleCalUrl.searchParams.set('action', 'TEMPLATE');
@@ -414,7 +466,7 @@ export default function handler(req, res) {
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.status(200).send(`<!doctype html>
-<html lang="ja">
+<html lang="${escapeHtml(lang)}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -434,27 +486,53 @@ export default function handler(req, res) {
     .hdr h1 { font-size: 18px; margin: 0; }
     .body { padding: 18px 20px; font-size: 14px; line-height: 1.6; }
     .row { margin-bottom: 10px; }
-    .btn { display: block; text-align: center; text-decoration: none; font-weight: 800; padding: 12px 16px; border-radius: 12px; margin-top: 10px; }
-    .btn-primary { background: #a3e635; color: #1B365D; }
+    .steps { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 10px 12px; font-size: 12px; color: #334155; margin-bottom: 12px; }
+    .btn { display: block; width: 100%; box-sizing: border-box; text-align: center; text-decoration: none; font-weight: 800; padding: 12px 16px; border-radius: 12px; margin-top: 10px; font-size: 14px; }
+    .btn-primary { background: #a3e635; color: #1B365D; border: none; cursor: pointer; }
     .btn-secondary { background: #1B365D; color: #fff; }
     .btn-outline { background: #f8fafc; color: #1B365D; border: 1px solid #cbd5e1; }
+    .status { min-height: 20px; margin-top: 8px; font-size: 12px; font-weight: 700; color: #15803d; text-align: center; }
+    .fallback-input { display: none; width: 100%; box-sizing: border-box; margin-top: 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 12px; color: #0f172a; }
   </style>
 </head>
 <body>
-  <div class="card">
+  <div id="locked-gate" class="card">
     <div class="hdr">
-      <small>🗓️ 岡大dinks セッション案内</small>
+      <small>${escapeHtml(copy.gateBadge)}</small>
+      <h1>${escapeHtml(copy.gateTitle)}</h1>
+    </div>
+    <div class="body">
+      <div class="row">${escapeHtml(copy.gateBody)}</div>
+      <div class="steps">
+        <strong>${escapeHtml(copy.gateStepsTitle)}</strong><br />
+        ${escapeHtml(copy.gateStepOne)}<br />
+        ${escapeHtml(copy.gateStepTwo)}
+      </div>
+      <button id="copy-link-btn" type="button" class="btn btn-primary">${escapeHtml(copy.copyBtn)}</button>
+      <div id="copy-status" class="status" aria-live="polite"></div>
+      <input id="fallback-url-input" class="fallback-input" type="text" readonly value="${escapeHtml(currentFullUrl)}" />
+      ${mapUrl ? `<a class="btn btn-outline" href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(copy.openMapBtn)}</a>` : ''}
+    </div>
+  </div>
+  <div id="event-card" class="card" style="display:none">
+    <div class="hdr">
+      <small>${escapeHtml(copy.inviteHeading)}</small>
       <h1>⏰ ${escapeHtml(displayDate)} ${startHour}:00–${endHour}:00</h1>
     </div>
     <div class="body">
-      <div class="row"><strong>📍 会場:</strong> ${escapeHtml(venueName)}</div>
-      ${address ? `<div class="row"><strong>🏠 住所:</strong> ${escapeHtml(address)}</div>` : ''}
+      <div class="row"><strong>${escapeHtml(copy.venueLabel)}</strong> ${escapeHtml(venueName)}</div>
+      ${address ? `<div class="row"><strong>${escapeHtml(copy.addressLabel)}</strong> ${escapeHtml(address)}</div>` : ''}
       ${note ? `<div class="row">${escapeHtml(note)}</div>` : ''}
-      <a class="btn btn-primary" href="${escapeHtml(downloadUrl.toString())}">🗓️ Apple カレンダーに追加</a>
-      <a class="btn btn-secondary" href="${escapeHtml(googleCalUrl.toString())}" target="_blank" rel="noopener noreferrer">📅 Google カレンダーに追加</a>
-      ${mapUrl ? `<a class="btn btn-outline" href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">🗺️ Google マップで場所を開く</a>` : ''}
+      <a class="btn btn-primary" href="${escapeHtml(downloadUrl.toString())}">${escapeHtml(copy.appleCalBtn)}</a>
+      <a class="btn btn-secondary" href="${escapeHtml(googleCalUrl.toString())}" target="_blank" rel="noopener noreferrer">${escapeHtml(copy.googleCalBtn)}</a>
+      ${mapUrl ? `<a class="btn btn-outline" href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(copy.openMapBtn)}</a>` : ''}
     </div>
   </div>
+  ${buildCopyAndMapGateScript({
+    sharePageUrl: currentFullUrl,
+    copiedText: copy.copiedText,
+    manualCopyText: copy.manualCopyText,
+  })}
 </body>
 </html>`);
 }
