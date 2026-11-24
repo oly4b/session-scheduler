@@ -9,7 +9,9 @@ import {
   blockNonEssentialAssets,
   createSupabaseServiceClient,
   formatTimeRange,
+  getCurrentJstHour,
   getJstDateString,
+  isSlotPastCurrentJst,
   runWithConcurrency,
   syncCourtAvailability,
 } from './lib/scraper-utils.js';
@@ -45,7 +47,8 @@ function getEffectiveMaxStartHour(venue) {
   if (typeof venue.maxStartHour === 'number') return venue.maxStartHour;
 
   // Unlit outdoor courts close at 17:00; final playable block is 16:00-17:00.
-  const isUnlitOutdoor = venue.courtType === 'outdoor' && venue.hasLights === false;
+  const isUnlitOutdoor =
+    venue.courtType === 'outdoor' && venue.hasLights === false;
   return isUnlitOutdoor ? 16 : 21;
 }
 
@@ -66,8 +69,8 @@ function buildWindowUrl(baseUrl, startDate, endDate) {
 }
 
 /**
- * Converts a Japanese month/day label (e.g., `12月5日`) into an ISO date string,
- * rolling the year forward when December queries wrap into January.
+ * Converts a Japanese month/day label (e.g., `12月5日`) into an ISO date
+ * string, rolling the year forward when December queries wrap into January.
  *
  * @param {string} label
  * @returns {string | null}
@@ -81,9 +84,12 @@ function resolveDateKey(label) {
   const nowJst = new Date(Date.now() + JST_OFFSET_MS);
   const currentYear = nowJst.getUTCFullYear();
   const currentMonth = nowJst.getUTCMonth() + 1;
-  const year = currentMonth === 12 && month === 1 ? currentYear + 1 : currentYear;
+  const year =
+    currentMonth === 12 && month === 1 ? currentYear + 1 : currentYear;
 
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return (
+    `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  );
 }
 
 /**
@@ -103,15 +109,23 @@ async function dismissDialogs(page) {
 }
 
 /**
- * Scrolls virtualized Vuetify containers so lazy-mounted availability tables render,
- * then extracts all open start hours grouped by ISO date.
+ * Scrolls virtualized Vuetify containers so lazy-mounted availability tables
+ * render, then extracts open start hours that have not yet passed.
  *
  * @param {Page} page
  * @param {Map<string, Set<number>>} openHoursByDate
  * @param {Set<string>} capturedDates
+ * @param {string} todayDateKey
+ * @param {number} currentJstHour
  * @returns {Promise<void>}
  */
-async function parseVisibleTables(page, openHoursByDate, capturedDates) {
+async function parseVisibleTables(
+  page,
+  openHoursByDate,
+  capturedDates,
+  todayDateKey,
+  currentJstHour
+) {
   await page.evaluate(async () => {
     const scrollables = Array.from(document.querySelectorAll('*')).filter(
       (el) => el.scrollHeight > el.clientHeight + 100
@@ -130,13 +144,19 @@ async function parseVisibleTables(page, openHoursByDate, capturedDates) {
   const tables = await page.evaluate(() => {
     const normalize = (text) =>
       (text || '')
-        .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+        .replace(/[！-～]/g, (ch) =>
+          String.fromCharCode(ch.charCodeAt(0) - 0xfee0)
+        )
         .replace(/\u3000/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 
     return Array.from(document.querySelectorAll('table'))
-      .filter((t) => t.offsetParent !== null && t.querySelector('.AvailabilityFrameSet_frame'))
+      .filter(
+        (t) =>
+          t.offsetParent !== null &&
+          t.querySelector('.AvailabilityFrameSet_frame')
+      )
       .map((table) =>
         Array.from(table.querySelectorAll('tr')).map((tr) => {
           const firstCell = tr.querySelector('th, td');
@@ -145,7 +165,9 @@ async function parseVisibleTables(page, openHoursByDate, capturedDates) {
           ).map((el) => ({
             text: normalize(el.innerText),
             title: normalize(
-              el.querySelector('.AvailabilityFrameSet_frame_content')?.getAttribute('title')
+              el
+                .querySelector('.AvailabilityFrameSet_frame_content')
+                ?.getAttribute('title')
             ),
             startTime: el.querySelector('time')?.getAttribute('datetime') || '',
           }));
@@ -189,7 +211,12 @@ async function parseVisibleTables(page, openHoursByDate, capturedDates) {
         if (!OPEN_MARKERS.some((marker) => labelText.includes(marker))) continue;
 
         for (let hour = startHour; hour < endHour; hour += 1) {
-          if (ALLOWED_HOURS_SET.has(hour)) openHours.add(hour);
+          if (
+            ALLOWED_HOURS_SET.has(hour) &&
+            !isSlotPastCurrentJst(slotDate, hour, todayDateKey, currentJstHour)
+          ) {
+            openHours.add(hour);
+          }
         }
       }
     }
@@ -197,14 +224,16 @@ async function parseVisibleTables(page, openHoursByDate, capturedDates) {
 }
 
 /**
- * Scrapes a 28-day availability window for a single Yoyacool venue and normalizes
- * every hourly slot into `open`, `booked`, or `closed` database records.
+ * Scrapes a 28-day availability window for a single Yoyacool venue and
+ * normalizes remaining slots into `open`, `booked`, or `closed` records.
  *
  * @param {Browser} browser
  * @param {VenueConfig} venue
+ * @param {string} todayDateKey
+ * @param {number} currentJstHour
  * @returns {Promise<CourtSlotRecord[]>}
  */
-async function scrapeYoyacoolVenue(browser, venue) {
+async function scrapeYoyacoolVenue(browser, venue, todayDateKey, currentJstHour) {
   const page = await browser.newPage({
     locale: 'ja-JP',
     timezoneId: 'Asia/Tokyo',
@@ -219,7 +248,7 @@ async function scrapeYoyacoolVenue(browser, venue) {
   const capturedDates = new Set();
 
   const windows = [
-    { start: getJstDateString(0), end: getJstDateString(13) },
+    { start: todayDateKey, end: getJstDateString(13) },
     { start: getJstDateString(14), end: getJstDateString(27) },
   ];
 
@@ -228,13 +257,26 @@ async function scrapeYoyacoolVenue(browser, venue) {
 
     for (const { start, end } of windows) {
       const targetUrl = buildWindowUrl(venue.scraperUrl, start, end);
-      await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 45_000 });
-      await page.waitForSelector('.AvailabilityFrameSet_frame', { timeout: 20_000 });
+      await page.goto(targetUrl, {
+        waitUntil: 'networkidle',
+        timeout: 45_000,
+      });
+      await page.waitForSelector('.AvailabilityFrameSet_frame', {
+        timeout: 20_000,
+      });
       await dismissDialogs(page);
-      await parseVisibleTables(page, openHoursByDate, capturedDates);
+      await parseVisibleTables(
+        page,
+        openHoursByDate,
+        capturedDates,
+        todayDateKey,
+        currentJstHour
+      );
     }
 
-    console.log(`[${venue.id}] Captured ${capturedDates.size} dates for ${venue.shortName}.`);
+    console.log(
+      `[${venue.id}] Captured ${capturedDates.size} dates for ${venue.shortName}.`
+    );
   } finally {
     await page.close();
   }
@@ -246,12 +288,18 @@ async function scrapeYoyacoolVenue(browser, venue) {
   let openCount = 0;
   let bookedCount = 0;
   let closedCount = 0;
+  let skippedPastCount = 0;
 
   for (let offset = 0; offset < SCRAPE_DAYS; offset += 1) {
     const dateKey = getJstDateString(offset);
     const openSet = openHoursByDate.get(dateKey);
 
     for (const startHour of ALLOWED_START_HOURS) {
+      if (isSlotPastCurrentJst(dateKey, startHour, todayDateKey, currentJstHour)) {
+        skippedPastCount += 1;
+        continue;
+      }
+
       const timeRange = formatTimeRange(startHour);
 
       /** @type {'open' | 'booked' | 'closed'} */
@@ -277,14 +325,16 @@ async function scrapeYoyacoolVenue(browser, venue) {
 
   console.log(
     `[${venue.id}] Prepared ${records.length} slots ` +
-      `(${openCount} open, ${bookedCount} booked, ${closedCount} closed).`
+      `(${openCount} open, ${bookedCount} booked, ${closedCount} closed, ` +
+      `${skippedPastCount} past skipped).`
   );
 
   return records;
 }
 
 /**
- * Scrapes all Yoyacool venues and syncs their 28-day court availability to Supabase.
+ * Scrapes all Yoyacool venues and syncs their 28-day court availability to
+ * Supabase.
  *
  * @returns {Promise<void>}
  */
@@ -294,13 +344,17 @@ async function main() {
 
   const yoyacoolVenues = VENUES.filter((venue) => venue.source === 'yoyacool');
   const minDate = getJstDateString(0);
+  const currentJstHour = getCurrentJstHour();
   const browser = await chromium.launch({ headless: true });
 
   /** @type {CourtSlotRecord[]} */
   let allRecords;
   try {
-    const nested = await runWithConcurrency(yoyacoolVenues, CONCURRENCY, (venue) =>
-      scrapeYoyacoolVenue(browser, venue)
+    const nested = await runWithConcurrency(
+      yoyacoolVenues,
+      CONCURRENCY,
+      (venue) =>
+        scrapeYoyacoolVenue(browser, venue, minDate, currentJstHour)
     );
     allRecords = nested.flat();
   } finally {
@@ -308,7 +362,9 @@ async function main() {
   }
 
   if (!supabase) {
-    console.log(`[yoyacool] Dry run complete (${allRecords.length} records).`);
+    console.log(
+      `[yoyacool] Dry run complete (${allRecords.length} records).`
+    );
     return;
   }
 
@@ -319,7 +375,8 @@ async function main() {
   });
 
   console.log(
-    `[yoyacool] Synced ${allRecords.length} slots across ${yoyacoolVenues.length} venues.`
+    `[yoyacool] Synced ${allRecords.length} slots across ` +
+      `${yoyacoolVenues.length} venues.`
   );
 }
 

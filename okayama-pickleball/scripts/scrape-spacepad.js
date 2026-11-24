@@ -8,7 +8,9 @@ import {
   blockNonEssentialAssets,
   createSupabaseServiceClient,
   formatTimeRange,
+  getCurrentJstHour,
   getJstParts,
+  isSlotPastCurrentJst,
   runWithConcurrency,
   syncCourtAvailability,
 } from './lib/scraper-utils.js';
@@ -49,7 +51,9 @@ function normalizeDataDate(rawDate) {
   const parts = String(rawDate || '').split('-');
   if (parts.length !== 3) return '';
 
-  return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+  return (
+    `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`
+  );
 }
 
 /**
@@ -72,7 +76,9 @@ function isTargetDivision(venue, integration) {
     .replace(/\s+/g, '');
 
   return Boolean(
-    venue.targetDivisionNames?.some((target) => normalizedName.includes(target))
+    venue.targetDivisionNames?.some((target) =>
+      normalizedName.includes(target)
+    )
   );
 }
 
@@ -102,7 +108,8 @@ function waitForCalendarGraphql(page, requireCalendarQuery = false) {
 }
 
 /**
- * Clicks all unvisited open calendar cells within `monthPrefix` and `[minDate, maxDate]`.
+ * Clicks all unvisited open calendar cells within `monthPrefix` and
+ * `[minDate, maxDate]`.
  *
  * @param {Page} page
  * @param {string} monthPrefix
@@ -120,7 +127,9 @@ async function clickOpenDatesForMonth(
 ) {
   const rawDates = await page.evaluate(() =>
     Array.from(
-      document.querySelectorAll('button[role="gridcell"][aria-readonly="false"]')
+      document.querySelectorAll(
+        'button[role="gridcell"][aria-readonly="false"]'
+      )
     ).map((btn) => btn.getAttribute('data-date') || '')
   );
 
@@ -155,7 +164,8 @@ async function clickOpenDatesForMonth(
  */
 async function advanceToNextMonth(page, endParts, clickedRawDates) {
   const unpaddedPrefix = `${endParts.year}-${endParts.month}-`;
-  const paddedPrefix = `${endParts.year}-${String(endParts.month).padStart(2, '0')}-`;
+  const paddedPrefix =
+    `${endParts.year}-${String(endParts.month).padStart(2, '0')}-`;
   const midMonthSelector =
     `button[role="gridcell"][data-date="${unpaddedPrefix}15"], ` +
     `button[role="gridcell"][data-date="${paddedPrefix}15"]`;
@@ -166,10 +176,11 @@ async function advanceToNextMonth(page, endParts, clickedRawDates) {
   const nextMonthBtn = page.locator('button[aria-label="次の月"]').first();
   if ((await nextMonthBtn.count()) && !(await nextMonthBtn.isDisabled())) {
     await nextMonthBtn.click({ timeout: 3000 }).catch(() => null);
-    await page.waitForSelector(midMonthSelector, { timeout: 4000 }).catch(() => null);
+    await page
+      .waitForSelector(midMonthSelector, { timeout: 4000 })
+      .catch(() => null);
   }
 
-  // Fallback: click an open overflow date from next month to force full month rendering.
   if (!(await page.locator(midMonthSelector).count())) {
     const overflowCell = page.locator(overflowSelector).first();
     if (await overflowCell.count()) {
@@ -180,7 +191,9 @@ async function advanceToNextMonth(page, endParts, clickedRawDates) {
       if (rawDate) clickedRawDates.add(rawDate);
 
       await graphqlResponse;
-      await page.waitForSelector(midMonthSelector, { timeout: 4000 }).catch(() => null);
+      await page
+        .waitForSelector(midMonthSelector, { timeout: 4000 })
+        .catch(() => null);
     }
   }
 
@@ -188,16 +201,23 @@ async function advanceToNextMonth(page, endParts, clickedRawDates) {
 }
 
 /**
- * Intercepts Spacepad GraphQL responses across a 28-day window for one venue and
- * normalizes hourly availability into database records.
+ * Intercepts Spacepad GraphQL responses across a 28-day window for one venue,
+ * skipping already-passed hours today and normalizing remaining slots.
  *
  * @param {Browser} browser
  * @param {VenueConfig} venue
  * @param {JstDateParts} startParts
  * @param {JstDateParts} endParts
+ * @param {number} currentJstHour
  * @returns {Promise<CourtSlotRecord[]>}
  */
-async function scrapeSpacepadVenue(browser, venue, startParts, endParts) {
+async function scrapeSpacepadVenue(
+  browser,
+  venue,
+  startParts,
+  endParts,
+  currentJstHour
+) {
   const minDate = startParts.dateKey;
   const maxDate = endParts.dateKey;
   const page = await browser.newPage({
@@ -229,7 +249,12 @@ async function scrapeSpacepadVenue(browser, venue, startParts, endParts) {
       const startHour = Number(schedule.startedAt.slice(11, 13));
       const endHour = Number(schedule.endedAt.slice(11, 13));
       for (let hour = startHour; hour < endHour; hour += 1) {
-        if (ALLOWED_HOURS_SET.has(hour)) openHours.add(hour);
+        if (
+          ALLOWED_HOURS_SET.has(hour) &&
+          !isSlotPastCurrentJst(dateKey, hour, minDate, currentJstHour)
+        ) {
+          openHours.add(hour);
+        }
       }
     }
   }
@@ -250,7 +275,7 @@ async function scrapeSpacepadVenue(browser, venue, startParts, endParts) {
         }
       }
 
-      // Single-space rooms (e.g., weight rooms) return schedules without court divisions.
+      // Single-space rooms return schedules without court divisions.
       const saasSchedules = payload.data.saasReservationHourCalendar;
       if (Array.isArray(saasSchedules) && venue.allowAnyDivision) {
         recordSchedules(saasSchedules);
@@ -262,8 +287,13 @@ async function scrapeSpacepadVenue(browser, venue, startParts, endParts) {
 
   try {
     console.log(`[${venue.id}] Opening ${venue.fullName}...`);
-    await page.goto(venue.scraperUrl, { waitUntil: 'networkidle', timeout: 45_000 });
-    await page.waitForSelector('button[role="gridcell"]', { timeout: 15_000 });
+    await page.goto(venue.scraperUrl, {
+      waitUntil: 'networkidle',
+      timeout: 45_000,
+    });
+    await page.waitForSelector('button[role="gridcell"]', {
+      timeout: 15_000,
+    });
 
     /** @type {Set<string>} */
     const clickedRawDates = new Set();
@@ -301,12 +331,18 @@ async function scrapeSpacepadVenue(browser, venue, startParts, endParts) {
   let openCount = 0;
   let bookedCount = 0;
   let closedCount = 0;
+  let skippedPastCount = 0;
 
   for (let offset = 0; offset < SCRAPE_DAYS; offset += 1) {
     const { dateKey } = getJstParts(offset);
     const openSet = openHoursByDate.get(dateKey);
 
     for (const startHour of ALLOWED_START_HOURS) {
+      if (isSlotPastCurrentJst(dateKey, startHour, minDate, currentJstHour)) {
+        skippedPastCount += 1;
+        continue;
+      }
+
       const timeRange = formatTimeRange(startHour);
 
       /** @type {'open' | 'booked' | 'closed'} */
@@ -332,14 +368,16 @@ async function scrapeSpacepadVenue(browser, venue, startParts, endParts) {
 
   console.log(
     `[${venue.id}] Prepared ${records.length} slots ` +
-      `(${openCount} open, ${bookedCount} booked, ${closedCount} closed).`
+      `(${openCount} open, ${bookedCount} booked, ${closedCount} closed, ` +
+      `${skippedPastCount} past skipped).`
   );
 
   return records;
 }
 
 /**
- * Scrapes all Spacepad venues and syncs their 28-day court availability to Supabase.
+ * Scrapes all Spacepad venues and syncs their 28-day court availability to
+ * Supabase.
  *
  * @returns {Promise<void>}
  */
@@ -350,13 +388,23 @@ async function main() {
   const spacepadVenues = VENUES.filter((venue) => venue.source === 'spacepad');
   const startParts = getJstParts(0);
   const endParts = getJstParts(SCRAPE_DAYS - 1);
+  const currentJstHour = getCurrentJstHour();
   const browser = await chromium.launch({ headless: true });
 
   /** @type {CourtSlotRecord[]} */
   let allRecords;
   try {
-    const nested = await runWithConcurrency(spacepadVenues, CONCURRENCY, (venue) =>
-      scrapeSpacepadVenue(browser, venue, startParts, endParts)
+    const nested = await runWithConcurrency(
+      spacepadVenues,
+      CONCURRENCY,
+      (venue) =>
+        scrapeSpacepadVenue(
+          browser,
+          venue,
+          startParts,
+          endParts,
+          currentJstHour
+        )
     );
     allRecords = nested.flat();
   } finally {
@@ -364,7 +412,9 @@ async function main() {
   }
 
   if (!supabase) {
-    console.log(`[spacepad] Dry run complete (${allRecords.length} records).`);
+    console.log(
+      `[spacepad] Dry run complete (${allRecords.length} records).`
+    );
     return;
   }
 
@@ -376,7 +426,8 @@ async function main() {
   });
 
   console.log(
-    `[spacepad] Synced ${allRecords.length} slots across ${spacepadVenues.length} venues.`
+    `[spacepad] Synced ${allRecords.length} slots across ` +
+      `${spacepadVenues.length} venues.`
   );
 }
 

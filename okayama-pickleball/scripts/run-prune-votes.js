@@ -1,15 +1,25 @@
-import { createSupabaseServiceClient, getJstDateString } from './lib/scraper-utils.js';
+import {
+  createSupabaseServiceClient,
+  getCurrentJstHour,
+  getJstDateString,
+} from './lib/scraper-utils.js';
 import { pruneStaleVotes } from './prune-stale-votes.js';
 
 /**
- * Initializes the Supabase service client and prunes stale court availability
- * votes prior to today's JST date.
+ * Initializes the Supabase service client and prunes stale or already-passed
+ * court availability votes for the current JST date and hour.
  *
  * @returns {Promise<void>}
  */
 async function main() {
   const supabase = createSupabaseServiceClient();
-  await pruneStaleVotes(supabase, getJstDateString(0));
+  const todayDateKey = getJstDateString(0);
+  const currentJstHour = getCurrentJstHour();
+
+  await pruneStaleVotes(supabase, todayDateKey, {
+    todayDateKey,
+    currentJstHour,
+  });
 }
 
 try {

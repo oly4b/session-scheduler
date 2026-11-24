@@ -41,6 +41,7 @@ import { getTodayJstIsoDate } from './utils/confirmedInvite';
 
 const AVAILABILITY_PAGE_SIZE = 1000;
 const OTHER_VENUE_OPTION = '__other__';
+const MANUAL_VENUE_ID = 'other';
 
 const START_HOUR_OPTIONS = Array.from({ length: 10 }, (_, idx) => {
   const hour = String(idx + 12).padStart(2, '0');
@@ -83,6 +84,17 @@ const COPY = {
     bookSessionBtn: 'Book Session',
     bookModalTitle: 'Set Booked Session',
     saveBookedRowBtn: 'Confirm',
+    selectVenuePlaceholder: 'Please select an option',
+    todayClosedForBooking:
+      'Today is closed for new bookings (hours have passed).',
+    pastTodayTimeToast:
+      'Past hours today cannot be booked. Select a future hour or date.',
+    editBookingBtn: 'Edit Booking',
+    editBookingModalTitle: 'Edit Booked Session',
+    saveEditedBookingBtn: 'Save Changes',
+    toastUpdatedBooking: (dateStr) => `Updated booking for ${dateStr}.`,
+    toastBookingUpdateError:
+      'Could not update booking. Check Supabase connection.',
     viewPlayerPlaceholder: 'View response...',
     noVotesYet: 'No responses yet',
     oneHourSubLabel: 'Dates & Hours (12:00–22:00)',
@@ -109,6 +121,7 @@ const COPY = {
     allBookedDay: 'No slots',
     bookedTitle: 'All matching venues are booked (Full)',
     closedTitle: 'Outside operating hours or closed',
+    noBookingsTodayLabel: 'No bookings today',
     no2hTitle: 'Only 1 hour open — no continuous 2-hour slot at the same venue',
     viewingCellTitle: (name) => `${name}'s response (View-Only)`,
     detailsLabel: 'Details',
@@ -223,6 +236,17 @@ const COPY = {
     bookSessionBtn: '予約確定を登録',
     bookModalTitle: '予約確定カードを設定',
     saveBookedRowBtn: '確定',
+    selectVenuePlaceholder: '選択肢を選んでください',
+    todayClosedForBooking:
+      '本日の予約受付は終了しました（対象時間帯が過ぎています）。',
+    pastTodayTimeToast:
+      '本日の経過した時間帯は予約できません。以降の時間または別日を選んでください。',
+    editBookingBtn: '予約を編集',
+    editBookingModalTitle: '予約確定を編集',
+    saveEditedBookingBtn: '変更を保存',
+    toastUpdatedBooking: (dateStr) => `${dateStr} の予約を更新しました。`,
+    toastBookingUpdateError:
+      '予約の更新に失敗しました。Supabase接続を確認してください。',
     viewPlayerPlaceholder: '回答を閲覧...',
     noVotesYet: 'まだ回答はありません',
     oneHourSubLabel: '日程・時間帯を選択 (12:00–22:00)',
@@ -249,6 +273,7 @@ const COPY = {
     allBookedDay: '空きなし',
     bookedTitle: '対象施設はすべて予約済み（満員）です',
     closedTitle: '営業時間外・休場または対象外の時間帯です（空きなし）',
+    noBookingsTodayLabel: '本日の予約はありません',
     no2hTitle: '1時間枠は空きがありますが、同一会場で2時間連続になる枠がありません',
     viewingCellTitle: (name) => `${name} の回答（閲覧モード）`,
     detailsLabel: '詳細',
@@ -358,20 +383,67 @@ function formatHourSlot(hourValue) {
   return `${String(hourValue).padStart(2, '0')}:00`;
 }
 
+function getCurrentJstHour() {
+  const jstDate = new Date(
+    new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })
+  );
+  return jstDate.getHours();
+}
+
+function getMinStartHourForDate(dateKey, todayKey, currentJstHour) {
+  if (!dateKey || dateKey !== todayKey) return 12;
+  // Require upcoming hours (e.g. past 15:00 -> earliest start is 16:00).
+  return currentJstHour + 1;
+}
+
+function isoDateToUtcMs(dateKey) {
+  return Date.parse(`${dateKey}T00:00:00Z`);
+}
+
+function normalizeCourtType(value, fallback = 'indoor') {
+  return value === 'outdoor' || value === 'indoor' ? value : fallback;
+}
+
 function normalizeBookedRow(row) {
   if (!row?.date_key) return null;
+
+  const rawVenueId = String(row.venue_id || '').trim();
+  const matchedVenue =
+    rawVenueId && rawVenueId !== MANUAL_VENUE_ID
+      ? VENUE_BY_ID.get(rawVenueId)
+      : null;
+
+  const trimmedName = String(row.venue_name || '').trim();
+  const resolvedVenueName =
+    trimmedName || matchedVenue?.fullName || matchedVenue?.shortName || '';
+
+  const resolvedVenueId = matchedVenue
+    ? matchedVenue.id
+    : trimmedName || rawVenueId === MANUAL_VENUE_ID
+      ? MANUAL_VENUE_ID
+      : '';
+
+  const resolvedCourtType = matchedVenue
+    ? normalizeCourtType(matchedVenue.courtType, 'indoor')
+    : normalizeCourtType(row.court_type, 'indoor');
+
   return {
     dateKey: row.date_key,
     startHour: Number(row.start_hour),
     endHour: Number(row.end_hour),
-    venueId: row.venue_id || '',
-    venueName: row.venue_name || '',
+    venueId: resolvedVenueId,
+    venueName: resolvedVenueName,
+    mapUrl: String(row.map_url || '').trim(),
+    courtType: resolvedCourtType,
   };
 }
 
 function resolveBookingVenueLabel(booking, fallbackLabel) {
   if (booking.venueName?.trim()) return booking.venueName.trim();
-  const record = booking.venueId ? VENUE_BY_ID.get(booking.venueId) : null;
+  const record =
+    booking.venueId && booking.venueId !== MANUAL_VENUE_ID
+      ? VENUE_BY_ID.get(booking.venueId)
+      : null;
   return record?.fullName || record?.shortName || fallbackLabel;
 }
 
@@ -389,7 +461,7 @@ function buildShortEventUrl({
   url.searchParams.set('start', String(startHour));
   url.searchParams.set('end', String(endHour));
 
-  if (venueId && VENUE_BY_ID.has(venueId)) {
+  if (venueId && venueId !== MANUAL_VENUE_ID && VENUE_BY_ID.has(venueId)) {
     url.searchParams.set('v', venueId);
     return url.toString();
   }
@@ -409,14 +481,14 @@ function formatConfirmedSessionInvite({
   courtType,
   format,
 }) {
-  const isOther = venueId === OTHER_VENUE_OPTION;
+  const isOther = venueId === OTHER_VENUE_OPTION || venueId === MANUAL_VENUE_ID;
   const matchedVenue = isOther ? null : VENUE_BY_ID.get(venueId) || null;
   const displayVenue = isOther
     ? customVenueName.trim() || '未定'
     : matchedVenue?.fullName || '未定';
   const effectiveCourtType = isOther
-    ? courtType
-    : matchedVenue?.courtType || courtType;
+    ? normalizeCourtType(courtType, 'indoor')
+    : normalizeCourtType(matchedVenue?.courtType, courtType);
 
   const [rawStart, rawEnd] = timeRangeText.split('-');
   const startHour = parseHourValue(rawStart || '18:00');
@@ -520,31 +592,47 @@ function PickleballIcon({ className = 'w-7 h-7' }) {
   );
 }
 
-/**
- * Renders a full-row booking card that cycles between going (`◯`) and
- * unmarked while keeping a sticky inner bar anchored to the scroll viewport.
- *
- * @param {{
- *   day: object,
- *   booking: {
- *     dateKey: string,
- *     startHour: number,
- *     endHour: number,
- *     venueId?: string,
- *     venueName?: string,
- *   },
- *   votes: Array<object>,
- *   activeMap: Record<string, string>,
- *   viewingVote: object | null,
- *   viewportWidth: number,
- *   isJa: boolean,
- *   t: Record<string, any>,
- *   onToggleBookingAvailability: (slotKeys: string[]) => void,
- *   onShareBooking: (booking: object) => void,
- *   onRequestClearBooking: (booking: object) => void,
- * }} props
- * @returns {JSX.Element}
- */
+function NoBookingsTodayRowCard({
+  day,
+  colSpan,
+  viewportWidth,
+  isJa,
+  labelText,
+}) {
+  const innerBarWidthPx =
+    viewportWidth > 0 ? Math.max(240, viewportWidth - 16) : null;
+  const todayBadgeText = isJa ? '本日' : 'Today';
+
+  return (
+    <tr className="h-[96px] bg-slate-100/85 select-none">
+      <td
+        colSpan={colSpan}
+        className="h-[96px] p-1.5 sm:p-2 align-middle text-left"
+      >
+        <div
+          style={innerBarWidthPx ? { width: `${innerBarWidthPx}px` } : undefined}
+          className="sticky left-2 max-w-full h-full rounded-xl border border-slate-300 bg-slate-50/95 px-3 sm:px-4 py-1.5 flex items-center justify-between gap-3 overflow-hidden text-slate-700"
+        >
+          <div className="flex items-center gap-2.5 shrink-0">
+            <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-[#1B365D] text-lime-300 text-xs sm:text-sm font-extrabold whitespace-nowrap">
+              {todayBadgeText}
+            </span>
+            <span
+              translate={isJa ? undefined : 'no'}
+              className="text-base sm:text-lg font-extrabold text-slate-900 whitespace-nowrap"
+            >
+              {day.jpDate}({day.dow})
+            </span>
+          </div>
+          <span className="text-sm sm:text-base font-extrabold text-slate-700 truncate">
+            {labelText}
+          </span>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 function BookedSessionFullRowCard({
   day,
   booking,
@@ -731,8 +819,20 @@ export default function App() {
   const [showEditPickerModal, setShowEditPickerModal] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [shareModalBooking, setShareModalBooking] = useState(null);
+  const [showEditBookingModal, setShowEditBookingModal] = useState(false);
+  const [editingBookingDateKey, setEditingBookingDateKey] = useState('');
 
-  const [bookingDate, setBookingDate] = useState(() => getTodayJstIsoDate());
+  const todayJstDateKey = useMemo(() => getTodayJstIsoDate(), []);
+  const currentJstHour = useMemo(() => getCurrentJstHour(), []);
+  const minTodayStartHour = useMemo(
+    () => getMinStartHourForDate(todayJstDateKey, todayJstDateKey, currentJstHour),
+    [todayJstDateKey, currentJstHour]
+  );
+  // Venues close at 22:00, so bookings starting at 21:00 or later are closed.
+  const isTodayClosedForNewBooking = minTodayStartHour >= 21;
+
+  const [bookingDate, setBookingDate] = useState(() => todayJstDateKey);
   const [bookingTime, setBookingTime] = useState('17:00-19:00');
   const [selectedBookingVenueId, setSelectedBookingVenueId] = useState('');
   const [customBookingVenue, setCustomBookingVenue] = useState('');
@@ -791,11 +891,18 @@ export default function App() {
     [viewingVote]
   );
 
-  const latestBookedSession = useMemo(() => {
+  const closestBookedSession = useMemo(() => {
     const entries = Object.values(bookedSessionsByDate);
     if (!entries.length) return null;
-    return [...entries].sort((a, b) => b.dateKey.localeCompare(a.dateKey))[0];
-  }, [bookedSessionsByDate]);
+    const todayMs = isoDateToUtcMs(todayJstDateKey);
+
+    return [...entries].sort((a, b) => {
+      const distA = Math.abs(isoDateToUtcMs(a.dateKey) - todayMs);
+      const distB = Math.abs(isoDateToUtcMs(b.dateKey) - todayMs);
+      if (distA !== distB) return distA - distB;
+      return a.dateKey.localeCompare(b.dateKey);
+    })[0];
+  }, [bookedSessionsByDate, todayJstDateKey]);
 
   const fetchVotes = useCallback(async () => {
     const { data, error } = await supabase
@@ -817,7 +924,9 @@ export default function App() {
     const minDate = getJstDayMeta(0).dateKey;
     const { data, error } = await supabase
       .from('booked_sessions')
-      .select('date_key, start_hour, end_hour, venue_id, venue_name')
+      .select(
+        'date_key, start_hour, end_hour, venue_id, venue_name, map_url, court_type'
+      )
       .gte('date_key', minDate)
       .order('date_key', { ascending: true });
 
@@ -1314,60 +1423,13 @@ export default function App() {
     return bestByDate.sort((a, b) => b.score - a.score).slice(0, 5);
   }, [calendarWeeks, openVenuesBySlot, votes]);
 
-  const topPickDefaults = useMemo(() => {
-    const fallbackDate = getTodayJstIsoDate();
-    if (!rankedTwoHourBlocks.length) {
-      return {
-        date: fallbackDate,
-        time: '18:00-20:00',
-        venueId: VENUES[0]?.id || OTHER_VENUE_OPTION,
-        courtType: VENUES[0]?.courtType || 'indoor',
-      };
-    }
-
-    const bestBlock = [...rankedTwoHourBlocks].sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.dateKey.localeCompare(b.dateKey);
-    })[0];
-
-    const startHour = Number(bestBlock.slotKey1.slice(-11, -9));
-    const endHour = Math.min(22, startHour + 2);
-    const topVenue = bestBlock.recommendedVenues[0];
-    const resolvedVenueId =
-      topVenue?.id && VENUE_BY_ID.has(topVenue.id)
-        ? topVenue.id
-        : VENUES[0]?.id || OTHER_VENUE_OPTION;
-
-    return {
-      date: bestBlock.dateKey || fallbackDate,
-      time: `${formatHourSlot(startHour)}-${formatHourSlot(endHour)}`,
-      venueId: resolvedVenueId,
-      courtType: topVenue?.courtType || 'indoor',
-    };
-  }, [rankedTwoHourBlocks]);
-
-  useEffect(() => {
-    if (hasCustomizedBooking) return;
-    setBookingDate(topPickDefaults.date);
-    setBookingTime(topPickDefaults.time);
-    setSelectedBookingVenueId(topPickDefaults.venueId);
-    setBookingCourtType(topPickDefaults.courtType);
-  }, [topPickDefaults, hasCustomizedBooking]);
-
-  const applyDefaultBookingIfNeeded = () => {
-    if (hasCustomizedBooking) return;
-    setBookingDate(topPickDefaults.date);
-    setBookingTime(topPickDefaults.time);
-    setSelectedBookingVenueId(topPickDefaults.venueId);
-    setBookingCourtType(topPickDefaults.courtType);
-  };
-
   const applyBookingToForm = useCallback((booking) => {
     const hasCustomVenue = Boolean(booking.venueName?.trim());
+    const isManual =
+      booking.venueId === MANUAL_VENUE_ID ||
+      (hasCustomVenue && !VENUE_BY_ID.has(booking.venueId));
     const matchedVenue =
-      !hasCustomVenue && booking.venueId
-        ? VENUE_BY_ID.get(booking.venueId)
-        : null;
+      !isManual && booking.venueId ? VENUE_BY_ID.get(booking.venueId) : null;
 
     setHasCustomizedBooking(true);
     setBookingDate(booking.dateKey);
@@ -1378,28 +1440,88 @@ export default function App() {
       matchedVenue ? matchedVenue.id : OTHER_VENUE_OPTION
     );
     setCustomBookingVenue(hasCustomVenue ? booking.venueName.trim() : '');
-    setCustomBookingMapUrl('');
-    setBookingCourtType(matchedVenue?.courtType || 'indoor');
+    setCustomBookingMapUrl(String(booking.mapUrl || '').trim());
+    setBookingCourtType(
+      matchedVenue
+        ? normalizeCourtType(matchedVenue.courtType, 'indoor')
+        : normalizeCourtType(booking.courtType, 'indoor')
+    );
   }, []);
 
+  const buildBookingPayload = useCallback(() => {
+    const [rawStart, rawEnd] = bookingTime.split('-');
+    const startHour = parseHourValue(rawStart || '17:00');
+    const endHour = Math.max(startHour + 1, parseHourValue(rawEnd || '19:00'));
+    const isOther =
+      selectedBookingVenueId === OTHER_VENUE_OPTION || !selectedBookingVenueId;
+    const venueName = isOther ? customBookingVenue.trim() : '';
+    const mapUrl = isOther ? customBookingMapUrl.trim() : '';
+    const venueId = isOther ? MANUAL_VENUE_ID : selectedBookingVenueId;
+    const matchedVenue = !isOther ? VENUE_BY_ID.get(venueId) : null;
+    const courtType = isOther
+      ? normalizeCourtType(bookingCourtType, 'indoor')
+      : normalizeCourtType(matchedVenue?.courtType, 'indoor');
+    const displayName = isOther
+      ? venueName
+      : matchedVenue?.fullName || matchedVenue?.shortName || '';
+
+    return {
+      dbRow: {
+        start_hour: startHour,
+        end_hour: endHour,
+        venue_id: venueId,
+        venue_name: venueName,
+        map_url: mapUrl,
+        court_type: courtType,
+        updated_at: new Date().toISOString(),
+      },
+      stateEntry: {
+        startHour,
+        endHour,
+        venueId,
+        venueName: displayName,
+        mapUrl,
+        courtType,
+      },
+    };
+  }, [
+    bookingTime,
+    selectedBookingVenueId,
+    customBookingVenue,
+    customBookingMapUrl,
+    bookingCourtType,
+  ]);
+
   const handleOpenBookingModal = () => {
-    applyDefaultBookingIfNeeded();
+    setHasCustomizedBooking(true);
+    setBookingDate(todayJstDateKey);
+    const defaultStart = Math.max(17, minTodayStartHour);
+    const clampedStart = Math.min(20, defaultStart);
+    setBookingTime(
+      `${formatHourSlot(clampedStart)}-${formatHourSlot(Math.min(22, clampedStart + 2))}`
+    );
+    setSelectedBookingVenueId('');
+    setCustomBookingVenue('');
+    setCustomBookingMapUrl('');
+    setBookingCourtType('indoor');
     setShowBookingModal(true);
   };
 
   const handleOpenShareModal = () => {
     setCopiedShare(false);
 
-    if (latestBookedSession) {
-      applyBookingToForm(latestBookedSession);
+    if (closestBookedSession) {
+      applyBookingToForm(closestBookedSession);
+      setShareModalBooking(closestBookedSession);
     } else {
       setHasCustomizedBooking(true);
-      setBookingDate(topPickDefaults.date);
-      setBookingTime(topPickDefaults.time);
+      setBookingDate(todayJstDateKey);
+      setBookingTime('18:00-20:00');
       setSelectedBookingVenueId(OTHER_VENUE_OPTION);
       setCustomBookingVenue('');
       setCustomBookingMapUrl('');
       setBookingCourtType('indoor');
+      setShareModalBooking(null);
     }
 
     setShowShareModal(true);
@@ -1409,36 +1531,76 @@ export default function App() {
     (booking) => {
       setCopiedShare(false);
       applyBookingToForm(booking);
+      setShareModalBooking(booking);
       setShowShareModal(true);
     },
     [applyBookingToForm]
   );
 
-  const handleSaveBookedSessionRow = async () => {
-    if (!bookingDate || isSavingBooking) return;
+  const handleOpenEditBookingFromShare = () => {
+    const target = shareModalBooking || closestBookedSession;
+    if (!target) return;
+    applyBookingToForm(target);
+    setEditingBookingDateKey(target.dateKey);
+    setShowShareModal(false);
+    setShowEditBookingModal(true);
+  };
 
-    // Block creating a second booking on a date until its row is deleted.
+  const handleSaveEditedBooking = async () => {
+    if (!editingBookingDateKey || isSavingBooking) return;
+
+    const { dbRow, stateEntry } = buildBookingPayload();
+    setIsSavingBooking(true);
+    try {
+      const { error } = await supabase
+        .from('booked_sessions')
+        .update(dbRow)
+        .eq('date_key', editingBookingDateKey);
+      if (error) throw error;
+
+      setBookedSessionsByDate((prev) => ({
+        ...prev,
+        [editingBookingDateKey]: {
+          dateKey: editingBookingDateKey,
+          ...stateEntry,
+        },
+      }));
+      setShowEditBookingModal(false);
+      setEditingBookingDateKey('');
+      triggerToast(t.toastUpdatedBooking(editingBookingDateKey));
+    } catch (err) {
+      console.error('Supabase booking update error:', err);
+      triggerToast(t.toastBookingUpdateError);
+    } finally {
+      setIsSavingBooking(false);
+    }
+  };
+
+  const handleSaveBookedSessionRow = async () => {
+    if (!bookingDate || !selectedBookingVenueId || isSavingBooking) return;
+
     if (bookedSessionsByDate[bookingDate]) {
       triggerToast(t.toastDuplicateDateBooking(bookingDate));
       return;
     }
 
-    const [rawStart, rawEnd] = bookingTime.split('-');
-    const startHour = parseHourValue(rawStart || '17:00');
-    const endHour = Math.max(startHour + 1, parseHourValue(rawEnd || '19:00'));
-    const isOther = selectedBookingVenueId === OTHER_VENUE_OPTION;
-    const venueId = isOther ? '' : selectedBookingVenueId;
-    const venueName = isOther ? customBookingVenue.trim() : '';
+    const minAllowedStart = getMinStartHourForDate(
+      bookingDate,
+      todayJstDateKey,
+      currentJstHour
+    );
+    const chosenStart = parseHourValue(bookingTime.split('-')[0] || '17:00');
+    if (chosenStart < minAllowedStart) {
+      triggerToast(t.pastTodayTimeToast);
+      return;
+    }
 
+    const { dbRow, stateEntry } = buildBookingPayload();
     setIsSavingBooking(true);
     try {
       const { error } = await supabase.from('booked_sessions').insert({
         date_key: bookingDate,
-        start_hour: startHour,
-        end_hour: endHour,
-        venue_id: venueId,
-        venue_name: venueName,
-        updated_at: new Date().toISOString(),
+        ...dbRow,
       });
       if (error) throw error;
 
@@ -1446,10 +1608,7 @@ export default function App() {
         ...prev,
         [bookingDate]: {
           dateKey: bookingDate,
-          startHour,
-          endHour,
-          venueId,
-          venueName,
+          ...stateEntry,
         },
       }));
       setShowBookingModal(false);
@@ -1697,6 +1856,27 @@ export default function App() {
     [t, triggerToast]
   );
 
+  const handleBookingDateChange = (nextDate) => {
+    setHasCustomizedBooking(true);
+    setBookingDate(nextDate);
+    if (!nextDate) return;
+
+    const minAllowedStart = getMinStartHourForDate(
+      nextDate,
+      todayJstDateKey,
+      currentJstHour
+    );
+    const [rawStart, rawEnd] = bookingTime.split('-');
+    const currentStart = parseHourValue(rawStart || '17:00');
+    const currentEnd = parseHourValue(rawEnd || '19:00');
+
+    if (currentStart < minAllowedStart) {
+      const nextStart = Math.min(21, minAllowedStart);
+      const nextEnd = Math.min(22, Math.max(currentEnd, nextStart + 1));
+      setBookingTime(`${formatHourSlot(nextStart)}-${formatHourSlot(nextEnd)}`);
+    }
+  };
+
   const handleStartTimeChange = (nextStart) => {
     setHasCustomizedBooking(true);
     const currentEnd = bookingTime.split('-')[1] || '19:00';
@@ -1863,6 +2043,14 @@ export default function App() {
     selectedSlotCount === 0;
   const [selectedStartHour, selectedEndHour] = bookingTime.split('-');
   const activeStartHour = parseHourValue(selectedStartHour || '17:00');
+  const minStartForSelectedDate = getMinStartHourForDate(
+    bookingDate,
+    todayJstDateKey,
+    currentJstHour
+  );
+  const isSelectedDateClosedForNew =
+    bookingDate === todayJstDateKey && minStartForSelectedDate >= 21;
+  const isSelectedStartPast = activeStartHour < minStartForSelectedDate;
   const activeMap = viewingResponsesMap || responses;
   const isDeleteKeywordMatched =
     deleteConfirmInput.trim() === t.deleteKeyword;
@@ -1872,7 +2060,12 @@ export default function App() {
     bookingDate && bookedSessionsByDate[bookingDate]
   );
 
-  const renderBookingFormFields = ({ showDuplicateWarning = false } = {}) => (
+  const renderBookingFormFields = ({
+    showDuplicateWarning = false,
+    includePlaceholderOption = false,
+    lockDateField = false,
+    enforcePastTimeGuard = false,
+  } = {}) => (
     <div className="space-y-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden">
       <div className="min-w-0 overflow-hidden">
         <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
@@ -1881,12 +2074,16 @@ export default function App() {
         <input
           type="date"
           value={bookingDate}
-          onChange={(e) => {
-            setHasCustomizedBooking(true);
-            setBookingDate(e.target.value);
-          }}
-          className="block w-full max-w-full min-w-0 box-border px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs appearance-none"
+          min={enforcePastTimeGuard ? todayJstDateKey : undefined}
+          disabled={lockDateField}
+          onChange={(e) => handleBookingDateChange(e.target.value)}
+          className="block w-full max-w-full min-w-0 box-border px-2.5 py-2 rounded-lg border border-slate-300 bg-white disabled:bg-slate-100 font-bold text-slate-800 text-xs appearance-none"
         />
+        {enforcePastTimeGuard && isSelectedDateClosedForNew && (
+          <p className="mt-1 text-[11px] font-bold text-rose-700">
+            {t.todayClosedForBooking}
+          </p>
+        )}
         {showDuplicateWarning && hasBookingForSelectedDate && (
           <p className="mt-1 text-[11px] font-bold text-amber-800">
             {t.toastDuplicateDateBooking(bookingDate)}
@@ -1906,11 +2103,20 @@ export default function App() {
             translate="no"
             className="flex-1 min-w-0 px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs cursor-pointer"
           >
-            {START_HOUR_OPTIONS.map((slot) => (
-              <option key={`start-${slot}`} value={slot}>
-                {slot}
-              </option>
-            ))}
+            {START_HOUR_OPTIONS.map((slot) => {
+              const slotHour = parseHourValue(slot);
+              const isPastHour =
+                enforcePastTimeGuard && slotHour < minStartForSelectedDate;
+              return (
+                <option
+                  key={`start-${slot}`}
+                  value={slot}
+                  disabled={isPastHour}
+                >
+                  {slot}
+                </option>
+              );
+            })}
           </select>
 
           <span
@@ -1954,6 +2160,9 @@ export default function App() {
             onChange={(e) => handleBookingVenueSelect(e.target.value)}
             className="w-full appearance-none box-border px-3 py-2 pr-8 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs cursor-pointer"
           >
+            {includePlaceholderOption && (
+              <option value="">{t.selectVenuePlaceholder}</option>
+            )}
             {VENUES.map((venue) => (
               <option key={venue.id} value={venue.id}>
                 [{venue.courtType === 'outdoor'
@@ -2422,6 +2631,21 @@ export default function App() {
                         }
                         onShareBooking={handleShareBookingCard}
                         onRequestClearBooking={openUnmarkBookingGuard}
+                      />
+                    );
+                  }
+
+                  // Block out the current JST date when unbooked using the same
+                  // full-row sticky geometry as a confirmed session card.
+                  if (day.dateKey === todayJstDateKey) {
+                    return (
+                      <NoBookingsTodayRowCard
+                        key={day.dateKey}
+                        day={day}
+                        colSpan={TIME_BLOCKS.length + 1}
+                        viewportWidth={tableViewportWidth}
+                        isJa={isJa}
+                        labelText={t.noBookingsTodayLabel}
                       />
                     );
                   }
@@ -3084,7 +3308,11 @@ export default function App() {
             </div>
 
             <div className="p-4 space-y-3 max-h-[85vh] overflow-y-auto text-xs">
-              {renderBookingFormFields({ showDuplicateWarning: true })}
+              {renderBookingFormFields({
+                showDuplicateWarning: true,
+                includePlaceholderOption: true,
+                enforcePastTimeGuard: true,
+              })}
 
               <div className="flex items-center justify-end gap-2 pt-1">
                 <button
@@ -3096,11 +3324,65 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  disabled={isSavingBooking || hasBookingForSelectedDate}
+                  disabled={
+                    isSavingBooking ||
+                    hasBookingForSelectedDate ||
+                    !selectedBookingVenueId ||
+                    isSelectedDateClosedForNew ||
+                    isSelectedStartPast
+                  }
                   onClick={handleSaveBookedSessionRow}
                   className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-lime-300 font-extrabold cursor-pointer whitespace-nowrap"
                 >
                   {isSavingBooking ? t.submittingBtn : t.saveBookedRowBtn}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditBookingModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3.5 bg-[#1B365D] text-white flex items-center justify-between gap-2">
+              <h3 className="font-extrabold text-sm sm:text-base flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-lime-300 shrink-0" />
+                <span>{t.editBookingModalTitle}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEditBookingModal(false);
+                  setEditingBookingDateKey('');
+                }}
+                className="p-1 rounded-lg hover:bg-white/15 text-slate-200 cursor-pointer shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3 max-h-[85vh] overflow-y-auto text-xs">
+              {renderBookingFormFields({ lockDateField: true })}
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditBookingModal(false);
+                    setEditingBookingDateKey('');
+                  }}
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer whitespace-nowrap"
+                >
+                  {t.cancelBtn}
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingBooking || !selectedBookingVenueId}
+                  onClick={handleSaveEditedBooking}
+                  className="px-4 py-2.5 rounded-xl bg-[#1B365D] hover:bg-[#274b7d] disabled:opacity-50 text-lime-300 font-extrabold cursor-pointer whitespace-nowrap"
+                >
+                  {isSavingBooking ? t.submittingBtn : t.saveEditedBookingBtn}
                 </button>
               </div>
             </div>
@@ -3306,9 +3588,7 @@ export default function App() {
 
               <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-200">
                 <span className="text-[11px] text-slate-500">
-                  {viewingVote
-                    ? t.modalViewingNote(viewingVote.name)
-                    : null}
+                  {viewingVote ? t.modalViewingNote(viewingVote.name) : null}
                 </span>
                 <button
                   type="button"
@@ -3414,30 +3694,41 @@ export default function App() {
             </div>
 
             <div className="p-4 space-y-3 max-h-[85vh] overflow-y-auto text-xs">
-              {renderBookingFormFields()}
-
-              <div className="flex items-center justify-end gap-1.5 pt-1">
-                {[
-                  { id: 'ja', label: 'JA' },
-                  { id: 'en', label: 'EN' },
-                  { id: 'bilingual', label: 'JA/EN' },
-                ].map((item) => (
+              <div className="flex items-center justify-between gap-2">
+                {(shareModalBooking || closestBookedSession) && (
                   <button
-                    key={item.id}
                     type="button"
-                    onClick={() => {
-                      setHasCustomizedBooking(true);
-                      setBookingFormat(item.id);
-                    }}
-                    className={`px-2.5 py-1 rounded-lg border font-extrabold text-[11px] cursor-pointer ${
-                      bookingFormat === item.id
-                        ? 'bg-[#1B365D] text-lime-300 border-[#1B365D]'
-                        : 'bg-white text-slate-600 border-slate-300'
-                    }`}
+                    onClick={handleOpenEditBookingFromShare}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-[#1B365D] font-extrabold text-[11px] cursor-pointer whitespace-nowrap"
                   >
-                    {item.label}
+                    <Edit3 className="w-3 h-3 shrink-0" />
+                    <span>{t.editBookingBtn}</span>
                   </button>
-                ))}
+                )}
+
+                <div className="flex items-center gap-1.5 ml-auto">
+                  {[
+                    { id: 'ja', label: 'JA' },
+                    { id: 'en', label: 'EN' },
+                    { id: 'bilingual', label: 'JA/EN' },
+                  ].map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setHasCustomizedBooking(true);
+                        setBookingFormat(item.id);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg border font-extrabold text-[11px] cursor-pointer ${
+                        bookingFormat === item.id
+                          ? 'bg-[#1B365D] text-lime-300 border-[#1B365D]'
+                          : 'bg-white text-slate-600 border-slate-300'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <p className="text-xs text-slate-600">{t.sharePrompt}</p>
