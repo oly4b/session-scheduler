@@ -65,20 +65,25 @@ const COPY = {
       'Supabase connection error: please check your .env and table settings.',
     editingBanner: (name) => `Editing: ${name}`,
     viewingBanner: (name) => `View-Only: viewing ${name}'s response`,
-    defaultBanner: () => 'Please enter your name after picking dates & slots',
+    defaultBanner: () =>
+      'Please enter your name & choose slots, then press "Submit."',
+    rsvpWithoutNameBanner: () => 'Please enter your name.',
+    nameWithoutSlotsBanner: () => 'Please pick time slots (◯/△/✕).',
+    readyToSubmitBanner: () =>
+      'Please press "Submit" to save your response.',
     deleteBtn: '✕',
     cancelBtn: 'Cancel',
     editThisBtn: 'Edit Response',
     exitViewBtn: 'Exit View',
     nameLabel: 'Name',
-    namePlaceholder: 'e.g. Kenji / Sarah',
+    namePlaceholder: 'e.g. Emma / John',
     nameTitle: 'Name cannot be blank or spaces only',
     noteLabel: 'Note (preferred area, indoor/outdoor, paddle rental, etc.)',
     notePlaceholder: 'e.g. Okayama preferred / Anywhere / Need a paddle',
-    editExistingBtn: 'Edit Existing Vote',
+    editExistingBtn: 'Edit Response',
     submittingBtn: 'Saving...',
-    updateVoteBtn: 'Update Vote',
-    submitVoteBtn: (count) => `Submit Vote (${count} slots)`,
+    updateVoteBtn: 'Update',
+    submitVoteBtn: (count) => `Submit (${count} slots)`,
     weekFillAll: 'Free All Week ◯',
     weekClearAll: 'Clear',
     bookSessionBtn: 'Book Session',
@@ -95,7 +100,7 @@ const COPY = {
     toastUpdatedBooking: (dateStr) => `Updated booking for ${dateStr}.`,
     toastBookingUpdateError:
       'Could not update booking. Check Supabase connection.',
-    viewPlayerPlaceholder: 'View response...',
+    viewPlayerPlaceholder: 'View response',
     noVotesYet: 'No responses yet',
     oneHourSubLabel: 'Dates & Hours (12:00–22:00)',
     outdoorShort: 'Outdoor',
@@ -159,6 +164,7 @@ const COPY = {
     twoHourYesPill: (count) => `2h◯ ${count}`,
     flexPill: (count) => `△/1h ${count}`,
     notesTitle: 'Player Notes',
+    notesLockedBadge: 'Locked while editing',
     playerCountSuffix: (count) => `${count}`,
     noNotesYet: 'No notes yet',
     noNoteText: 'No note',
@@ -201,6 +207,8 @@ const COPY = {
     confirmDeleteBtn: 'Delete',
     toastEnterName: 'Please enter your name',
     toastSelectSlot: 'Tap at least one open calendar slot (◯ / △ / ✕) first!',
+    toastEmptyEditSelection:
+      'Select at least one time slot or Going (◯) before saving.',
     toastUpdatedVote: (name) => `Updated ${name}'s calendar vote!`,
     toastSubmittedVote: (name) => `Submitted ${name}'s vote!`,
     toastSaveError: 'Could not save vote. Check Supabase connection.',
@@ -219,13 +227,18 @@ const COPY = {
     supabaseError: 'Supabase接続エラー: .envとテーブル設定を確認してください。',
     editingBanner: (name) => `編集中: ${name}`,
     viewingBanner: (name) => `閲覧モード: ${name} さんの回答を確認中`,
-    defaultBanner: () => '日程を選んだあとに名前を入力して送信してください',
+    defaultBanner: () =>
+      '名前を入力して枠を選び、「回答を登録」を押してください。',
+    rsvpWithoutNameBanner: () => '名前を入力してください。',
+    nameWithoutSlotsBanner: () => '空き枠（◯/△/✕）を選んでください。',
+    readyToSubmitBanner: () =>
+      '「回答を登録」を押して保存してください。',
     deleteBtn: '✕',
     cancelBtn: 'キャンセル',
     editThisBtn: 'この回答を編集する',
     exitViewBtn: '閲覧終了',
     nameLabel: '名前',
-    namePlaceholder: '例: Kenji / 太郎',
+    namePlaceholder: '例: えりか / 太郎',
     nameTitle: '空白のみの入力はできません',
     noteLabel: 'メモ',
     notePlaceholder: '例: パドル借りたいです / どこでもOK ',
@@ -254,7 +267,7 @@ const COPY = {
     oneHourSubLabel: '日程・時間帯を選択 (12:00–22:00)',
     outdoorShort: '屋外',
     indoorShort: '屋内',
-    myVoteTab: (name) => (name ? `${name}の回答` : '自分の回答'),
+    myVoteTab: (name) => (name ? `${name}'s Vote` : 'My Vote'),
     tallyTab: 'みんなの集計',
     dayAllFree: '終日',
     dayAfternoonOnly: '昼のみ',
@@ -315,6 +328,7 @@ const COPY = {
     twoHourYesPill: (count) => `2h◯ ${count}`,
     flexPill: (count) => `△/1h ${count}`,
     notesTitle: '参加メンバーのコメント',
+    notesLockedBadge: '編集中は閲覧ロック',
     playerCountSuffix: (count) => `${count}名`,
     noNotesYet: 'コメントはまだありません',
     noNoteText: 'コメントなし',
@@ -356,6 +370,8 @@ const COPY = {
     confirmDeleteBtn: '削除する',
     toastEnterName: '名前を入力してください',
     toastSelectSlot: '先に空き時間帯（◯ / △ / ✕）を1つ以上タップしてください！',
+    toastEmptyEditSelection:
+      '保存するには空き枠または参加予定（◯）を1つ以上選択してください。',
     toastUpdatedVote: (name) => `${name} さんの回答を更新しました！`,
     toastSubmittedVote: (name) => `${name} さんの回答を登録しました！`,
     toastSaveError: '保存できませんでした。Supabase接続を確認してください。',
@@ -385,6 +401,12 @@ function parseHourValue(timeSlot) {
 
 function formatHourSlot(hourValue) {
   return `${String(hourValue).padStart(2, '0')}:00`;
+}
+
+function normalizeSessionDateKey(rawDate) {
+  const trimmed = String(rawDate || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  return trimmed.slice(0, 10);
 }
 
 function getCurrentJstHour() {
@@ -431,7 +453,7 @@ function normalizeBookedRow(row) {
     : normalizeCourtType(row.court_type, 'indoor');
 
   return {
-    dateKey: row.date_key,
+    dateKey: normalizeSessionDateKey(row.date_key),
     startHour: Number(row.start_hour),
     endHour: Number(row.end_hour),
     venueId: resolvedVenueId,
@@ -574,10 +596,39 @@ function PickleballIcon({ className = 'w-7 h-7' }) {
       aria-label="Peach"
       translate="no"
       className="w-7 h-7 inline-flex items-center justify-center text-[26px] leading-none select-none"
-      >
+    >
       🍑
     </span>
+  );
+}
 
+function FloatingStepReminderBanner({ message, stepCount, totalSteps }) {
+  const progressPercent = Math.max(
+    0,
+    Math.min(100, (stepCount / totalSteps) * 100)
+  );
+
+  return (
+    <div className="sticky top-0 z-40 w-full bg-[#1B365D]/95 backdrop-blur-xs text-white shadow-md border-b border-lime-400/50">
+      <div className="max-w-6xl mx-auto px-3.5 sm:px-6 py-2 flex items-center justify-between gap-3 text-xs font-extrabold">
+        <div className="flex items-center gap-2 min-w-0">
+          <Info className="w-4 h-4 text-lime-300 shrink-0" />
+          <span className="truncate sm:whitespace-normal">{message}</span>
+        </div>
+        <span
+          translate="no"
+          className="px-2 py-0.5 rounded bg-white/15 text-lime-300 text-[11px] shrink-0 whitespace-nowrap"
+        >
+          {stepCount}/{totalSteps}
+        </span>
+      </div>
+      <div className="w-full h-1 bg-slate-800/80">
+        <div
+          style={{ width: `${progressPercent}%` }}
+          className="h-full bg-lime-400 transition-all duration-300"
+        />
+      </div>
+    </div>
   );
 }
 
@@ -626,6 +677,7 @@ function BookedSessionFullRowCard({
   day,
   booking,
   attendees,
+  pendingRsvpByDate,
   activeAttendeeName,
   viewingVote,
   viewportWidth,
@@ -638,10 +690,16 @@ function BookedSessionFullRowCard({
   const venueLabel = resolveBookingVenueLabel(booking, t.venueTbd);
   const yesAttendees = attendees.filter((row) => row.status !== 'maybe');
   const maybeAttendees = attendees.filter((row) => row.status === 'maybe');
-  const isGoing = Boolean(
-    activeAttendeeName &&
-      yesAttendees.some((row) => row.attendeeName === activeAttendeeName)
-  );
+  const viewedName = String(viewingVote?.name || '').trim();
+  const pendingChoice = pendingRsvpByDate[day.dateKey];
+  const isGoing = viewingVote
+    ? yesAttendees.some((row) => row.attendeeName === viewedName)
+    : pendingChoice !== undefined
+      ? pendingChoice === 'yes'
+      : Boolean(
+          activeAttendeeName &&
+            yesAttendees.some((row) => row.attendeeName === activeAttendeeName)
+        );
 
   const timeRangeLabel =
     `${formatHourSlot(booking.startHour)}–${formatHourSlot(booking.endHour)}`;
@@ -724,7 +782,9 @@ function BookedSessionFullRowCard({
               onClick={() => onToggleBookingAttendee(booking, isGoing)}
               className={`inline-flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-extrabold border transition whitespace-nowrap ${
                 viewingVote
-                  ? 'opacity-60 cursor-default bg-slate-100 border-slate-300 text-slate-500'
+                  ? isGoing
+                    ? 'cursor-default bg-emerald-100/80 border-emerald-400 text-emerald-950'
+                    : 'opacity-60 cursor-default bg-slate-100 border-slate-300 text-slate-500'
                   : isGoing
                     ? 'bg-emerald-100 hover:bg-emerald-200 border-emerald-400 text-emerald-950 cursor-pointer'
                     : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-900 cursor-pointer'
@@ -785,6 +845,7 @@ export default function App() {
   const [dayWindowByDate, setDayWindowByDate] = useState({});
   const [bookedSessionsByDate, setBookedSessionsByDate] = useState({});
   const [attendeesByDate, setAttendeesByDate] = useState({});
+  const [pendingRsvpByDate, setPendingRsvpByDate] = useState({});
   const [tableViewportWidth, setTableViewportWidth] = useState(0);
 
   const [voterName, setVoterName] = useState('');
@@ -940,15 +1001,17 @@ export default function App() {
 
     const grouped = {};
     for (const row of data || []) {
-      if (!row?.session_date || !row?.attendee_name) continue;
-      if (!grouped[row.session_date]) grouped[row.session_date] = [];
-      grouped[row.session_date].push({
-        sessionDate: row.session_date,
+      const dateKey = normalizeSessionDateKey(row?.session_date);
+      const cleanName = String(row?.attendee_name || '').trim();
+      if (!dateKey || !cleanName) continue;
+      if (!grouped[dateKey]) grouped[dateKey] = [];
+      grouped[dateKey].push({
+        sessionDate: dateKey,
         startHour: Number(row.start_hour),
         endHour: Number(row.end_hour),
         venueId: String(row.venue_id || ''),
         venueName: String(row.venue_name || ''),
-        attendeeName: String(row.attendee_name).trim(),
+        attendeeName: cleanName,
         status: row.status === 'maybe' ? 'maybe' : 'yes',
       });
     }
@@ -1034,9 +1097,10 @@ export default function App() {
         (payload) => {
           if (isCancelled) return;
           if (payload.eventType === 'DELETE' && payload.old?.date_key) {
+            const deletedDate = normalizeSessionDateKey(payload.old.date_key);
             setBookedSessionsByDate((prev) => {
               const next = { ...prev };
-              delete next[payload.old.date_key];
+              delete next[deletedDate];
               return next;
             });
             return;
@@ -1165,14 +1229,26 @@ export default function App() {
     };
   }, [openVenuesBySlot, bookedVenuesBySlot, bookedSessionsByDate, isJa]);
 
+  // Include voters with active session RSVPs so RSVP-only submissions
+  // remain visible in the edit picker even when `responses` has no slots.
   const activeVotes = useMemo(() => {
     const openKeySet = new Set(allOpenSlots.map((s) => s.slotKey));
-    return votes.filter((vote) =>
-      Object.keys(normalizeResponsesMap(vote.responses)).some((k) =>
-        openKeySet.has(k)
-      )
-    );
-  }, [votes, allOpenSlots]);
+    const rsvpNames = new Set();
+    for (const rows of Object.values(attendeesByDate)) {
+      for (const row of rows || []) {
+        if (row.attendeeName) rsvpNames.add(row.attendeeName);
+      }
+    }
+
+    return votes.filter((vote) => {
+      const hasOpenSlotVote = Object.keys(
+        normalizeResponsesMap(vote.responses)
+      ).some((k) => openKeySet.has(k));
+      const hasSessionRsvp = rsvpNames.has(String(vote.name || '').trim());
+      const hasNote = Boolean(String(vote.note || '').trim());
+      return hasOpenSlotVote || hasSessionRsvp || hasNote;
+    });
+  }, [votes, allOpenSlots, attendeesByDate]);
 
   const { twoHourHighlightMap, twoHourEligibleSlotKeys } = useMemo(() => {
     const cellMeta = {};
@@ -1684,6 +1760,11 @@ export default function App() {
         delete next[dateKey];
         return next;
       });
+      setPendingRsvpByDate((prev) => {
+        const next = { ...prev };
+        delete next[dateKey];
+        return next;
+      });
       setBookingToUnmark(null);
       setUnmarkConfirmInput('');
       triggerToast(t.toastUnmarkedBooked(dateKey));
@@ -1694,80 +1775,20 @@ export default function App() {
   }, [bookingToUnmark, unmarkConfirmInput, t, triggerToast]);
 
   const handleToggleBookingAttendee = useCallback(
-    async (booking, currentlyGoing) => {
+    (booking, currentlyGoing) => {
       if (viewingVote) {
         triggerToast(t.viewingBanner(viewingVote.name));
         return;
       }
 
-      const attendeeName = voterName.trim().replace(/\s+/g, ' ');
-      if (!attendeeName) {
-        triggerToast(t.toastEnterName);
-        return;
-      }
-
-      const venueLabel = resolveBookingVenueLabel(booking, t.venueTbd);
-
-      try {
-        if (currentlyGoing) {
-          const { error } = await supabase
-            .from('session_attendees')
-            .delete()
-            .eq('session_date', booking.dateKey)
-            .eq('attendee_name', attendeeName);
-          if (error) throw error;
-
-          setAttendeesByDate((prev) => ({
-            ...prev,
-            [booking.dateKey]: (prev[booking.dateKey] || []).filter(
-              (row) => row.attendeeName !== attendeeName
-            ),
-          }));
-        } else {
-          const nextRow = {
-            session_date: booking.dateKey,
-            start_hour: booking.startHour,
-            end_hour: booking.endHour,
-            venue_id: booking.venueId || '',
-            venue_name: venueLabel,
-            attendee_name: attendeeName,
-            status: 'yes',
-            updated_at: new Date().toISOString(),
-          };
-          const { error } = await supabase
-            .from('session_attendees')
-            .upsert(nextRow, {
-              onConflict: 'session_date,attendee_name',
-            });
-          if (error) throw error;
-
-          setAttendeesByDate((prev) => {
-            const existing = (prev[booking.dateKey] || []).filter(
-              (row) => row.attendeeName !== attendeeName
-            );
-            return {
-              ...prev,
-              [booking.dateKey]: [
-                ...existing,
-                {
-                  sessionDate: booking.dateKey,
-                  startHour: booking.startHour,
-                  endHour: booking.endHour,
-                  venueId: booking.venueId || '',
-                  venueName: venueLabel,
-                  attendeeName,
-                  status: 'yes',
-                },
-              ],
-            };
-          });
-        }
-      } catch (err) {
-        console.error('Supabase session_attendees toggle error:', err);
-        triggerToast(t.toastAttendeeSaveError);
-      }
+      // Defer persistence until handleSubmitVote so clicking RSVP is reversible
+      // before submission even when no name is entered yet.
+      setPendingRsvpByDate((prev) => ({
+        ...prev,
+        [booking.dateKey]: currentlyGoing ? 'no' : 'yes',
+      }));
     },
-    [viewingVote, voterName, t, triggerToast]
+    [viewingVote, t, triggerToast]
   );
 
   const handleCycleSlot = (slotKey) => {
@@ -1899,19 +1920,23 @@ export default function App() {
     triggerToast(`${t.weekClearAll}: ${week.shortTitle}`);
   };
 
-  const resetVoterForm = () => {
+  const resetVoterForm = useCallback(() => {
     setVoterName('');
     setVoterNote('');
     setResponses({});
+    setPendingRsvpByDate({});
     setDayWindowByDate({});
     setEditingVoteId(null);
     setViewingVote(null);
-  };
+  }, []);
 
   const handleSelectVoterToView = useCallback(
     (vote) => {
       if (!vote || editingVoteId === vote.id) return;
-      setEditingVoteId(null);
+      if (editingVoteId) {
+        triggerToast(t.editingBanner(voterName));
+        return;
+      }
       setViewingVote(vote);
       setGridViewMode('vote');
       calendarSectionRef.current?.scrollIntoView({
@@ -1920,17 +1945,26 @@ export default function App() {
       });
       triggerToast(t.viewingBanner(vote.name));
     },
-    [editingVoteId, t, triggerToast]
+    [editingVoteId, voterName, t, triggerToast]
   );
 
   const handleSelectVoterToEdit = useCallback(
     (vote) => {
       if (!vote) return;
+      const cleanName = String(vote.name || '').trim();
+      const prefilledRsvp = {};
+      for (const [dateKey, rows] of Object.entries(attendeesByDate)) {
+        if ((rows || []).some((row) => row.attendeeName === cleanName)) {
+          prefilledRsvp[dateKey] = 'yes';
+        }
+      }
+
       setViewingVote(null);
       setEditingVoteId(vote.id);
       setVoterName(vote.name || '');
       setVoterNote(vote.note || '');
       setResponses(normalizeResponsesMap(vote.responses));
+      setPendingRsvpByDate(prefilledRsvp);
       setGridViewMode('vote');
       setShowEditPickerModal(false);
       // Scroll to the calendar grid rather than the name input when editing.
@@ -1940,7 +1974,7 @@ export default function App() {
       });
       triggerToast(t.editingBanner(vote.name));
     },
-    [t, triggerToast]
+    [attendeesByDate, t, triggerToast]
   );
 
   const handleBookingDateChange = (nextDate) => {
@@ -1996,6 +2030,43 @@ export default function App() {
     }
   };
 
+  const syncPendingSessionAttendees = useCallback(
+    async (attendeeName) => {
+      const entries = Object.entries(pendingRsvpByDate);
+      if (!entries.length) return;
+
+      for (const [dateKey, choice] of entries) {
+        const booking = bookedSessionsByDate[dateKey];
+        if (!booking) continue;
+
+        if (choice === 'yes') {
+          const { error } = await supabase.from('session_attendees').upsert(
+            {
+              session_date: dateKey,
+              start_hour: booking.startHour,
+              end_hour: booking.endHour,
+              venue_id: booking.venueId || '',
+              venue_name: resolveBookingVenueLabel(booking, t.venueTbd),
+              attendee_name: attendeeName,
+              status: 'yes',
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'session_date,attendee_name' }
+          );
+          if (error) throw error;
+        } else {
+          const { error } = await supabase
+            .from('session_attendees')
+            .delete()
+            .eq('session_date', dateKey)
+            .eq('attendee_name', attendeeName);
+          if (error) throw error;
+        }
+      }
+    },
+    [pendingRsvpByDate, bookedSessionsByDate, t.venueTbd]
+  );
+
   const handleSubmitVote = async (e) => {
     e.preventDefault();
     const trimmedName = voterName.trim().replace(/\s+/g, ' ');
@@ -2006,13 +2077,25 @@ export default function App() {
     }
 
     const cleanResponses = normalizeResponsesMap(responses);
-    if (!Object.keys(cleanResponses).length) {
-      triggerToast(t.toastSelectSlot);
+    const hasSlotVotes = Object.keys(cleanResponses).length > 0;
+    const hasGoingRsvp = Object.values(pendingRsvpByDate).some(
+      (choice) => choice === 'yes'
+    );
+    const hasPendingRsvp = Object.keys(pendingRsvpByDate).length > 0;
+
+    // Prevent saving or confirming an edit that leaves a voter with 0 slots
+    // and 0 active Going RSVPs.
+    if (!hasSlotVotes && !hasGoingRsvp) {
+      triggerToast(
+        editingVoteId ? t.toastEmptyEditSelection : t.toastSelectSlot
+      );
       return;
     }
 
     setIsSubmitting(true);
     try {
+      // Persist a calendar_votes row even for RSVP-only submissions so the
+      // voter and note remain editable later.
       const payload = {
         name: trimmedName,
         note: voterNote.trim(),
@@ -2028,16 +2111,22 @@ export default function App() {
 
       if (error) throw error;
 
+      if (hasPendingRsvp) {
+        await syncPendingSessionAttendees(trimmedName);
+      }
+
       triggerToast(
         editingVoteId
           ? t.toastUpdatedVote(trimmedName)
           : t.toastSubmittedVote(trimmedName)
       );
-      await fetchVotes();
+      await Promise.all([fetchVotes(), fetchSessionAttendees()]);
       resetVoterForm();
     } catch (err) {
       console.error('Supabase save error:', err);
-      triggerToast(t.toastSaveError);
+      triggerToast(
+        hasPendingRsvp ? t.toastAttendeeSaveError : t.toastSaveError
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -2123,11 +2212,50 @@ export default function App() {
 
   const currentWeek = calendarWeeks[activeWeekIdx];
   const selectedSlotCount = Object.keys(responses).length;
+  const trimmedVoterName = voterName.trim();
+  const hasAnyRsvpSelected = Object.values(pendingRsvpByDate).some(
+    (choice) => choice === 'yes'
+  );
+  const hasSelectionProgress =
+    Boolean(trimmedVoterName) || selectedSlotCount > 0 || hasAnyRsvpSelected;
+  const isNotesLockedForEdit = Boolean(editingVoteId);
   const showEditExistingButton =
     !editingVoteId &&
     activeVotes.length > 0 &&
-    !voterName.trim() &&
-    selectedSlotCount === 0;
+    !trimmedVoterName &&
+    selectedSlotCount === 0 &&
+    !hasAnyRsvpSelected;
+
+  const { reminderMessage, reminderStepCount } = useMemo(() => {
+    const hasName = Boolean(trimmedVoterName);
+    const hasSlots = selectedSlotCount > 0;
+    const stepsCompleted =
+      (hasName ? 1 : 0) + (hasSlots || hasAnyRsvpSelected ? 1 : 0);
+
+    if (hasAnyRsvpSelected && !hasName) {
+      return {
+        reminderMessage: t.rsvpWithoutNameBanner(),
+        reminderStepCount: stepsCompleted,
+      };
+    }
+    if (hasName && !hasSlots && !hasAnyRsvpSelected) {
+      return {
+        reminderMessage: t.nameWithoutSlotsBanner(),
+        reminderStepCount: 1,
+      };
+    }
+    if (!hasName && hasSlots) {
+      return {
+        reminderMessage: t.rsvpWithoutNameBanner(),
+        reminderStepCount: 1,
+      };
+    }
+    return {
+      reminderMessage: t.readyToSubmitBanner(),
+      reminderStepCount: 2,
+    };
+  }, [trimmedVoterName, selectedSlotCount, hasAnyRsvpSelected, t]);
+
   const [selectedStartHour, selectedEndHour] = bookingTime.split('-');
   const activeStartHour = parseHourValue(selectedStartHour || '17:00');
   const minStartForSelectedDate = getMinStartHourForDate(
@@ -2338,6 +2466,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#eef2f6] text-slate-900 pb-16 font-sans selection:bg-lime-300 selection:text-slate-950">
+      {!viewingVote && hasSelectionProgress && (
+        <FloatingStepReminderBanner
+          message={reminderMessage}
+          stepCount={reminderStepCount}
+          totalSteps={3}
+        />
+      )}
+
       {toastMessage && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-[#1B365D] text-white px-4 py-3 rounded-2xl shadow-2xl border border-lime-400/60 flex items-center gap-2.5 text-xs sm:text-sm font-bold max-w-[92vw]">
           <Check className="w-4 h-4 shrink-0 text-lime-300" />
@@ -2580,6 +2716,15 @@ export default function App() {
                     <span>{t.exitViewBtn}</span>
                   </button>
                 </div>
+              ) : editingVoteId ? (
+                <button
+                  type="button"
+                  onClick={resetVoterForm}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 text-xs font-extrabold border border-slate-300 shadow-xs transition cursor-pointer whitespace-nowrap"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                  <span>{t.cancelBtn}</span>
+                </button>
               ) : (
                 <div className="relative">
                   <select
@@ -2708,7 +2853,8 @@ export default function App() {
                         day={day}
                         booking={bookedEntry}
                         attendees={attendeesByDate[day.dateKey] || []}
-                        activeAttendeeName={voterName.trim()}
+                        pendingRsvpByDate={pendingRsvpByDate}
+                        activeAttendeeName={trimmedVoterName}
                         viewingVote={viewingVote}
                         viewportWidth={tableViewportWidth}
                         isJa={isJa}
@@ -3263,6 +3409,11 @@ export default function App() {
                 <h2 className="font-extrabold text-xs sm:text-sm">
                   {t.notesTitle}
                 </h2>
+                {isNotesLockedForEdit && (
+                  <span className="px-2 py-0.5 rounded bg-amber-300 text-slate-950 text-[10px] font-extrabold shrink-0 whitespace-nowrap">
+                    {t.notesLockedBadge}
+                  </span>
+                )}
               </div>
               <span
                 translate={isJa ? undefined : 'no'}
@@ -3272,17 +3423,28 @@ export default function App() {
               </span>
             </div>
 
-            <div className="p-3.5 space-y-2 max-h-[430px] overflow-y-auto flex-1">
+            <div
+              className={`p-3.5 space-y-2 max-h-[430px] overflow-y-auto flex-1 transition ${
+                isNotesLockedForEdit ? 'bg-slate-100/70' : ''
+              }`}
+            >
               {!activeVotes.length ? (
                 <p className="text-xs text-slate-400 italic py-6 text-center">
                   {t.noNotesYet}
                 </p>
               ) : (
                 activeVotes.map((v) => (
-                  <div
+                  <button
                     key={v.id}
+                    type="button"
+                    disabled={isNotesLockedForEdit}
+                    aria-disabled={isNotesLockedForEdit}
                     onClick={() => handleSelectVoterToView(v)}
-                    className="p-2.5 rounded-xl bg-slate-50 hover:bg-sky-50 border border-slate-200 flex items-start justify-between gap-2 cursor-pointer transition"
+                    className={`w-full p-2.5 rounded-xl border flex items-start justify-between gap-2 text-left transition ${
+                      isNotesLockedForEdit
+                        ? 'bg-slate-100/90 border-slate-200/80 opacity-60 cursor-not-allowed'
+                        : 'bg-slate-50 hover:bg-sky-50 border-slate-200 cursor-pointer'
+                    }`}
                   >
                     <div className="min-w-0">
                       <div
@@ -3300,7 +3462,7 @@ export default function App() {
                       </p>
                     </div>
                     <Eye className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                  </div>
+                  </button>
                 ))
               )}
             </div>
