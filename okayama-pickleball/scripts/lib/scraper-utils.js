@@ -1,3 +1,6 @@
+export const ALLOWED_START_HOURS = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
+export const ALLOWED_HOURS_SET = new Set(ALLOWED_START_HOURS);
+
 /**
  * Returns the current hour (`0`–`23`) in `Asia/Tokyo` (JST).
  *
@@ -10,7 +13,7 @@ export function getCurrentJstHour() {
 
 /**
  * Returns whether a slot on `dateKey` starting at `startHour` has already
- * passed or started relative to the current JST date and hour.
+ * started or passed relative to the current JST date and hour.
  *
  * @param {string} dateKey
  * @param {number} startHour
@@ -28,5 +31,8 @@ export function isSlotPastCurrentJst(
   if (dateKey < todayDateKey) return true;
   if (dateKey > todayDateKey) return false;
 
-  return Number(startHour) <= currentJstHour;
+  const parsedStartHour = Number(startHour);
+  if (!Number.isFinite(parsedStartHour)) return false;
+
+  return parsedStartHour <= currentJstHour;
 }
