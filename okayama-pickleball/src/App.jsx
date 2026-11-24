@@ -847,7 +847,7 @@ function BookedSessionFullRowCard({
             >
               <span
                 translate="no"
-                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full text-md sm:text-lg font-extrabold inline-flex items-center justify-center shrink-0 ${badge.cls}`}
+                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full text-lg sm:text-xl font-extrabold inline-flex items-center justify-center shrink-0 ${badge.cls}`}
               >
                 {badge.symbol}
               </span>
