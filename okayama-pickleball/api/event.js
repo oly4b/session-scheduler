@@ -8,8 +8,8 @@ const IN_APP_UA_PATTERN =
 
 const EVENT_COPY = {
   ja: {
-    sessionLabel: '岡大dinks セッション',
-    inviteHeading: '🗓️ 岡大dinks セッション案内',
+    sessionLabel: '桃dinks セッション',
+    inviteHeading: '🗓️ 桃dinks セッション案内',
     gateBadge: '🔒 外部ブラウザ専用',
     gateTitle: '🌐 外部ブラウザで開いてください',
     gateBody:
@@ -36,8 +36,8 @@ const EVENT_COPY = {
     indoorShoes: '👟 体育館のため室内専用シューズ必須',
   },
   en: {
-    sessionLabel: '岡大dinks Session',
-    inviteHeading: '🗓️ 岡大dinks Session Details',
+    sessionLabel: '桃dinks Session',
+    inviteHeading: '🗓️ 桃dinks Session Details',
     gateBadge: '🔒 External Browser Only',
     gateTitle: '🌐 Open in an External Browser',
     gateBody:
@@ -405,7 +405,7 @@ export default function handler(req, res) {
 
   const summary =
     String(rawTitle || '').trim() ||
-    `🏓 岡大dinks ${defaultSportLabel} (${venueName})`;
+    `🏓 桃dinks ${defaultSportLabel} (${venueName})`;
 
   const descriptionLines = [
     `🏓 ${copy.sessionLabel}`,

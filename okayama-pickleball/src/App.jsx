@@ -57,7 +57,7 @@ const COPY = {
   en: {
     badgeIntegrated: (count) => `${count} Venues · Availability & Poll`,
     syncedWaiting: '※ Waiting for initial availability scrape',
-    appTitle: '岡大dinks Session Scheduler',
+    appTitle: '桃dinks Session Scheduler',
     venuesSummary: (total, okayama, kurashiki) =>
       `Venues (${total}): Okayama (${okayama}) · Kurashiki (${kurashiki})`,
     shareToSns: 'Share',
@@ -121,7 +121,7 @@ const COPY = {
     allBookedDay: 'No slots',
     bookedTitle: 'All matching venues are booked (Full)',
     closedTitle: 'Outside operating hours or closed',
-    noBookingsTodayLabel: 'No bookings today',
+    noBookingsTodayLabel: 'NO SESSION BOOKED',
     no2hTitle: 'Only 1 hour open — no continuous 2-hour slot at the same venue',
     viewingCellTitle: (name) => `${name}'s response (View-Only)`,
     detailsLabel: 'Details',
@@ -143,6 +143,8 @@ const COPY = {
     toastBookingSaveError: 'Could not save booking. Check Supabase connection.',
     toastBookingDeleteError:
       'Could not remove booking. Check Supabase connection.',
+    toastAttendeeSaveError:
+      'Could not update session attendee. Check Supabase connection.',
     top5Title: 'Top 5 Recommended 2h Blocks',
     top5Subtitle: 'Best per day (3+ votes)',
     loadingVotes: 'Loading tallies...',
@@ -210,7 +212,7 @@ const COPY = {
   ja: {
     badgeIntegrated: (count) => `${count}会場統合 空き状況 & 日程調整`,
     syncedWaiting: '※ 初回空き状況スクレイピング待機中',
-    appTitle: '岡大dinks 合同セッション日程調整',
+    appTitle: '桃dinks 合同セッション日程調整',
     venuesSummary: (total, okayama, kurashiki) =>
       `対象施設 (${total}会場): 岡山市 (${okayama}施設) ・ 倉敷市 (${kurashiki}施設)`,
     shareToSns: '共有',
@@ -273,7 +275,7 @@ const COPY = {
     allBookedDay: '空きなし',
     bookedTitle: '対象施設はすべて予約済み（満員）です',
     closedTitle: '営業時間外・休場または対象外の時間帯です（空きなし）',
-    noBookingsTodayLabel: '本日の予約はありません',
+    noBookingsTodayLabel: '確定予定はありません',
     no2hTitle: '1時間枠は空きがありますが、同一会場で2時間連続になる枠がありません',
     viewingCellTitle: (name) => `${name} の回答（閲覧モード）`,
     detailsLabel: '詳細',
@@ -297,6 +299,8 @@ const COPY = {
       '予約確定を保存できませんでした。Supabase接続を確認してください。',
     toastBookingDeleteError:
       '予約確定の解除に失敗しました。Supabase接続を確認してください。',
+    toastAttendeeSaveError:
+      '参加予定の更新に失敗しました。Supabase接続を確認してください。',
     top5Title: 'おすすめ2時間枠 TOP 5（連続空き会場）',
     top5Subtitle: '日程別ベスト枠（3名以上）',
     loadingVotes: '集計データを読み込み中...',
@@ -392,7 +396,6 @@ function getCurrentJstHour() {
 
 function getMinStartHourForDate(dateKey, todayKey, currentJstHour) {
   if (!dateKey || dateKey !== todayKey) return 12;
-  // Require upcoming hours (e.g. past 15:00 -> earliest start is 16:00).
   return currentJstHour + 1;
 }
 
@@ -534,7 +537,7 @@ function formatConfirmedSessionInvite({
 
   if (format === 'en') {
     return [
-      '🗓️ 岡大dinks | Session Confirmed',
+      '🗓️ 桃dinks | Session Confirmed',
       `⏰ Date & Time: ${enDateText} · ${formattedTime}`,
       `📍 Venue: ${displayVenue}`,
       `👟 Shoes: ${shoesEn}`,
@@ -545,7 +548,7 @@ function formatConfirmedSessionInvite({
 
   if (format === 'ja') {
     return [
-      '🗓️ 岡大dinks | 次回セッション確定案内',
+      '🗓️ 桃dinks | 次回セッション確定案内',
       `⏰ 日時: ${jpDateText} ${formattedTime}`,
       `📍 会場: ${displayVenue}`,
       `👟 シューズ: ${shoesJa}`,
@@ -555,7 +558,7 @@ function formatConfirmedSessionInvite({
   }
 
   return [
-    '🗓️ 岡大dinks | 次回セッション確定案内 (Session Confirmed)',
+    '🗓️ 桃dinks | 次回セッション確定案内 (Session Confirmed)',
     `⏰ 日時 / Time: ${jpDateText} ${formattedTime}`,
     `📍 会場 / Venue: ${displayVenue}`,
     `👟 シューズ / Shoes: ${shoesJa} (${shoesEn})`,
@@ -566,29 +569,15 @@ function formatConfirmedSessionInvite({
 
 function PickleballIcon({ className = 'w-7 h-7' }) {
   return (
-    <svg
-      viewBox="0 0 36 36"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-      aria-hidden="true"
-    >
-      <circle
-        cx="18"
-        cy="18"
-        r="16"
-        fill="#D9F99D"
-        stroke="#84CC16"
-        strokeWidth="2"
-      />
-      <circle cx="12" cy="11" r="2.1" fill="#1E3A5F" />
-      <circle cx="21" cy="9.5" r="2" fill="#1E3A5F" />
-      <circle cx="26" cy="16" r="2.1" fill="#1E3A5F" />
-      <circle cx="18" cy="18" r="2.3" fill="#1E3A5F" />
-      <circle cx="10" cy="20" r="2.1" fill="#1E3A5F" />
-      <circle cx="23" cy="25" r="2" fill="#1E3A5F" />
-      <circle cx="14.5" cy="26.5" r="1.9" fill="#1E3A5F" />
-    </svg>
+    <span
+      role="img"
+      aria-label="Peach"
+      translate="no"
+      className="w-7 h-7 inline-flex items-center justify-center text-[26px] leading-none select-none"
+      >
+      🍑
+    </span>
+
   );
 }
 
@@ -601,7 +590,7 @@ function NoBookingsTodayRowCard({
 }) {
   const innerBarWidthPx =
     viewportWidth > 0 ? Math.max(240, viewportWidth - 16) : null;
-  const todayBadgeText = isJa ? '本日' : 'Today';
+  const todayBadgeText = isJa ? '本日' : 'TODAY';
 
   return (
     <tr className="h-[96px] bg-slate-100/85 select-none">
@@ -636,34 +625,22 @@ function NoBookingsTodayRowCard({
 function BookedSessionFullRowCard({
   day,
   booking,
-  votes,
-  activeMap,
+  attendees,
+  activeAttendeeName,
   viewingVote,
   viewportWidth,
   isJa,
   t,
-  onToggleBookingAvailability,
+  onToggleBookingAttendee,
   onShareBooking,
   onRequestClearBooking,
 }) {
   const venueLabel = resolveBookingVenueLabel(booking, t.venueTbd);
-  const sessionSlotKeys = TIME_BLOCKS.filter(
-    (block) =>
-      block.startHour >= booking.startHour &&
-      block.startHour + 1 <= booking.endHour
-  ).map((block) => `${day.dateKey}_${block.id}`);
-
-  const isGoing = sessionSlotKeys.some((key) => activeMap[key] === 'yes');
-
-  const goingVoters = votes.filter((vote) =>
-    sessionSlotKeys.every(
-      (key) => getMergedVoterChoice(vote.responses, key) === 'yes'
-    )
-  );
-  const maybeVoters = votes.filter((vote) =>
-    sessionSlotKeys.some(
-      (key) => getMergedVoterChoice(vote.responses, key) === 'maybe'
-    )
+  const yesAttendees = attendees.filter((row) => row.status !== 'maybe');
+  const maybeAttendees = attendees.filter((row) => row.status === 'maybe');
+  const isGoing = Boolean(
+    activeAttendeeName &&
+      yesAttendees.some((row) => row.attendeeName === activeAttendeeName)
   );
 
   const timeRangeLabel =
@@ -723,8 +700,10 @@ function BookedSessionFullRowCard({
               <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-bold text-slate-600 shrink-0 whitespace-nowrap">
                 <Check className="w-3 h-3 text-emerald-700 shrink-0" />
                 <span>
-                  {t.goingLabel}: ◯{goingVoters.length}
-                  {maybeVoters.length > 0 ? ` / △${maybeVoters.length}` : ''}
+                  {t.goingLabel}: ◯{yesAttendees.length}
+                  {maybeAttendees.length > 0
+                    ? ` / △${maybeAttendees.length}`
+                    : ''}
                 </span>
               </span>
             </div>
@@ -742,7 +721,7 @@ function BookedSessionFullRowCard({
             <button
               type="button"
               disabled={Boolean(viewingVote)}
-              onClick={() => onToggleBookingAvailability(sessionSlotKeys)}
+              onClick={() => onToggleBookingAttendee(booking, isGoing)}
               className={`inline-flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-extrabold border transition whitespace-nowrap ${
                 viewingVote
                   ? 'opacity-60 cursor-default bg-slate-100 border-slate-300 text-slate-500'
@@ -783,8 +762,8 @@ function BookedSessionFullRowCard({
 }
 
 /**
- * Renders the Okadai dinks pickleball availability scheduler with real-time
- * Supabase persistence for confirmed session bookings.
+ * Renders the 桃dinks pickleball availability scheduler with real-time
+ * Supabase persistence for confirmed sessions and per-session attendees.
  *
  * @returns {JSX.Element}
  */
@@ -805,6 +784,7 @@ export default function App() {
   const [gridViewMode, setGridViewMode] = useState('vote');
   const [dayWindowByDate, setDayWindowByDate] = useState({});
   const [bookedSessionsByDate, setBookedSessionsByDate] = useState({});
+  const [attendeesByDate, setAttendeesByDate] = useState({});
   const [tableViewportWidth, setTableViewportWidth] = useState(0);
 
   const [voterName, setVoterName] = useState('');
@@ -855,7 +835,8 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.lang = lang;
-  }, [lang]);
+    document.title = t.appTitle;
+  }, [lang, t.appTitle]);
 
   useEffect(() => {
     const el = tableScrollRef.current;
@@ -943,6 +924,37 @@ export default function App() {
     setBookedSessionsByDate(nextMap);
   }, []);
 
+  const fetchSessionAttendees = useCallback(async () => {
+    const minDate = getJstDayMeta(0).dateKey;
+    const { data, error } = await supabase
+      .from('session_attendees')
+      .select(
+        'session_date, start_hour, end_hour, venue_id, venue_name, attendee_name, status'
+      )
+      .gte('session_date', minDate);
+
+    if (error) {
+      console.error('Supabase session_attendees fetch error:', error);
+      return;
+    }
+
+    const grouped = {};
+    for (const row of data || []) {
+      if (!row?.session_date || !row?.attendee_name) continue;
+      if (!grouped[row.session_date]) grouped[row.session_date] = [];
+      grouped[row.session_date].push({
+        sessionDate: row.session_date,
+        startHour: Number(row.start_hour),
+        endHour: Number(row.end_hour),
+        venueId: String(row.venue_id || ''),
+        venueName: String(row.venue_name || ''),
+        attendeeName: String(row.attendee_name).trim(),
+        status: row.status === 'maybe' ? 'maybe' : 'yes',
+      });
+    }
+    setAttendeesByDate(grouped);
+  }, []);
+
   useEffect(() => {
     let isCancelled = false;
 
@@ -1002,6 +1014,7 @@ export default function App() {
 
     fetchVotes();
     fetchBookedSessions();
+    fetchSessionAttendees();
     fetchAvailability();
 
     const votesChannel = supabase
@@ -1038,12 +1051,22 @@ export default function App() {
       )
       .subscribe();
 
+    const attendeesChannel = supabase
+      .channel('session-attendees-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'session_attendees' },
+        fetchSessionAttendees
+      )
+      .subscribe();
+
     return () => {
       isCancelled = true;
       supabase.removeChannel(votesChannel);
       supabase.removeChannel(bookingsChannel);
+      supabase.removeChannel(attendeesChannel);
     };
-  }, [fetchVotes, fetchBookedSessions]);
+  }, [fetchVotes, fetchBookedSessions, fetchSessionAttendees]);
 
   const { calendarWeeks, allOpenSlots, hasLiveAvailability } = useMemo(() => {
     const hasLive =
@@ -1269,7 +1292,6 @@ export default function App() {
       const nextIds =
         openVenuesBySlot[`${slot.dateKey}_${nextHour}:00-${endPlusTwo}:00`];
 
-      // Exclude single-hour openings because sessions require 2 consecutive hours.
       const twoHourEligibleVenues = slot.openVenues.filter(
         (v) => prevIds?.has(v.id) || nextIds?.has(v.id)
       );
@@ -1647,7 +1669,17 @@ export default function App() {
         .eq('date_key', dateKey);
       if (error) throw error;
 
+      await supabase
+        .from('session_attendees')
+        .delete()
+        .eq('session_date', dateKey);
+
       setBookedSessionsByDate((prev) => {
+        const next = { ...prev };
+        delete next[dateKey];
+        return next;
+      });
+      setAttendeesByDate((prev) => {
         const next = { ...prev };
         delete next[dateKey];
         return next;
@@ -1661,26 +1693,81 @@ export default function App() {
     }
   }, [bookingToUnmark, unmarkConfirmInput, t, triggerToast]);
 
-  const handleToggleBookingAvailability = useCallback(
-    (slotKeys) => {
-      if (!slotKeys.length) return;
+  const handleToggleBookingAttendee = useCallback(
+    async (booking, currentlyGoing) => {
       if (viewingVote) {
         triggerToast(t.viewingBanner(viewingVote.name));
         return;
       }
 
-      setResponses((prev) => {
-        const next = { ...prev };
-        // Cycle only between 'yes' and unmarked so booked rows track attendees.
-        const currentlyGoing = next[slotKeys[0]] === 'yes';
-        for (const key of slotKeys) {
-          if (currentlyGoing) delete next[key];
-          else next[key] = 'yes';
+      const attendeeName = voterName.trim().replace(/\s+/g, ' ');
+      if (!attendeeName) {
+        triggerToast(t.toastEnterName);
+        return;
+      }
+
+      const venueLabel = resolveBookingVenueLabel(booking, t.venueTbd);
+
+      try {
+        if (currentlyGoing) {
+          const { error } = await supabase
+            .from('session_attendees')
+            .delete()
+            .eq('session_date', booking.dateKey)
+            .eq('attendee_name', attendeeName);
+          if (error) throw error;
+
+          setAttendeesByDate((prev) => ({
+            ...prev,
+            [booking.dateKey]: (prev[booking.dateKey] || []).filter(
+              (row) => row.attendeeName !== attendeeName
+            ),
+          }));
+        } else {
+          const nextRow = {
+            session_date: booking.dateKey,
+            start_hour: booking.startHour,
+            end_hour: booking.endHour,
+            venue_id: booking.venueId || '',
+            venue_name: venueLabel,
+            attendee_name: attendeeName,
+            status: 'yes',
+            updated_at: new Date().toISOString(),
+          };
+          const { error } = await supabase
+            .from('session_attendees')
+            .upsert(nextRow, {
+              onConflict: 'session_date,attendee_name',
+            });
+          if (error) throw error;
+
+          setAttendeesByDate((prev) => {
+            const existing = (prev[booking.dateKey] || []).filter(
+              (row) => row.attendeeName !== attendeeName
+            );
+            return {
+              ...prev,
+              [booking.dateKey]: [
+                ...existing,
+                {
+                  sessionDate: booking.dateKey,
+                  startHour: booking.startHour,
+                  endHour: booking.endHour,
+                  venueId: booking.venueId || '',
+                  venueName: venueLabel,
+                  attendeeName,
+                  status: 'yes',
+                },
+              ],
+            };
+          });
         }
-        return next;
-      });
+      } catch (err) {
+        console.error('Supabase session_attendees toggle error:', err);
+        triggerToast(t.toastAttendeeSaveError);
+      }
     },
-    [viewingVote, t, triggerToast]
+    [viewingVote, voterName, t, triggerToast]
   );
 
   const handleCycleSlot = (slotKey) => {
@@ -2620,15 +2707,13 @@ export default function App() {
                         key={day.dateKey}
                         day={day}
                         booking={bookedEntry}
-                        votes={votes}
-                        activeMap={activeMap}
+                        attendees={attendeesByDate[day.dateKey] || []}
+                        activeAttendeeName={voterName.trim()}
                         viewingVote={viewingVote}
                         viewportWidth={tableViewportWidth}
                         isJa={isJa}
                         t={t}
-                        onToggleBookingAvailability={
-                          handleToggleBookingAvailability
-                        }
+                        onToggleBookingAttendee={handleToggleBookingAttendee}
                         onShareBooking={handleShareBookingCard}
                         onRequestClearBooking={openUnmarkBookingGuard}
                       />
