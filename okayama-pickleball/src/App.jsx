@@ -42,6 +42,7 @@ import { getTodayJstIsoDate } from './utils/confirmedInvite';
 const AVAILABILITY_PAGE_SIZE = 1000;
 const OTHER_VENUE_OPTION = '__other__';
 const MANUAL_VENUE_ID = 'other';
+const LANG_STORAGE_KEY = 'momodinks_lang';
 
 const START_HOUR_OPTIONS = Array.from({ length: 10 }, (_, idx) => {
   const hour = String(idx + 12).padStart(2, '0');
@@ -66,7 +67,7 @@ const COPY = {
     editingBanner: (name) => `Editing: ${name}`,
     viewingBanner: (name) => `View-Only: viewing ${name}'s response`,
     defaultBanner: () =>
-      'Please enter your name & choose slots, then press "Submit."',
+      'Please enter your name & choose slots, then press "Submit".',
     rsvpWithoutNameBanner: () => 'Please enter your name.',
     nameWithoutSlotsBanner: () => 'Please pick time slots (◯/△/✕).',
     readyToSubmitBanner: () =>
@@ -78,8 +79,8 @@ const COPY = {
     nameLabel: 'Name',
     namePlaceholder: 'e.g. Emma / John',
     nameTitle: 'Name cannot be blank or spaces only',
-    noteLabel: 'Note (preferred area, indoor/outdoor, paddle rental, etc.)',
-    notePlaceholder: 'e.g. Okayama preferred / Anywhere / Need a paddle',
+    noteLabel: 'Note',
+    notePlaceholder: 'e.g. Need a paddle / Anywhere OK',
     editExistingBtn: 'Edit Response',
     submittingBtn: 'Saving...',
     updateVoteBtn: 'Update',
@@ -162,8 +163,8 @@ const COPY = {
       'Once 3+ players mark ◯ or △ across two consecutive hours, best block appears.',
     firstChoice: (name) => ` ${name}`,
     moreVenues: (count) => `+${count} more`,
-    sweetSpotBadge: '🎯 6–8 sweet spot',
-    doubleCourtBadge: '🔥 9+ (2 courts)',
+    sweetSpotBadge: '6–8 sweet spot',
+    doubleCourtBadge: '9+ (2 courts)',
     altBlockBadge: '+Alt time',
     twoHourYesPill: (count) => `2h◯ ${count}`,
     flexPill: (count) => `△/1h ${count}`,
@@ -228,7 +229,8 @@ const COPY = {
     venuesSummary: (total, okayama, kurashiki) =>
       `対象施設 (${total}会場): 岡山市 (${okayama}施設) ・ 倉敷市 (${kurashiki}施設)`,
     shareToSns: '共有',
-    supabaseError: 'Supabase接続エラー: .envとテーブル設定を確認してください。',
+    supabaseError:
+      'Supabase接続エラー: .envとテーブル設定を確認してください。',
     editingBanner: (name) => `編集中: ${name}`,
     viewingBanner: (name) => `閲覧モード: ${name} さんの回答を確認中`,
     defaultBanner: () =>
@@ -287,13 +289,15 @@ const COPY = {
     legendClosedDesc: '営業時間外・休場',
     legendRec2h: 'おすすめ2時間枠',
     legendPrime: '学生向け時間帯 (18:00~)',
-    legendHint: '※ 「詳細」または「◯/△」タップでおすすめ予約候補と投票メンバーを表示',
+    legendHint:
+      '※ 「詳細」または「◯/△」タップでおすすめ予約候補と投票メンバーを表示',
     dateColHeader: '日付 / 曜日',
     allBookedDay: '空きなし',
     bookedTitle: '対象施設はすべて予約済み（満員）です',
     closedTitle: '営業時間外・休場または対象外の時間帯です（空きなし）',
     noBookingsTodayLabel: '確定予定はありません',
-    no2hTitle: '1時間枠は空きがありますが、同一会場で2時間連続になる枠がありません',
+    no2hTitle:
+      '1時間枠は空きがありますが、同一会場で2時間連続になる枠がありません',
     viewingCellTitle: (name) => `${name} の回答（閲覧モード）`,
     detailsLabel: '詳細',
     bookedBadge: '予約確定',
@@ -312,8 +316,10 @@ const COPY = {
     deleteKeywordHint: (keyword) =>
       `削除を実行するには「${keyword}」と入力してください：`,
     deleteKeywordPlaceholder: (keyword) => `「${keyword}」を入力`,
-    toastMarkedBooked: (dateStr) => `${dateStr} の行を予約確定カードに切り替えました。`,
-    toastUnmarkedBooked: (dateStr) => `${dateStr} の時間枠表示に戻しました。`,
+    toastMarkedBooked: (dateStr) =>
+      `${dateStr} の行を予約確定カードに切り替えました。`,
+    toastUnmarkedBooked: (dateStr) =>
+      `${dateStr} の時間枠表示に戻しました。`,
     toastDuplicateDateBooking: (dateStr) =>
       `${dateStr} には既に予約があります。新規作成するには先に既存の予約を削除してください。`,
     toastBookingSaveError:
@@ -330,8 +336,8 @@ const COPY = {
       '連続2時間枠（◯/△）に3名以上集まると、日程別ベスト枠が自動表示されます。',
     firstChoice: (name) => ` ${name}`,
     moreVenues: (count) => `+他${count}会場`,
-    sweetSpotBadge: '🎯 6–8名ベスト人数',
-    doubleCourtBadge: '🔥 9+ (2面推奨)',
+    sweetSpotBadge: '6–8名ベスト人数',
+    doubleCourtBadge: '9+ (2面推奨)',
     altBlockBadge: '+別時間帯候補あり',
     twoHourYesPill: (count) => `2h◯ ${count}`,
     flexPill: (count) => `△/1h ${count}`,
@@ -389,6 +395,34 @@ const COPY = {
     toastSelectManual: 'テキストを選択しました — コピーしてください (Ctrl/Cmd+C)',
   },
 };
+
+function readStoredLanguage() {
+  try {
+    const saved = window.localStorage.getItem(LANG_STORAGE_KEY);
+    return saved === 'en' || saved === 'ja' ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+function detectBrowserLanguage(fallback = 'ja') {
+  if (typeof navigator === 'undefined') return fallback;
+  const locales = [
+    ...(Array.isArray(navigator.languages) ? navigator.languages : []),
+    navigator.language,
+  ];
+
+  for (const locale of locales) {
+    const tag = String(locale || '').toLowerCase();
+    if (tag.startsWith('en')) return 'en';
+    if (tag.startsWith('ja')) return 'ja';
+  }
+  return fallback;
+}
+
+function resolveInitialLanguage(fallback = 'ja') {
+  return readStoredLanguage() || detectBrowserLanguage(fallback);
+}
 
 function getTwoHourPreferenceRank(startHour, courtType = 'indoor') {
   if (courtType === 'outdoor') {
@@ -567,32 +601,32 @@ function formatConfirmedSessionInvite({
 
   if (format === 'en') {
     return [
-      '🗓️ 桃dinks | Session Confirmed',
-      `⏰ Date & Time: ${enDateText} · ${formattedTime}`,
-      `📍 Venue: ${displayVenue}`,
-      `👟 Shoes: ${shoesEn}`,
-      '📅 Calendar & Map:',
+      '桃dinks | Session Confirmed',
+      `Date & Time: ${enDateText} · ${formattedTime}`,
+      `Venue: ${displayVenue}`,
+      `Shoes: ${shoesEn}`,
+      'Calendar & Map:',
       eventUrl,
     ].join('\n');
   }
 
   if (format === 'ja') {
     return [
-      '🗓️ 桃dinks | 次回セッション確定案内',
-      `⏰ 日時: ${jpDateText} ${formattedTime}`,
-      `📍 会場: ${displayVenue}`,
-      `👟 シューズ: ${shoesJa}`,
-      '📅 カレンダー・地図:',
+      '桃dinks | 次回セッション確定案内',
+      `日時: ${jpDateText} ${formattedTime}`,
+      `会場: ${displayVenue}`,
+      `シューズ: ${shoesJa}`,
+      'カレンダー・地図:',
       eventUrl,
     ].join('\n');
   }
 
   return [
-    '🗓️ 桃dinks | 次回セッション確定案内 (Session Confirmed)',
-    `⏰ 日時 / Time: ${jpDateText} ${formattedTime}`,
-    `📍 会場 / Venue: ${displayVenue}`,
-    `👟 シューズ / Shoes: ${shoesJa} (${shoesEn})`,
-    '📅 カレンダー・地図 / Calendar & Map:',
+    '桃dinks | 次回セッション確定案内 (Session Confirmed)',
+    `日時 / Time: ${jpDateText} ${formattedTime}`,
+    `会場 / Venue: ${displayVenue}`,
+    `シューズ / Shoes: ${shoesJa} (${shoesEn})`,
+    'カレンダー・地図 / Calendar & Map:',
     eventUrl,
   ].join('\n');
 }
@@ -843,14 +877,35 @@ function BookedSessionFullRowCard({
 
 /**
  * Renders the 桃dinks pickleball availability scheduler with real-time
- * Supabase persistence for confirmed sessions and per-session attendees.
+ * Supabase persistence and browser-locale language synchronization.
  *
  * @returns {JSX.Element}
  */
 export default function App() {
-  const [lang, setLang] = useState('ja');
+  const [lang, setLangState] = useState(() => resolveInitialLanguage('ja'));
+  const [hasManualLang, setHasManualLang] = useState(
+    () => readStoredLanguage() !== null
+  );
   const t = COPY[lang] || COPY.ja;
   const isJa = lang === 'ja';
+
+  const setLang = useCallback((nextLang) => {
+    if (nextLang !== 'en' && nextLang !== 'ja') return;
+    setLangState(nextLang);
+    setHasManualLang(true);
+    try {
+      window.localStorage.setItem(LANG_STORAGE_KEY, nextLang);
+    } catch {
+      // Storage may be blocked in restricted browser contexts.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (hasManualLang) return;
+    const syncWithBrowser = () => setLangState(detectBrowserLanguage('ja'));
+    window.addEventListener('languagechange', syncWithBrowser);
+    return () => window.removeEventListener('languagechange', syncWithBrowser);
+  }, [hasManualLang]);
 
   const [loadingVotes, setLoadingVotes] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -888,11 +943,10 @@ export default function App() {
   const todayJstDateKey = useMemo(() => getTodayJstIsoDate(), []);
   const currentJstHour = useMemo(() => getCurrentJstHour(), []);
   const minTodayStartHour = useMemo(
-    () => getMinStartHourForDate(todayJstDateKey, todayJstDateKey, currentJstHour),
+    () =>
+      getMinStartHourForDate(todayJstDateKey, todayJstDateKey, currentJstHour),
     [todayJstDateKey, currentJstHour]
   );
-  // Venues close at 22:00, so bookings starting at 21:00 or later are closed.
-  const isTodayClosedForNewBooking = minTodayStartHour >= 21;
 
   const [bookingDate, setBookingDate] = useState(() => todayJstDateKey);
   const [bookingTime, setBookingTime] = useState('17:00-19:00');
@@ -901,7 +955,7 @@ export default function App() {
   const [customBookingMapUrl, setCustomBookingMapUrl] = useState('');
   const [bookingCourtType, setBookingCourtType] = useState('indoor');
   const [bookingFormat, setBookingFormat] = useState('bilingual');
-  const [hasCustomizedBooking, setHasCustomizedBooking] = useState(false);
+  const [, setHasCustomizedBooking] = useState(false);
 
   const [bookingToUnmark, setBookingToUnmark] = useState(null);
   const [unmarkConfirmInput, setUnmarkConfirmInput] = useState('');
@@ -1086,7 +1140,9 @@ export default function App() {
       }
 
       if (isCancelled) return;
-      if (!Object.keys(openMap).length && !Object.keys(bookedMap).length) return;
+      if (!Object.keys(openMap).length && !Object.keys(bookedMap).length) {
+        return;
+      }
 
       setOpenVenuesBySlot(openMap);
       setBookedVenuesBySlot(bookedMap);
@@ -1250,8 +1306,7 @@ export default function App() {
     };
   }, [openVenuesBySlot, bookedVenuesBySlot, bookedSessionsByDate, isJa]);
 
-  // Include voters with active session RSVPs so RSVP-only submissions
-  // remain visible in the edit picker even when `responses` has no slots.
+  // Keep RSVP-only and note-only voters visible alongside open-slot voters.
   const activeVotes = useMemo(() => {
     const openKeySet = new Set(allOpenSlots.map((s) => s.slotKey));
     const rsvpNames = new Set();
@@ -1802,8 +1857,7 @@ export default function App() {
         return;
       }
 
-      // Defer persistence until handleSubmitVote so clicking RSVP is reversible
-      // before submission even when no name is entered yet.
+      // Defer attendee persistence until submit so toggles stay reversible.
       setPendingRsvpByDate((prev) => ({
         ...prev,
         [booking.dateKey]: currentlyGoing ? 'no' : 'yes',
@@ -1869,7 +1923,6 @@ export default function App() {
           continue;
         }
 
-        // Afternoon covers 12:00–17:00 and evening covers 18:00–22:00.
         const matchesWindow =
           nextMode === 'all' ||
           (nextMode === 'afternoon' && block.startHour < 18) ||
@@ -1988,7 +2041,6 @@ export default function App() {
       setPendingRsvpByDate(prefilledRsvp);
       setGridViewMode('vote');
       setShowEditPickerModal(false);
-      // Scroll to the calendar grid rather than the name input when editing.
       calendarSectionRef.current?.scrollIntoView({
         behavior: 'smooth',
         block: 'start',
@@ -2111,8 +2163,6 @@ export default function App() {
     );
     const hasPendingRsvp = Object.keys(pendingRsvpByDate).length > 0;
 
-    // Prevent saving or confirming an edit that leaves a voter with 0 slots
-    // and 0 active Going RSVPs.
     if (!hasSlotVotes && !hasGoingRsvp) {
       triggerToast(
         editingVoteId ? t.toastEmptyEditSelection : t.toastSelectSlot
@@ -2122,8 +2172,7 @@ export default function App() {
 
     setIsSubmitting(true);
     try {
-      // Persist a calendar_votes row even for RSVP-only submissions so the
-      // voter and note remain editable later.
+      // Save calendar_votes even for RSVP-only entries so notes and edits stay linked.
       const payload = {
         name: trimmedName,
         note: voterNote.trim(),
@@ -2171,12 +2220,13 @@ export default function App() {
     }
 
     const targetName = String(voteToDelete.name || '').trim();
+    const targetNameLower = targetName.toLowerCase();
+
     try {
       const { error } = await supabase
         .from('calendar_votes')
         .delete()
         .eq('id', voteToDelete.id);
-
       if (error) throw error;
 
       if (targetName) {
@@ -2190,8 +2240,7 @@ export default function App() {
           const next = {};
           for (const [dateKey, rows] of Object.entries(prev)) {
             next[dateKey] = (rows || []).filter(
-              (row) =>
-                row.attendeeName.toLowerCase() !== targetName.toLowerCase()
+              (row) => row.attendeeName.toLowerCase() !== targetNameLower
             );
           }
           return next;
@@ -2249,7 +2298,7 @@ export default function App() {
         setTimeout(() => setCopiedShare(false), 2500);
         return;
       } catch {
-        // Fallback to manual selection when clipboard access is unavailable.
+        // Fallback to manual text selection when clipboard API is blocked.
       }
     }
 
@@ -2321,6 +2370,15 @@ export default function App() {
     unmarkConfirmInput.trim() === t.deleteKeyword;
   const hasBookingForSelectedDate = Boolean(
     bookingDate && bookedSessionsByDate[bookingDate]
+  );
+  const inspectedAttendees = inspectGoingSession
+    ? attendeesByDate[inspectGoingSession.day.dateKey] || []
+    : [];
+  const inspectedYesList = inspectedAttendees.filter(
+    (row) => row.status !== 'maybe'
+  );
+  const inspectedMaybeList = inspectedAttendees.filter(
+    (row) => row.status === 'maybe'
   );
 
   const renderBookingFormFields = ({
@@ -2580,7 +2638,7 @@ export default function App() {
               <div
                 translate="no"
                 className="inline-flex rounded-xl bg-white/10 p-0.5 border border-white/20 text-xs font-extrabold whitespace-nowrap"
-                title="Default is JA; switch to EN for English"
+                title="Synced with browser language; toggle JA or EN to override"
               >
                 <button
                   type="button"
@@ -3619,74 +3677,59 @@ export default function App() {
                   className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 font-extrabold shrink-0"
                 >
                   {t.goingCountSummary(
-                    (attendeesByDate[inspectGoingSession.day.dateKey] || []).filter(
-                      (row) => row.status !== 'maybe'
-                    ).length,
-                    (attendeesByDate[inspectGoingSession.day.dateKey] || []).filter(
-                      (row) => row.status === 'maybe'
-                    ).length
+                    inspectedYesList.length,
+                    inspectedMaybeList.length
                   )}
                 </span>
               </div>
 
-              {(() => {
-                const liveRows =
-                  attendeesByDate[inspectGoingSession.day.dateKey] || [];
-                const yesList = liveRows.filter((row) => row.status !== 'maybe');
-                const maybeList = liveRows.filter((row) => row.status === 'maybe');
+              {!inspectedYesList.length && !inspectedMaybeList.length ? (
+                <p className="text-slate-500 py-3 text-center">
+                  {t.noGoingAttendees}
+                </p>
+              ) : (
+                <div className="space-y-2.5">
+                  <div>
+                    <div className="font-extrabold text-emerald-800 mb-1">
+                      ◯ {t.goingLabel} ({inspectedYesList.length})
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {!inspectedYesList.length ? (
+                        <span className="text-slate-400">{t.noneLabel}</span>
+                      ) : (
+                        inspectedYesList.map((row) => (
+                          <span
+                            key={row.attendeeName}
+                            translate="no"
+                            className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-950 font-bold"
+                          >
+                            {row.attendeeName}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </div>
 
-                if (!yesList.length && !maybeList.length) {
-                  return (
-                    <p className="text-slate-500 py-3 text-center">
-                      {t.noGoingAttendees}
-                    </p>
-                  );
-                }
-
-                return (
-                  <div className="space-y-2.5">
+                  {inspectedMaybeList.length > 0 && (
                     <div>
-                      <div className="font-extrabold text-emerald-800 mb-1">
-                        ◯ {t.goingLabel} ({yesList.length})
+                      <div className="font-extrabold text-amber-800 mb-1">
+                        △ ({inspectedMaybeList.length})
                       </div>
                       <div className="flex flex-wrap gap-1.5">
-                        {!yesList.length ? (
-                          <span className="text-slate-400">{t.noneLabel}</span>
-                        ) : (
-                          yesList.map((row) => (
-                            <span
-                              key={row.attendeeName}
-                              translate="no"
-                              className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-950 font-bold"
-                            >
-                              {row.attendeeName}
-                            </span>
-                          ))
-                        )}
+                        {inspectedMaybeList.map((row) => (
+                          <span
+                            key={row.attendeeName}
+                            translate="no"
+                            className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-950 font-bold"
+                          >
+                            {row.attendeeName}
+                          </span>
+                        ))}
                       </div>
                     </div>
-
-                    {maybeList.length > 0 && (
-                      <div>
-                        <div className="font-extrabold text-amber-800 mb-1">
-                          △ ({maybeList.length})
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {maybeList.map((row) => (
-                            <span
-                              key={row.attendeeName}
-                              translate="no"
-                              className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-950 font-bold"
-                            >
-                              {row.attendeeName}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
+                  )}
+                </div>
+              )}
 
               <div className="pt-2 flex justify-end border-t border-slate-200">
                 <button
@@ -3930,7 +3973,7 @@ export default function App() {
                             translate="no"
                             className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold"
                           >
-                            ★ {v.continuousSpan}
+                            {v.continuousSpan}
                           </span>
                         )}
                         <span className="text-slate-500">
