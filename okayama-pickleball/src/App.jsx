@@ -67,9 +67,9 @@ const COPY = {
     editingBanner: (name) => `Editing: ${name}`,
     viewingBanner: (name) => `View-Only: viewing ${name}'s response`,
     defaultBanner: () =>
-      'Please enter your name & choose slots, then press "Submit".',
+      'Please enter your name & choose slots（◯/△/✕）, then press "Submit".',
     rsvpWithoutNameBanner: () => 'Please enter your name.',
-    nameWithoutSlotsBanner: () => 'Please pick time slots (◯/△/✕).',
+    nameWithoutSlotsBanner: () => 'Please pick time slots（◯/△/✕）.',
     readyToSubmitBanner: () =>
       'Please press "Submit" to save your response.',
     deleteBtn: '✕',
@@ -122,7 +122,8 @@ const COPY = {
     legendClosedDesc: 'Outside hours / closed',
     legendRec2h: 'Top 2h Block',
     legendPrime: 'Student Prime (18:00~)',
-    legendHint: '※ Tap on "Details" or "◯/△" for top venues & voters',
+    legendHint:
+      '※ Switch to "Group Tally" and tap "Details" for top venues & voters',
     dateColHeader: 'Date / Day',
     allBookedDay: 'No slots',
     bookedTitle: 'All matching venues are booked (Full)',
@@ -211,7 +212,7 @@ const COPY = {
       `This will remove ${name}'s submitted availability response.`,
     confirmDeleteBtn: 'Delete',
     toastEnterName: 'Please enter your name',
-    toastSelectSlot: 'Tap at least one open calendar slot (◯ / △ / ✕) first!',
+    toastSelectSlot: 'Tap at least one open calendar slot（◯/△/✕） first!',
     toastEmptyEditSelection:
       'Select at least one time slot or Going (◯) before saving.',
     toastUpdatedVote: (name) => `Updated ${name}'s calendar vote!`,
@@ -234,7 +235,7 @@ const COPY = {
     editingBanner: (name) => `編集中: ${name}`,
     viewingBanner: (name) => `閲覧モード: ${name} さんの回答を確認中`,
     defaultBanner: () =>
-      '名前を入力して枠を選び、「回答を登録」を押してください。',
+      '名前を入力して枠（◯/△/✕）を選び、「回答を登録」を押してください。',
     rsvpWithoutNameBanner: () => '名前を入力してください。',
     nameWithoutSlotsBanner: () => '空き枠（◯/△/✕）を選んでください。',
     readyToSubmitBanner: () =>
@@ -290,7 +291,7 @@ const COPY = {
     legendRec2h: 'おすすめ2時間枠',
     legendPrime: '学生向け時間帯 (18:00~)',
     legendHint:
-      '※ 「詳細」または「◯/△」タップでおすすめ予約候補と投票メンバーを表示',
+      '※ 「みんなの集計」の「詳細」タップでおすすめ予約候補と投票メンバーを表示',
     dateColHeader: '日付 / 曜日',
     allBookedDay: '空きなし',
     bookedTitle: '対象施設はすべて予約済み（満員）です',
@@ -846,7 +847,7 @@ function BookedSessionFullRowCard({
             >
               <span
                 translate="no"
-                className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full text-xs font-extrabold inline-flex items-center justify-center shrink-0 ${badge.cls}`}
+                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full text-md sm:text-lg font-extrabold inline-flex items-center justify-center shrink-0 ${badge.cls}`}
               >
                 {badge.symbol}
               </span>
@@ -872,6 +873,42 @@ function BookedSessionFullRowCard({
         </div>
       </td>
     </tr>
+  );
+}
+
+function SlotChoiceCircle({ choice, isViewing }) {
+  if (choice === 'yes') {
+    return (
+      <span className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-emerald-600 text-white font-extrabold text-lg sm:text-xl flex items-center justify-center shadow-xs shrink-0">
+        ◯
+      </span>
+    );
+  }
+  if (choice === 'maybe') {
+    return (
+      <span className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-amber-500 text-white font-extrabold text-lg sm:text-xl flex items-center justify-center shadow-xs shrink-0">
+        △
+      </span>
+    );
+  }
+  if (choice === 'no') {
+    return (
+      <span className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-rose-600 text-white font-extrabold text-lg sm:text-xl flex items-center justify-center shadow-xs shrink-0">
+        ✕
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-dashed font-extrabold text-lg sm:text-xl flex items-center justify-center bg-white shrink-0 ${
+        isViewing
+          ? 'border-slate-300 text-slate-300'
+          : 'border-[#1B365D]/40 text-[#1B365D]'
+      }`}
+    >
+      {isViewing ? '–' : '◯'}
+    </span>
   );
 }
 
@@ -2932,7 +2969,7 @@ export default function App() {
                     <th
                       key={block.id}
                       title={block.label}
-                      className={`py-2.5 px-1 min-w-[60px] sm:min-w-[82px] border-r border-slate-300 last:border-r-0 transition ${
+                      className={`py-2.5 px-1 min-w-[54px] sm:min-w-[78px] border-r border-slate-300 last:border-r-0 transition ${
                         block.isStudentPrime
                           ? 'bg-amber-100/90 border-b-2 border-b-amber-400'
                           : ''
@@ -3005,7 +3042,7 @@ export default function App() {
                   return (
                     <tr
                       key={day.dateKey}
-                      className="h-[96px] divide-x divide-slate-300"
+                      className="h-[88px] sm:h-[96px] divide-x divide-slate-300"
                     >
                       <td
                         className={`sticky left-0 z-10 ${dateBgColor} h-full px-2 py-1.5 text-left border-r-2 border-slate-300 align-middle`}
@@ -3079,7 +3116,7 @@ export default function App() {
                               } h-full px-0.5 align-middle select-none cursor-not-allowed`}
                             >
                               <div
-                                className={`h-full flex flex-col items-center justify-center gap-0.5 max-w-[78px] mx-auto leading-tight ${
+                                className={`h-full flex flex-col items-center justify-center gap-0.5 max-w-[74px] mx-auto leading-tight ${
                                   isBooked ? 'text-slate-500' : 'text-slate-400'
                                 }`}
                               >
@@ -3111,7 +3148,7 @@ export default function App() {
                               title={t.no2hTitle}
                               className="bg-slate-200/85 h-full px-0.5 align-middle select-none cursor-not-allowed"
                             >
-                              <div className="h-full flex flex-col items-center justify-center gap-0.5 text-slate-500 max-w-[78px] mx-auto leading-tight">
+                              <div className="h-full flex flex-col items-center justify-center gap-0.5 text-slate-500 max-w-[74px] mx-auto leading-tight">
                                 <span
                                   translate="no"
                                   className="text-xs font-extrabold leading-none"
@@ -3134,6 +3171,8 @@ export default function App() {
                           noCount: 0,
                           isTopPick: false,
                         };
+                        const showTallyDetails =
+                          gridViewMode === 'heatmap' && !viewingVote;
 
                         let cellBg = twoHourInfo?.isPriorityTwoHour
                           ? 'bg-indigo-50/70 hover:bg-indigo-100/70'
@@ -3141,7 +3180,7 @@ export default function App() {
                             ? 'bg-amber-50/45 hover:bg-amber-50/80'
                             : 'bg-white hover:bg-sky-50';
 
-                        if (gridViewMode === 'heatmap') {
+                        if (showTallyDetails) {
                           if (tally.yesCount >= 6) {
                             cellBg = 'bg-emerald-200/90 hover:bg-emerald-200';
                           } else if (tally.yesCount >= 3) {
@@ -3159,22 +3198,23 @@ export default function App() {
                           cellBg = 'bg-rose-50/80 hover:bg-rose-100/70';
                         }
 
-                        const highlightRing = tally.isTopPick
-                          ? 'ring-2 ring-inset ring-amber-400'
-                          : twoHourInfo?.isPriorityTwoHour
-                            ? 'ring-2 ring-inset ring-indigo-400'
-                            : '';
+                        const highlightRing =
+                          showTallyDetails && tally.isTopPick
+                            ? 'ring-2 ring-inset ring-amber-400'
+                            : twoHourInfo?.isPriorityTwoHour
+                              ? 'ring-2 ring-inset ring-indigo-400'
+                              : '';
 
                         return (
                           <td
                             key={block.id}
                             className={`p-1 h-full align-middle transition ${cellBg} ${highlightRing}`}
                           >
-                            <div className="h-full flex flex-col items-center justify-center gap-1">
+                            <div className="h-full w-full flex flex-col items-center justify-center gap-1">
                               <button
                                 type="button"
                                 onClick={() => handleCycleSlot(slotKey)}
-                                className={`w-full py-0.5 px-0.5 rounded-xl flex flex-col items-center justify-center transition ${
+                                className={`w-full h-full min-h-[34px] sm:min-h-[38px] max-w-full px-0.5 rounded-xl flex items-center justify-center transition ${
                                   viewingVote
                                     ? 'cursor-default'
                                     : 'active:scale-95 cursor-pointer'
@@ -3185,72 +3225,41 @@ export default function App() {
                                     : `${day.jpDate}(${day.dow}) ${block.label} · ${cellData.summaryText}`
                                 }
                               >
-                                {gridViewMode === 'vote' ? (
-                                  <span translate="no">
-                                    {activeChoice === 'yes' && (
-                                      <span className="w-7 h-7 rounded-full bg-emerald-600 text-white font-extrabold text-sm flex items-center justify-center shadow-xs">
-                                        ◯
-                                      </span>
-                                    )}
-                                    {activeChoice === 'maybe' && (
-                                      <span className="w-7 h-7 rounded-full bg-amber-500 text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
-                                        △
-                                      </span>
-                                    )}
-                                    {activeChoice === 'no' && (
-                                      <span className="w-7 h-7 rounded-full bg-rose-600 text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
-                                        ✕
-                                      </span>
-                                    )}
-                                    {!activeChoice && (
-                                      <span
-                                        className={`w-7 h-7 rounded-full border-2 border-dashed font-extrabold text-sm flex items-center justify-center bg-white ${
-                                          viewingVote
-                                            ? 'border-slate-300 text-slate-300'
-                                            : 'border-[#1B365D]/40 text-[#1B365D]'
-                                        }`}
-                                      >
-                                        {viewingVote ? '–' : '◯'}
-                                      </span>
-                                    )}
-                                  </span>
-                                ) : (
+                                {showTallyDetails ? (
                                   <div
                                     translate="no"
-                                    className="h-7 flex flex-col items-center justify-center leading-tight whitespace-nowrap"
+                                    className="flex flex-col items-center justify-center leading-tight whitespace-nowrap"
                                   >
-                                    <div className="text-xs font-extrabold text-[#1B365D]">
+                                    <div className="text-sm font-extrabold text-[#1B365D]">
                                       ◯ {tally.yesCount}
                                     </div>
-                                    <div className="text-[10px] font-bold text-amber-700">
+                                    <div className="text-sm font-bold text-amber-700">
                                       △ {tally.maybeCount}
                                     </div>
                                   </div>
-                                )}
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => setInspectSlot(tally)}
-                                className="w-full py-0.5 px-1 rounded bg-slate-100/90 hover:bg-[#1B365D] hover:text-white text-[10px] font-extrabold text-slate-700 flex items-center justify-center gap-1 border border-slate-200 transition cursor-pointer whitespace-nowrap"
-                                title={cellData.summaryText}
-                              >
-                                {gridViewMode === 'heatmap' ? (
-                                  <span>{t.detailsLabel}</span>
                                 ) : (
                                   <span
                                     translate="no"
-                                    className="inline-flex items-center gap-1"
+                                    className="w-full h-full flex items-center justify-center"
                                   >
-                                    <span className="text-emerald-700">
-                                      ◯{tally.yesCount}
-                                    </span>
-                                    <span className="text-amber-600">
-                                      △{tally.maybeCount}
-                                    </span>
+                                    <SlotChoiceCircle
+                                      choice={activeChoice}
+                                      isViewing={Boolean(viewingVote)}
+                                    />
                                   </span>
                                 )}
                               </button>
+
+                              {showTallyDetails && (
+                                <button
+                                  type="button"
+                                  onClick={() => setInspectSlot(tally)}
+                                  className="w-full py-0.5 px-1 rounded bg-slate-100/90 hover:bg-[#1B365D] hover:text-white text-[10px] font-extrabold text-slate-700 flex items-center justify-center gap-1 border border-slate-200 transition cursor-pointer whitespace-nowrap"
+                                  title={cellData.summaryText}
+                                >
+                                  <span>{t.detailsLabel}</span>
+                                </button>
+                              )}
                             </div>
                           </td>
                         );
