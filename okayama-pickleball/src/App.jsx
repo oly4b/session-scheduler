@@ -624,9 +624,22 @@ export default function App() {
     if (!editingBookingDateKey || isSavingBooking) return;
 
     const { dbRow, stateEntry } = buildBookingPayload();
+    const autoAttendeeNames = findAttendeesAvailableForSession({
+      votes,
+      dateKey: editingBookingDateKey,
+      startHour: stateEntry.startHour,
+      endHour: stateEntry.endHour,
+    });
+    const resolvedVenueName = resolveBookingVenueLabel(stateEntry, t.venueTbd);
+
     setIsSavingBooking(true);
     try {
-      await updateBookedSession({ dateKey: editingBookingDateKey, dbRow });
+      await updateBookedSession({
+        dateKey: editingBookingDateKey,
+        dbRow,
+        autoAttendeeNames,
+        venueName: resolvedVenueName,
+      });
 
       setBookedSessionsByDate((prev) => ({
         ...prev,
@@ -635,6 +648,7 @@ export default function App() {
           ...stateEntry,
         },
       }));
+      await refreshVotesAndAttendees();
       setShowEditBookingModal(false);
       setEditingBookingDateKey('');
       triggerToast(t.toastUpdatedBooking(editingBookingDateKey));

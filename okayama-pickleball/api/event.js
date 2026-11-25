@@ -83,6 +83,21 @@ function escapeIcsText(value) {
     .replace(/\r?\n/g, '\\n');
 }
 
+const ALLOWED_MAP_HOSTS = new Set([
+  'maps.google.com',
+  'www.google.com',
+  'google.com',
+  'maps.app.goo.gl',
+  'goo.gl',
+  'maps.apple.com',
+  'map.yahoo.co.jp',
+  'www.openstreetmap.org',
+  'openstreetmap.org',
+  'www.navitime.co.jp',
+  'www.mapion.co.jp',
+]);
+const CANONICAL_ORIGIN = 'https://pb-session-scheduler.vercel.app';
+
 function sanitizeSafeUrl(rawUrl) {
   if (!rawUrl) return '';
   try {
@@ -93,6 +108,52 @@ function sanitizeSafeUrl(rawUrl) {
   } catch {
     return '';
   }
+}
+
+function sanitizeAllowedMapUrl(rawUrl) {
+  const safeUrl = sanitizeSafeUrl(rawUrl);
+  if (!safeUrl) return '';
+  try {
+    const parsed = new URL(safeUrl);
+    const host = parsed.hostname.toLowerCase();
+    if (!ALLOWED_MAP_HOSTS.has(host)) return '';
+    if (
+      (host === 'www.google.com' || host === 'google.com') &&
+      !parsed.pathname.startsWith('/maps')
+    ) {
+      return '';
+    }
+    return parsed.toString();
+  } catch {
+    return '';
+  }
+}
+
+function resolveCanonicalOrigin(req) {
+  const rawHost = String(req?.headers?.host || '').trim().toLowerCase();
+  if (
+    rawHost === 'pb-session-scheduler.vercel.app' ||
+    /^[a-z0-9-]+\.vercel\.app$/.test(rawHost)
+  ) {
+    return `https://${rawHost}`;
+  }
+  if (/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(rawHost)) {
+    return `http://${rawHost}`;
+  }
+  return CANONICAL_ORIGIN;
+}
+
+function serializeJsonForScript(value) {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
+function escapeIcsParamValue(value) {
+  return escapeIcsText(value).replace(/"/g, "'");
 }
 
 function extractVenueFromMapUrl(rawMapUrl) {
@@ -179,8 +240,8 @@ function buildIcsCalendar({
       ? [
           `GEO:${lat};${lng}`,
           'X-APPLE-STRUCTURED-LOCATION;VALUE=URI;' +
-            `X-ADDRESS="${escapeIcsText(address || venueName)}";` +
-            `X-TITLE="${escapeIcsText(venueName)}":geo:${lat},${lng}`,
+            `X-ADDRESS="${escapeIcsParamValue(address || venueName)}";` +
+            `X-TITLE="${escapeIcsParamValue(venueName)}":geo:${lat},${lng}`,
         ]
       : []),
     `DESCRIPTION:${escapeIcsText(descriptionText)}`,
@@ -208,9 +269,9 @@ function buildCopyAndMapGateScript({ sharePageUrl, copiedText, manualCopyText })
 
   var copyBtn = document.getElementById('copy-link-btn');
   var statusEl = document.getElementById('copy-status');
-  var shareUrl = ${JSON.stringify(sharePageUrl)};
-  var copiedLabel = ${JSON.stringify(copiedText)};
-  var manualCopyLabel = ${JSON.stringify(manualCopyText)};
+  var shareUrl = ${serializeJsonForScript(sharePageUrl)};
+  var copiedLabel = ${serializeJsonForScript(copiedText)};
+  var manualCopyLabel = ${serializeJsonForScript(manualCopyText)};
 
   function markCopied() {
     if (statusEl) statusEl.textContent = copiedLabel;
@@ -306,7 +367,7 @@ export default function handler(req, res) {
 
   const mapUrl =
     sanitizeSafeUrl(venueRecord?.mapUrl) ||
-    sanitizeSafeUrl(rawMap) ||
+    sanitizeAllowedMapUrl(rawMap) ||
     buildGoogleMapsFallbackUrl(
       address ? `${venueName} ${address}` : venueName,
       copy.undecidedVenue
@@ -375,9 +436,15 @@ export default function handler(req, res) {
     return;
   }
 
-  const originUrl = `https://${req.headers.host}`;
-  const currentFullUrl = `${originUrl}${req.url}`;
-  const ogImageUrl = `${originUrl}/og-image.png?v=2`;
+  const originUrl = resolveCanonicalOrigin(req);
+  let currentUrlObj;
+  try {
+    currentUrlObj = new URL(req.url || '/api/event', originUrl);
+  } catch {
+    currentUrlObj = new URL('/api/event', originUrl);
+  }
+  const currentFullUrl = currentUrlObj.toString();
+  const ogImageUrl = `${originUrl}/og-image.jpg`;
   const pageDescription = descriptionLines.join(' · ');
 
   const downloadUrl = new URL(currentFullUrl);

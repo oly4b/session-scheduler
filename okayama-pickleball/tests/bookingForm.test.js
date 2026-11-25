@@ -12,6 +12,7 @@ import {
   buildShortEventUrl,
   formatConfirmedSessionInvite,
 } from '../src/utils/confirmedInvite.js';
+import { escapeIlikePattern } from '../src/utils/scheduler.js';
 
 test('bookingForm time clamping and payload building', () => {
   assert.equal(
@@ -73,4 +74,9 @@ test('confirmedInvite builds short v= URL for known venues and venue= for custom
   });
   assert.match(invite, /Municipal Gym/);
   assert.match(invite, /venue=Municipal\+Gym/);
+});
+
+test('escapeIlikePattern escapes SQL wildcard characters', () => {
+  assert.equal(escapeIlikePattern('a%b_c\\d'), 'a\\%b\\_c\\\\d');
+  assert.equal(escapeIlikePattern('Emma'), 'Emma');
 });

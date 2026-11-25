@@ -165,6 +165,10 @@ export const LEGACY_PREFIX = 'spacepad_1_3_';
  * @param {Record<string, string> | null | undefined} responses
  * @returns {Record<string, string>}
  */
+export function escapeIlikePattern(value) {
+  return String(value || '').replace(/[\\%_]/g, '\\$&');
+}
+
 export function normalizeResponsesMap(responses) {
   const normalized = {};
   for (const [rawKey, value] of Object.entries(responses || {})) {

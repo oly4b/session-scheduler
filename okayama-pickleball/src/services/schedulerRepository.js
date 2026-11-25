@@ -9,6 +9,7 @@ import {
 } from '../utils/jst.js';
 import {
   ACTIVE_VENUE_IDS,
+  escapeIlikePattern,
   getJstDayMeta,
 } from '../utils/scheduler.js';
 import { supabase } from '../lib/supabase.js';
@@ -228,7 +229,7 @@ export async function saveVoteWithRsvps(
         .from('session_attendees')
         .delete()
         .eq('session_date', dateKey)
-        .ilike('attendee_name', attendeeName)
+        .ilike('attendee_name', escapeIlikePattern(attendeeName))
         .select('id');
       if (deleteError) throw deleteError;
       if (!deletedRows?.length) {
@@ -255,8 +256,34 @@ export async function deleteVoteCascade(
     const { error: attendeeDeleteError } = await client
       .from('session_attendees')
       .delete()
-      .ilike('attendee_name', targetName);
+      .ilike('attendee_name', escapeIlikePattern(targetName));
     if (attendeeDeleteError) throw attendeeDeleteError;
+  }
+}
+
+async function seedSessionAttendees(
+  { dateKey, dbRow, autoAttendeeNames = [], venueName = '' },
+  client = supabase
+) {
+  if (!autoAttendeeNames.length) return;
+
+  const nowIso = new Date().toISOString();
+  const attendeeRows = autoAttendeeNames.map((attendeeName) => ({
+    session_date: dateKey,
+    start_hour: dbRow.start_hour,
+    end_hour: dbRow.end_hour,
+    venue_id: dbRow.venue_id || '',
+    venue_name: venueName,
+    attendee_name: attendeeName,
+    status: 'yes',
+    updated_at: nowIso,
+  }));
+
+  const { error: seedError } = await client
+    .from('session_attendees')
+    .upsert(attendeeRows, { onConflict: 'session_date,attendee_name' });
+  if (seedError) {
+    console.error('Failed to auto-seed session_attendees:', seedError);
   }
 }
 
@@ -276,32 +303,16 @@ export async function createBookedSession(
     return { ok: false, isDuplicate: false, error };
   }
 
-  if (autoAttendeeNames.length > 0) {
-    const nowIso = new Date().toISOString();
-    const attendeeRows = autoAttendeeNames.map((attendeeName) => ({
-      session_date: dateKey,
-      start_hour: dbRow.start_hour,
-      end_hour: dbRow.end_hour,
-      venue_id: dbRow.venue_id || '',
-      venue_name: venueName,
-      attendee_name: attendeeName,
-      status: 'yes',
-      updated_at: nowIso,
-    }));
-
-    const { error: seedError } = await client
-      .from('session_attendees')
-      .upsert(attendeeRows, { onConflict: 'session_date,attendee_name' });
-    if (seedError) {
-      console.error('Failed to auto-seed session_attendees:', seedError);
-    }
-  }
+  await seedSessionAttendees(
+    { dateKey, dbRow, autoAttendeeNames, venueName },
+    client
+  );
 
   return { ok: true, isDuplicate: false, error: null };
 }
 
 export async function updateBookedSession(
-  { dateKey, dbRow },
+  { dateKey, dbRow, autoAttendeeNames = [], venueName = '' },
   client = supabase
 ) {
   const { error } = await client
@@ -309,6 +320,19 @@ export async function updateBookedSession(
     .update(dbRow)
     .eq('date_key', dateKey);
   if (error) throw error;
+
+  const { error: clearError } = await client
+    .from('session_attendees')
+    .delete()
+    .eq('session_date', dateKey);
+  if (clearError) {
+    console.error('Failed to clear stale session_attendees:', clearError);
+  }
+
+  await seedSessionAttendees(
+    { dateKey, dbRow, autoAttendeeNames, venueName },
+    client
+  );
 }
 
 export async function clearBookedSessionCascade(
