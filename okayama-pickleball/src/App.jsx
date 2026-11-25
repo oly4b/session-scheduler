@@ -233,9 +233,8 @@ function BookedSessionFullRowCard({
         >
           <div className="min-w-0 flex-1 space-y-1 text-left">
             <div className="flex items-center gap-1.5 overflow-hidden">
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-700 text-lime-300 text-[10px] font-extrabold shrink-0 whitespace-nowrap">
-                <CalendarCheck className="w-3 h-3 shrink-0" />
-                <span>{t.bookedBadge}</span>
+              <span className="inline-flex items-center justify-center p-1 rounded bg-emerald-700 text-lime-300 shrink-0">
+                <CalendarCheck className="w-3.5 h-3.5 shrink-0" />
               </span>
               <span
                 translate={isJa ? undefined : 'no'}
@@ -1777,7 +1776,7 @@ export default function App() {
             <table className="w-full border-collapse text-center">
               <thead>
                 <tr className="bg-[#eef3f8] border-b-2 border-slate-300 text-slate-800">
-                  <th className="sticky left-0 z-20 bg-[#dce5f0] py-2.5 px-2 min-w-[116px] sm:min-w-[140px] text-left text-xs font-extrabold text-[#1B365D] border-r-2 border-slate-300 whitespace-nowrap">
+                  <th className="sticky left-0 z-30 bg-[#dce5f0] py-2.5 px-2 min-w-[116px] sm:min-w-[140px] text-left text-xs font-extrabold text-[#1B365D] border-r border-slate-300 shadow-[4px_0_8px_-4px_rgba(15,23,42,0.08)] whitespace-nowrap">
                     {t.dateColHeader}
                   </th>
                   {TIME_BLOCKS.map((block) => (
@@ -1848,10 +1847,10 @@ export default function App() {
                         : 'text-slate-900';
                   const dateBgColor =
                     day.dayType === 'saturday'
-                      ? 'bg-blue-50'
+                      ? 'bg-[#EFF5FF]'
                       : day.dayType === 'sunday' || day.dayType === 'holiday'
-                        ? 'bg-red-50'
-                        : 'bg-[#f8fafc]';
+                        ? 'bg-[#FFF5F5]'
+                        : 'bg-white';
                   const activeWindowMode = dayWindowByDate[day.dateKey] || null;
                   const isFullyClosedDay =
                     day.allBooked &&
@@ -1869,7 +1868,7 @@ export default function App() {
                       className="h-[96px] divide-x divide-slate-200"
                     >
                       <td
-                        className={`sticky left-0 z-10 ${dateBgColor} h-[96px] px-2 py-1.5 text-left border-r-2 border-slate-300 align-middle`}
+                        className={`sticky left-0 z-20 ${dateBgColor} h-[96px] px-2 py-1.5 text-left border-r border-slate-200 shadow-[4px_0_8px_-4px_rgba(15,23,42,0.08)] align-middle`}
                       >
                         <div className="flex items-center gap-1 flex-wrap">
                           <span
