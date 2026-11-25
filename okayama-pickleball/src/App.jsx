@@ -8,7 +8,6 @@ import {
   Trophy,
   MessageSquare,
   X,
-  Copy,
   RotateCcw,
   Info,
   AlertCircle,
@@ -19,617 +18,68 @@ import {
   Grid,
   RefreshCw,
   ExternalLink,
-  Award,
   UserCheck,
   Languages,
   CalendarCheck,
   Clock,
-  ShieldAlert,
 } from 'lucide-react';
-import { supabase } from './lib/supabase';
 import { VENUES, VENUE_BY_ID } from './config/venues';
 import {
-  ACTIVE_VENUE_IDS,
   TIME_BLOCKS,
-  formatJstTimestamp,
-  getJstDayMeta,
-  getMergedVoterChoice,
   normalizeResponsesMap,
-  rankRecommendedVenues,
 } from './utils/scheduler';
-import { getTodayJstIsoDate } from './utils/confirmedInvite';
-
-const AVAILABILITY_PAGE_SIZE = 1000;
-const OTHER_VENUE_OPTION = '__other__';
-const MANUAL_VENUE_ID = 'other';
-const LANG_STORAGE_KEY = 'momodinks_lang';
-
-const START_HOUR_OPTIONS = Array.from({ length: 10 }, (_, idx) => {
-  const hour = String(idx + 12).padStart(2, '0');
-  return `${hour}:00`;
-});
-
-const END_HOUR_OPTIONS = Array.from({ length: 10 }, (_, idx) => {
-  const hour = String(idx + 13).padStart(2, '0');
-  return `${hour}:00`;
-});
-
-const COPY = {
-  en: {
-    badgeIntegrated: (count) => `${count} Venues · Availability & Poll`,
-    syncedWaiting: '※ Waiting for initial availability scrape',
-    appTitle: '桃dinks Session Scheduler',
-    venuesSummary: (total, okayama, kurashiki) =>
-      `Venues (${total}): Okayama (${okayama}) · Kurashiki (${kurashiki})`,
-    shareToSns: 'Share',
-    supabaseError:
-      'Supabase connection error: please check your .env and table settings.',
-    editingBanner: (name) => `Editing: ${name}`,
-    viewingBanner: (name) => `View-Only: viewing ${name}'s response`,
-    defaultBanner: () =>
-      'Please enter your name & choose slots（◯/△/✕）, then press "Submit".',
-    rsvpWithoutNameBanner: () => 'Please enter your name.',
-    nameWithoutSlotsBanner: () => 'Please pick time slots（◯/△/✕）.',
-    readyToSubmitBanner: () =>
-      'Please press "Submit" to save your response.',
-    deleteBtn: '✕',
-    cancelBtn: 'Cancel',
-    editThisBtn: 'Edit Response',
-    exitViewBtn: 'Exit View',
-    nameLabel: 'Name',
-    namePlaceholder: 'e.g. Emma / John',
-    nameTitle: 'Name cannot be blank or spaces only',
-    noteLabel: 'Note',
-    notePlaceholder: 'e.g. Need a paddle / Anywhere OK',
-    editExistingBtn: 'Edit Response',
-    submittingBtn: 'Saving...',
-    updateVoteBtn: 'Update',
-    submitVoteBtn: (count) => `Submit (${count} slots)`,
-    weekFillAll: 'Free All Week ◯',
-    weekClearAll: 'Clear',
-    bookSessionBtn: 'Book Session',
-    bookModalTitle: 'Set Booked Session',
-    saveBookedRowBtn: 'Confirm',
-    selectVenuePlaceholder: 'Please select an option',
-    todayClosedForBooking:
-      'Today is closed for new bookings (hours have passed).',
-    pastTodayTimeToast:
-      'Past hours today cannot be booked. Select a future hour or date.',
-    editBookingBtn: 'Edit Booking',
-    editBookingModalTitle: 'Edit Booked Session',
-    saveEditedBookingBtn: 'Save Changes',
-    toastUpdatedBooking: (dateStr) => `Updated booking for ${dateStr}.`,
-    toastBookingUpdateError:
-      'Could not update booking. Check Supabase connection.',
-    viewPlayerPlaceholder: 'View response',
-    noVotesYet: 'No responses yet',
-    oneHourSubLabel: 'Dates & Hours (12:00–22:00)',
-    outdoorShort: 'Outdoor',
-    indoorShort: 'Indoor',
-    myVoteTab: (name) => (name ? `${name}'s Vote` : 'My Vote'),
-    tallyTab: 'Group Tally',
-    dayAllFree: 'All-day',
-    dayAfternoonOnly: 'Afternoon',
-    dayEveningOnly: 'Evening',
-    legendYes: 'Available',
-    legendMaybe: 'Maybe',
-    legendNo: 'Unavailable',
-    legendFull: 'Full',
-    legendFullDesc: 'All venues booked',
-    legendNo2h: 'No 2h',
-    legendNo2hDesc: '1h open only (no 2h block)',
-    legendClosed: 'Closed',
-    legendClosedDesc: 'Outside hours / closed',
-    legendRec2h: 'Top 2h Block',
-    legendPrime: 'Student Prime (18:00~)',
-    legendHint:
-      '※ Switch to "Group Tally" and tap "Details" for top venues & voters',
-    dateColHeader: 'Date / Day',
-    allBookedDay: 'No slots',
-    bookedTitle: 'All matching venues are booked (Full)',
-    closedTitle: 'Outside operating hours or closed',
-    noBookingsTodayLabel: 'NO SESSION BOOKED',
-    no2hTitle: 'Only 1 hour open — no continuous 2-hour slot at the same venue',
-    viewingCellTitle: (name) => `${name}'s response (View-Only)`,
-    detailsLabel: 'Details',
-    bookedBadge: 'Booked',
-    venueTbd: 'Venue TBD',
-    goingLabel: 'Going',
-    goingTallyModalTitle: 'Session Going Tally',
-    goingCountSummary: (yesCount, maybeCount) =>
-      `◯ ${yesCount}${maybeCount > 0 ? ` / △ ${maybeCount}` : ''}`,
-    noGoingAttendees: 'No attendees marked going yet.',
-    unmarkBookingBtn: '✕',
-    unmarkModalTitle: 'Remove booked session row?',
-    unmarkModalBody: (dateStr, venueLabel) =>
-      `Remove the confirmed booking card on ${dateStr} (${venueLabel}) and restore hourly slots?`,
-    confirmUnmarkBtn: 'Remove Booking',
-    deleteKeyword: 'DELETE',
-    deleteKeywordHint: (keyword) => `Type "${keyword}" to confirm deletion:`,
-    deleteKeywordPlaceholder: (keyword) => `Type ${keyword}`,
-    toastMarkedBooked: (dateStr) => `Replaced ${dateStr} row with booked card.`,
-    toastUnmarkedBooked: (dateStr) => `Restored hourly slots for ${dateStr}.`,
-    toastDuplicateDateBooking: (dateStr) =>
-      `${dateStr} already has a booking. Delete it first to create another.`,
-    toastBookingSaveError: 'Could not save booking. Check Supabase connection.',
-    toastBookingDeleteError:
-      'Could not remove booking. Check Supabase connection.',
-    toastAttendeeSaveError:
-      'Could not update session attendee. Check Supabase connection.',
-    top5Title: 'Recommended 2h Blocks',
-    top5Subtitle: 'Best per day (3+ votes)',
-    loadingVotes: 'Loading tallies...',
-    noRankedBlocksTitle: 'No continuous 2-hour slots with 3+ votes yet',
-    noRankedBlocksDesc:
-      'Once 3+ players mark ◯ or △ across two consecutive hours, best block appears.',
-    firstChoice: (name) => ` ${name}`,
-    moreVenues: (count) => `+${count} more`,
-    sweetSpotBadge: '6–8 sweet spot',
-    doubleCourtBadge: '9+ (2 courts)',
-    altBlockBadge: '+Alt time',
-    twoHourYesPill: (count) => `2h◯ ${count}`,
-    flexPill: (count) => `△/1h ${count}`,
-    notesTitle: 'Player Notes',
-    notesLockedBadge: 'Locked while editing',
-    playerCountSuffix: (count) => `${count}`,
-    noNotesYet: 'No notes yet',
-    noNoteText: 'No note',
-    directoryTitle: (count) => `Venues & Booking Links (${count})`,
-    showVenueList: 'Show Venue List',
-    hideVenueList: 'Hide Venue List',
-    footwearNote:
-      'Gyms require indoor-only court shoes; outdoor hard courts recommend court shoes.',
-    bookLink: 'Book',
-    modalTopTitle: 'Recommended Venues & Voters',
-    altSecondChoice: 'Same-day Alternative Option',
-    seeDetailsBtn: 'Details',
-    recTopHeading: (count) => `Top ${count} Recommended Venues`,
-    openCountLabel: (count) => `${count} open`,
-    outdoorLights: 'Outdoor · Lights',
-    distanceFromOkayama: (km) => `~${km}km from Okayama Sta.`,
-    twoHourYesGroup: (count) => `◯ Available for both hours (${count}):`,
-    oneHourYesGroup: (count) => `◯ Available (${count}):`,
-    twoHourMaybeGroup: (count) => `△ Flexible / 1 hour only (${count}):`,
-    oneHourMaybeGroup: (count) => `△ Flexible (${count}):`,
-    noGroup: (count) => `✕ Unavailable (${count}):`,
-    noneLabel: 'None',
-    modalViewingNote: (name) => `Viewing ${name}'s response`,
-    closeBtn: 'Close',
-    pickVoterTitle: 'Select Response to Edit',
-    pickVoterPrompt: 'Choose a member whose availability you want to update:',
-    answeredSlotsCount: (count) => `${count} slots`,
-    editAction: 'Edit',
-    shareModalTitle: 'Confirmed Session Invite',
-    otherVenueOption: 'Other (custom venue)',
-    customVenueLabel: 'Venue Name',
-    customVenuePlaceholder: 'e.g. Municipal Gym / Pitch',
-    customMapLabel: 'Google Maps Link',
-    sharePrompt: 'Copy & paste into the SNS group DM:',
-    copiedBtn: 'Copied!',
-    copyBtn: 'Copy Invite Text',
-    deleteModalTitle: 'Delete response?',
-    deleteModalBody: (name) =>
-      `This will remove ${name}'s submitted availability response.`,
-    confirmDeleteBtn: 'Delete',
-    toastEnterName: 'Please enter your name',
-    toastSelectSlot: 'Tap at least one open calendar slot（◯/△/✕） first!',
-    toastEmptyEditSelection:
-      'Select at least one time slot or Going (◯) before saving.',
-    toastUpdatedVote: (name) => `Updated ${name}'s calendar vote!`,
-    toastSubmittedVote: (name) => `Submitted ${name}'s vote!`,
-    toastSaveError: 'Could not save vote. Check Supabase connection.',
-    toastDeletedVote: (name) => `Removed ${name}'s response.`,
-    toastDeleteError: 'Error removing response.',
-    toastCopiedShare: 'Copied SNS invite summary!',
-    toastSelectManual: 'Text selected — press Ctrl/Cmd+C to copy',
-  },
-  ja: {
-    badgeIntegrated: (count) => `${count}会場統合 空き状況 & 日程調整`,
-    syncedWaiting: '※ 初回空き状況スクレイピング待機中',
-    appTitle: '桃dinks 合同セッション日程調整',
-    venuesSummary: (total, okayama, kurashiki) =>
-      `対象施設 (${total}会場): 岡山市 (${okayama}施設) ・ 倉敷市 (${kurashiki}施設)`,
-    shareToSns: '共有',
-    supabaseError:
-      'Supabase接続エラー: .envとテーブル設定を確認してください。',
-    editingBanner: (name) => `編集中: ${name}`,
-    viewingBanner: (name) => `閲覧モード: ${name} さんの回答を確認中`,
-    defaultBanner: () =>
-      '名前を入力して枠（◯/△/✕）を選び、「回答を登録」を押してください。',
-    rsvpWithoutNameBanner: () => '名前を入力してください。',
-    nameWithoutSlotsBanner: () => '空き枠（◯/△/✕）を選んでください。',
-    readyToSubmitBanner: () =>
-      '「回答を登録」を押して保存してください。',
-    deleteBtn: '✕',
-    cancelBtn: 'キャンセル',
-    editThisBtn: 'この回答を編集する',
-    exitViewBtn: '閲覧終了',
-    nameLabel: '名前',
-    namePlaceholder: '例: えりか / 太郎',
-    nameTitle: '空白のみの入力はできません',
-    noteLabel: 'メモ',
-    notePlaceholder: '例: パドル借りたいです / どこでもOK ',
-    editExistingBtn: '回答を編集',
-    submittingBtn: '送信中...',
-    updateVoteBtn: '回答を更新する',
-    submitVoteBtn: (count) => `回答を登録 (${count}枠)`,
-    weekFillAll: '今週すべて ◯',
-    weekClearAll: 'クリア',
-    bookSessionBtn: '予約確定を登録',
-    bookModalTitle: '予約確定カードを設定',
-    saveBookedRowBtn: '確定',
-    selectVenuePlaceholder: '選択肢を選んでください',
-    todayClosedForBooking:
-      '本日の予約受付は終了しました（対象時間帯が過ぎています）。',
-    pastTodayTimeToast:
-      '本日の経過した時間帯は予約できません。以降の時間または別日を選んでください。',
-    editBookingBtn: '予約を編集',
-    editBookingModalTitle: '予約確定を編集',
-    saveEditedBookingBtn: '変更を保存',
-    toastUpdatedBooking: (dateStr) => `${dateStr} の予約を更新しました。`,
-    toastBookingUpdateError:
-      '予約の更新に失敗しました。Supabase接続を確認してください。',
-    viewPlayerPlaceholder: '回答を閲覧...',
-    noVotesYet: 'まだ回答はありません',
-    oneHourSubLabel: '日程・時間帯を選択 (12:00–22:00)',
-    outdoorShort: '屋外',
-    indoorShort: '屋内',
-    myVoteTab: (name) => (name ? `${name}'s Vote` : '自分の回答'),
-    tallyTab: 'みんなの集計',
-    dayAllFree: '終日',
-    dayAfternoonOnly: '昼のみ',
-    dayEveningOnly: '夜のみ',
-    legendYes: '参加OK',
-    legendMaybe: '調整可',
-    legendNo: '不可',
-    legendFull: '満員',
-    legendFullDesc: '全会場予約済',
-    legendNo2h: '2h不可',
-    legendNo2hDesc: '1hのみ空き（2h連続なし）',
-    legendClosed: '空きなし',
-    legendClosedDesc: '営業時間外・休場',
-    legendRec2h: 'おすすめ2時間枠',
-    legendPrime: '学生向け時間帯 (18:00~)',
-    legendHint:
-      '※ 「みんなの集計」の「詳細」タップでおすすめ予約候補と投票メンバーを表示',
-    dateColHeader: '日付 / 曜日',
-    allBookedDay: '空きなし',
-    bookedTitle: '対象施設はすべて予約済み（満員）です',
-    closedTitle: '営業時間外・休場または対象外の時間帯です（空きなし）',
-    noBookingsTodayLabel: '確定予定はありません',
-    no2hTitle:
-      '1時間枠は空きがありますが、同一会場で2時間連続になる枠がありません',
-    viewingCellTitle: (name) => `${name} の回答（閲覧モード）`,
-    detailsLabel: '詳細',
-    bookedBadge: '予約確定',
-    venueTbd: '会場未定',
-    goingLabel: '参加予定',
-    goingTallyModalTitle: 'セッション参加予定集計',
-    goingCountSummary: (yesCount, maybeCount) =>
-      `◯ ${yesCount}${maybeCount > 0 ? ` / △ ${maybeCount}` : ''}`,
-    noGoingAttendees: 'まだ参加予定のメンバーはいません。',
-    unmarkBookingBtn: '✕',
-    unmarkModalTitle: '予約確定カードを解除しますか？',
-    unmarkModalBody: (dateStr, venueLabel) =>
-      `${dateStr}（${venueLabel}）の予約確定カードを解除して時間枠表示に戻します。`,
-    confirmUnmarkBtn: '解除する',
-    deleteKeyword: '削除',
-    deleteKeywordHint: (keyword) =>
-      `削除を実行するには「${keyword}」と入力してください：`,
-    deleteKeywordPlaceholder: (keyword) => `「${keyword}」を入力`,
-    toastMarkedBooked: (dateStr) =>
-      `${dateStr} の行を予約確定カードに切り替えました。`,
-    toastUnmarkedBooked: (dateStr) =>
-      `${dateStr} の時間枠表示に戻しました。`,
-    toastDuplicateDateBooking: (dateStr) =>
-      `${dateStr} には既に予約があります。新規作成するには先に既存の予約を削除してください。`,
-    toastBookingSaveError:
-      '予約確定を保存できませんでした。Supabase接続を確認してください。',
-    toastBookingDeleteError:
-      '予約確定の解除に失敗しました。Supabase接続を確認してください。',
-    toastAttendeeSaveError:
-      '参加予定の更新に失敗しました。Supabase接続を確認してください。',
-    top5Title: 'おすすめ2時間枠（連続空き会場）',
-    top5Subtitle: '日程別ベスト枠（3名以上）',
-    loadingVotes: '集計データを読み込み中...',
-    noRankedBlocksTitle: '3名以上の投票がある2時間連続枠はまだありません',
-    noRankedBlocksDesc:
-      '連続2時間枠（◯/△）に3名以上集まると、日程別ベスト枠が自動表示されます。',
-    firstChoice: (name) => ` ${name}`,
-    moreVenues: (count) => `+他${count}会場`,
-    sweetSpotBadge: '6–8名ベスト人数',
-    doubleCourtBadge: '9+ (2面推奨)',
-    altBlockBadge: '+別時間帯候補あり',
-    twoHourYesPill: (count) => `2h◯ ${count}`,
-    flexPill: (count) => `△/1h ${count}`,
-    notesTitle: '参加メンバーのコメント',
-    notesLockedBadge: '編集中は閲覧ロック',
-    playerCountSuffix: (count) => `${count}名`,
-    noNotesYet: 'コメントはまだありません',
-    noNoteText: 'コメントなし',
-    directoryTitle: (count) => `対象施設・予約ページ一覧 (${count}会場)`,
-    showVenueList: '施設一覧を表示',
-    hideVenueList: '施設一覧を閉じる',
-    footwearNote:
-      '体育館は室内専用シューズ必須・屋外ハードコートはテニス/コートシューズ推奨です。',
-    bookLink: '予約',
-    modalTopTitle: 'おすすめ予約候補 & 投票メンバー詳細',
-    altSecondChoice: '同日の第2候補',
-    seeDetailsBtn: '詳細を見る',
-    recTopHeading: (count) => `おすすめ予約候補 TOP ${count}`,
-    openCountLabel: (count) => `${count}施設空き`,
-    outdoorLights: '屋外・照明',
-    distanceFromOkayama: (km) => `岡山駅から約${km}km`,
-    twoHourYesGroup: (count) => `◯ 2時間とも参加OK (${count}名):`,
-    oneHourYesGroup: (count) => `◯ 参加OK (${count}名):`,
-    twoHourMaybeGroup: (count) => `△ 調整可 / 1時間のみ参加可 (${count}名):`,
-    oneHourMaybeGroup: (count) => `△ 調整可 (${count}名):`,
-    noGroup: (count) => `✕ 不可 (${count}名):`,
-    noneLabel: 'なし',
-    modalViewingNote: (name) => `閲覧モード中 (${name})`,
-    closeBtn: '閉じる',
-    pickVoterTitle: '編集する回答を選択',
-    pickVoterPrompt: '日程を変更したいメンバーを選んでください：',
-    answeredSlotsCount: (count) => `${count}枠回答済`,
-    editAction: '編集',
-    shareModalTitle: '予約確定案内',
-    otherVenueOption: 'その他（手動入力）',
-    customVenueLabel: '会場名',
-    customVenuePlaceholder: '例: 岡山市立〇〇体育館',
-    customMapLabel: 'Googleマップ リンク',
-    sharePrompt: 'コピーしてSNSグループDMに貼り付けてください：',
-    copiedBtn: 'コピーしました！',
-    copyBtn: '案内文をコピー',
-    deleteModalTitle: '回答を削除しますか？',
-    deleteModalBody: (name) => `${name} さんの投票データを削除します。`,
-    confirmDeleteBtn: '削除する',
-    toastEnterName: '名前を入力してください',
-    toastSelectSlot: '先に空き時間帯（◯ / △ / ✕）を1つ以上タップしてください！',
-    toastEmptyEditSelection:
-      '保存するには空き枠または参加予定（◯）を1つ以上選択してください。',
-    toastUpdatedVote: (name) => `${name} さんの回答を更新しました！`,
-    toastSubmittedVote: (name) => `${name} さんの回答を登録しました！`,
-    toastSaveError: '保存できませんでした。Supabase接続を確認してください。',
-    toastDeletedVote: (name) => `${name} さんの回答を削除しました。`,
-    toastDeleteError: '削除中にエラーが発生しました。',
-    toastCopiedShare: '案内文をコピーしました！',
-    toastSelectManual: 'テキストを選択しました — コピーしてください (Ctrl/Cmd+C)',
-  },
-};
-
-function readStoredLanguage() {
-  try {
-    const saved = window.localStorage.getItem(LANG_STORAGE_KEY);
-    return saved === 'en' || saved === 'ja' ? saved : null;
-  } catch {
-    return null;
-  }
-}
-
-function detectBrowserLanguage(fallback = 'ja') {
-  if (typeof navigator === 'undefined') return fallback;
-  const locales = [
-    ...(Array.isArray(navigator.languages) ? navigator.languages : []),
-    navigator.language,
-  ];
-
-  for (const locale of locales) {
-    const tag = String(locale || '').toLowerCase();
-    if (tag.startsWith('en')) return 'en';
-    if (tag.startsWith('ja')) return 'ja';
-  }
-  return fallback;
-}
-
-function resolveInitialLanguage(fallback = 'ja') {
-  return readStoredLanguage() || detectBrowserLanguage(fallback);
-}
-
-function getTwoHourPreferenceRank(startHour, courtType = 'indoor') {
-  if (courtType === 'outdoor') {
-    if (startHour === 14) return 0;
-    if (startHour === 13) return 1;
-    if (startHour === 15) return 2;
-    return 3 + Math.abs(startHour - 14);
-  }
-  if (startHour === 19) return 0;
-  if (startHour === 18) return 1;
-  if (startHour === 20) return 2;
-  return 3 + Math.abs(startHour - 19);
-}
-
-function parseHourValue(timeSlot) {
-  return Number(String(timeSlot || '').slice(0, 2));
-}
-
-function formatHourSlot(hourValue) {
-  return `${String(hourValue).padStart(2, '0')}:00`;
-}
-
-function normalizeSessionDateKey(rawDate) {
-  const trimmed = String(rawDate || '').trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
-  return trimmed.slice(0, 10);
-}
-
-function getCurrentJstHour() {
-  const jstDate = new Date(
-    new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })
-  );
-  return jstDate.getHours();
-}
-
-function getMinStartHourForDate(dateKey, todayKey, currentJstHour) {
-  if (!dateKey || dateKey !== todayKey) return 12;
-  return currentJstHour + 1;
-}
+import {
+  formatHourSlot,
+  getCurrentJstHour,
+  getMinStartHourForDate,
+  getTodayJstIsoDate,
+  parseHourValue,
+} from './utils/jst';
+import {
+  MANUAL_VENUE_ID,
+  OTHER_VENUE_OPTION,
+  formatConfirmedSessionInvite,
+  normalizeCourtType,
+} from './utils/confirmedInvite';
+import {
+  applyDayWindowToResponses,
+  buildCalendarWeeks,
+  clearWeekResponses,
+  computeRankedTwoHourBlocks,
+  computeSlotTallies,
+  computeTwoHourHighlights,
+  cycleSlotChoice,
+  fillWeekAllResponses,
+  filterActiveVotes,
+  findAttendeesAvailableForSession,
+} from './domain/schedule';
+import {
+  END_HOUR_OPTIONS,
+  START_HOUR_OPTIONS,
+  adjustBookingEndForStart,
+  buildBookingPayloadFromForm,
+  clampBookingEndTime,
+  clampBookingTimeForDate,
+} from './domain/bookingForm';
+import {
+  clearBookedSessionCascade,
+  createBookedSession,
+  deleteVoteCascade,
+  resolveBookingVenueLabel,
+  saveVoteWithRsvps,
+  updateBookedSession,
+} from './services/schedulerRepository';
+import { useSchedulerData } from './hooks/useSchedulerData';
+import { useLanguage } from './i18n/useLanguage';
+import { ConfirmKeywordModal } from './components/modals/ConfirmKeywordModal';
+import { GoingTallyModal } from './components/modals/GoingTallyModal';
+import { SlotInspectModal } from './components/modals/SlotInspectModal';
+import { EditPickerModal } from './components/modals/EditPickerModal';
+import { ShareInviteModal } from './components/modals/ShareInviteModal';
+import { BookingFormModal } from './components/modals/BookingFormModal';
 
 function isoDateToUtcMs(dateKey) {
   return Date.parse(`${dateKey}T00:00:00Z`);
-}
-
-function normalizeCourtType(value, fallback = 'indoor') {
-  return value === 'outdoor' || value === 'indoor' ? value : fallback;
-}
-
-function normalizeBookedRow(row) {
-  if (!row?.date_key) return null;
-
-  const rawVenueId = String(row.venue_id || '').trim();
-  const matchedVenue =
-    rawVenueId && rawVenueId !== MANUAL_VENUE_ID
-      ? VENUE_BY_ID.get(rawVenueId)
-      : null;
-
-  const trimmedName = String(row.venue_name || '').trim();
-  const resolvedVenueName =
-    trimmedName || matchedVenue?.fullName || matchedVenue?.shortName || '';
-
-  const resolvedVenueId = matchedVenue
-    ? matchedVenue.id
-    : trimmedName || rawVenueId === MANUAL_VENUE_ID
-      ? MANUAL_VENUE_ID
-      : '';
-
-  const resolvedCourtType = matchedVenue
-    ? normalizeCourtType(matchedVenue.courtType, 'indoor')
-    : normalizeCourtType(row.court_type, 'indoor');
-
-  return {
-    dateKey: normalizeSessionDateKey(row.date_key),
-    startHour: Number(row.start_hour),
-    endHour: Number(row.end_hour),
-    venueId: resolvedVenueId,
-    venueName: resolvedVenueName,
-    mapUrl: String(row.map_url || '').trim(),
-    courtType: resolvedCourtType,
-  };
-}
-
-function resolveBookingVenueLabel(booking, fallbackLabel) {
-  if (booking.venueName?.trim()) return booking.venueName.trim();
-  const record =
-    booking.venueId && booking.venueId !== MANUAL_VENUE_ID
-      ? VENUE_BY_ID.get(booking.venueId)
-      : null;
-  return record?.fullName || record?.shortName || fallbackLabel;
-}
-
-function buildShortEventUrl({
-  origin,
-  dateIso,
-  startHour,
-  endHour,
-  venueId = '',
-  venueName = '',
-  mapUrl = '',
-}) {
-  const url = new URL('/api/event', origin);
-  url.searchParams.set('date', dateIso);
-  url.searchParams.set('start', String(startHour));
-  url.searchParams.set('end', String(endHour));
-
-  if (venueId && venueId !== MANUAL_VENUE_ID && VENUE_BY_ID.has(venueId)) {
-    url.searchParams.set('v', venueId);
-    return url.toString();
-  }
-
-  if (venueName) url.searchParams.set('venue', venueName);
-  if (mapUrl) url.searchParams.set('map', mapUrl);
-  return url.toString();
-}
-
-function formatConfirmedSessionInvite({
-  origin,
-  dateIso,
-  timeRangeText,
-  venueId,
-  customVenueName,
-  customMapUrl,
-  courtType,
-  format,
-}) {
-  const isOther = venueId === OTHER_VENUE_OPTION || venueId === MANUAL_VENUE_ID;
-  const matchedVenue = isOther ? null : VENUE_BY_ID.get(venueId) || null;
-  const displayVenue = isOther
-    ? customVenueName.trim() || '未定'
-    : matchedVenue?.fullName || '未定';
-  const effectiveCourtType = isOther
-    ? normalizeCourtType(courtType, 'indoor')
-    : normalizeCourtType(matchedVenue?.courtType, courtType);
-
-  const [rawStart, rawEnd] = timeRangeText.split('-');
-  const startHour = parseHourValue(rawStart || '18:00');
-  const endHour = parseHourValue(rawEnd || '20:00');
-  const formattedTime =
-    `${formatHourSlot(startHour)}–${formatHourSlot(endHour)}`;
-
-  const dayMeta = getJstDayMeta(0);
-  const targetOffset = Math.round(
-    (new Date(`${dateIso}T00:00:00+09:00`).getTime() -
-      new Date(`${dayMeta.dateKey}T00:00:00+09:00`).getTime()) /
-      86_400_000
-  );
-  const targetDay =
-    Number.isFinite(targetOffset) && targetOffset >= 0 && targetOffset < 28
-      ? getJstDayMeta(targetOffset)
-      : null;
-
-  const jpDateText = targetDay
-    ? `${targetDay.jpDate}(${targetDay.dow})`
-    : dateIso;
-  const enDateText = targetDay
-    ? `${targetDay.dow}, ${targetDay.shortDate}`
-    : dateIso;
-
-  const eventUrl = buildShortEventUrl({
-    origin,
-    dateIso,
-    startHour,
-    endHour,
-    venueId: isOther ? '' : matchedVenue?.id || '',
-    venueName: isOther ? customVenueName.trim() : '',
-    mapUrl: isOther ? customMapUrl.trim() : '',
-  });
-
-  const isOutdoor = effectiveCourtType === 'outdoor';
-  const shoesJa = isOutdoor
-    ? '屋外コートのためテニス・ハードコート用シューズ推奨'
-    : '室内専用シューズ必須';
-  const shoesEn = isOutdoor
-    ? 'Outdoor court — tennis/court shoes recommended'
-    : 'Indoor shoes required';
-
-  if (format === 'en') {
-    return [
-      '桃dinks | Session Confirmed',
-      `Date & Time: ${enDateText} · ${formattedTime}`,
-      `Venue: ${displayVenue}`,
-      `Shoes: ${shoesEn}`,
-      'Calendar & Map:',
-      eventUrl,
-    ].join('\n');
-  }
-
-  if (format === 'ja') {
-    return [
-      '桃dinks | 次回セッション確定案内',
-      `日時: ${jpDateText} ${formattedTime}`,
-      `会場: ${displayVenue}`,
-      `シューズ: ${shoesJa}`,
-      'カレンダー・地図:',
-      eventUrl,
-    ].join('\n');
-  }
-
-  return [
-    '桃dinks | 次回セッション確定案内 (Session Confirmed)',
-    `日時 / Time: ${jpDateText} ${formattedTime}`,
-    `会場 / Venue: ${displayVenue}`,
-    `シューズ / Shoes: ${shoesJa} (${shoesEn})`,
-    'カレンダー・地図 / Calendar & Map:',
-    eventUrl,
-  ].join('\n');
 }
 
 function PickleballIcon() {
@@ -919,44 +369,26 @@ function SlotChoiceCircle({ choice, isViewing }) {
  * @returns {JSX.Element}
  */
 export default function App() {
-  const [lang, setLangState] = useState(() => resolveInitialLanguage('ja'));
-  const [hasManualLang, setHasManualLang] = useState(
-    () => readStoredLanguage() !== null
-  );
-  const t = COPY[lang] || COPY.ja;
-  const isJa = lang === 'ja';
+  const { isJa, t, setLang } = useLanguage();
 
-  const setLang = useCallback((nextLang) => {
-    if (nextLang !== 'en' && nextLang !== 'ja') return;
-    setLangState(nextLang);
-    setHasManualLang(true);
-    try {
-      window.localStorage.setItem(LANG_STORAGE_KEY, nextLang);
-    } catch {
-      // Storage may be blocked in restricted browser contexts.
-    }
-  }, []);
-
-  useEffect(() => {
-    if (hasManualLang) return;
-    const syncWithBrowser = () => setLangState(detectBrowserLanguage('ja'));
-    window.addEventListener('languagechange', syncWithBrowser);
-    return () => window.removeEventListener('languagechange', syncWithBrowser);
-  }, [hasManualLang]);
-
-  const [loadingVotes, setLoadingVotes] = useState(true);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [votes, setVotes] = useState([]);
-  const [openVenuesBySlot, setOpenVenuesBySlot] = useState({});
-  const [bookedVenuesBySlot, setBookedVenuesBySlot] = useState({});
-  const [lastSyncedAt, setLastSyncedAt] = useState({ yoyacool: '', spacepad: '' });
+  const {
+    votes,
+    loadingVotes,
+    errorMsg,
+    openVenuesBySlot,
+    bookedVenuesBySlot,
+    lastSyncedAt,
+    bookedSessionsByDate,
+    setBookedSessionsByDate,
+    attendeesByDate,
+    setAttendeesByDate,
+    refreshVotesAndAttendees,
+  } = useSchedulerData(t.supabaseError);
 
   const [activeWeekIdx, setActiveWeekIdx] = useState(0);
   const [showVenueList, setShowVenueList] = useState(false);
   const [gridViewMode, setGridViewMode] = useState('vote');
   const [dayWindowByDate, setDayWindowByDate] = useState({});
-  const [bookedSessionsByDate, setBookedSessionsByDate] = useState({});
-  const [attendeesByDate, setAttendeesByDate] = useState({});
   const [pendingRsvpByDate, setPendingRsvpByDate] = useState({});
   const [tableViewportWidth, setTableViewportWidth] = useState(0);
 
@@ -1007,11 +439,6 @@ export default function App() {
   const textareaRef = useRef(null);
 
   useEffect(() => {
-    document.documentElement.lang = lang;
-    document.title = t.appTitle;
-  }, [lang, t.appTitle]);
-
-  useEffect(() => {
     const el = tableScrollRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
 
@@ -1058,582 +485,43 @@ export default function App() {
     })[0];
   }, [bookedSessionsByDate, todayJstDateKey]);
 
-  const fetchVotes = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('calendar_votes')
-      .select('*')
-      .order('created_at', { ascending: true });
-
-    if (error) {
-      console.error('Supabase fetch error:', error);
-      setErrorMsg(t.supabaseError);
-    } else {
-      setErrorMsg('');
-      setVotes(data || []);
-    }
-    setLoadingVotes(false);
-  }, [t.supabaseError]);
-
-  const fetchBookedSessions = useCallback(async () => {
-    const minDate = getJstDayMeta(0).dateKey;
-    const { data, error } = await supabase
-      .from('booked_sessions')
-      .select(
-        'date_key, start_hour, end_hour, venue_id, venue_name, map_url, court_type'
-      )
-      .gte('date_key', minDate)
-      .order('date_key', { ascending: true });
-
-    if (error) {
-      console.error('Supabase booked_sessions fetch error:', error);
-      return;
-    }
-
-    const nextMap = {};
-    for (const row of data || []) {
-      const normalized = normalizeBookedRow(row);
-      if (normalized) nextMap[normalized.dateKey] = normalized;
-    }
-    setBookedSessionsByDate(nextMap);
-  }, []);
-
-  const fetchSessionAttendees = useCallback(async () => {
-    const minDate = getJstDayMeta(0).dateKey;
-    const { data, error } = await supabase
-      .from('session_attendees')
-      .select(
-        'session_date, start_hour, end_hour, venue_id, venue_name, attendee_name, status'
-      )
-      .gte('session_date', minDate);
-
-    if (error) {
-      console.error('Supabase session_attendees fetch error:', error);
-      return;
-    }
-
-    const grouped = {};
-    for (const row of data || []) {
-      const dateKey = normalizeSessionDateKey(row?.session_date);
-      const cleanName = String(row?.attendee_name || '').trim();
-      if (!dateKey || !cleanName) continue;
-      if (!grouped[dateKey]) grouped[dateKey] = [];
-      grouped[dateKey].push({
-        sessionDate: dateKey,
-        startHour: Number(row.start_hour),
-        endHour: Number(row.end_hour),
-        venueId: String(row.venue_id || ''),
-        venueName: String(row.venue_name || ''),
-        attendeeName: cleanName,
-        status: row.status === 'maybe' ? 'maybe' : 'yes',
-      });
-    }
-    setAttendeesByDate(grouped);
-  }, []);
-
-  useEffect(() => {
-    let isCancelled = false;
-
-    async function fetchAvailability() {
-      const minDate = getJstDayMeta(0).dateKey;
-      const openMap = {};
-      const bookedMap = {};
-      let latestYoyacool = '';
-      let latestSpacepad = '';
-
-      for (let from = 0; ; from += AVAILABILITY_PAGE_SIZE) {
-        const { data, error } = await supabase
-          .from('court_availability')
-          .select(
-            'slot_key, slot_date, time_range, court_detail, status, updated_at'
-          )
-          .gte('slot_date', minDate)
-          .order('slot_key', { ascending: true })
-          .range(from, from + AVAILABILITY_PAGE_SIZE - 1);
-
-        if (isCancelled || error || !data?.length) break;
-
-        for (const row of data) {
-          const venueId = row.court_detail;
-          if (!ACTIVE_VENUE_IDS.has(venueId)) continue;
-
-          const key = `${row.slot_date}_${row.time_range}`;
-          if (row.status === 'open') {
-            if (!openMap[key]) openMap[key] = new Set();
-            openMap[key].add(venueId);
-          } else if (row.status === 'booked') {
-            if (!bookedMap[key]) bookedMap[key] = new Set();
-            bookedMap[key].add(venueId);
-          }
-
-          const src = VENUE_BY_ID.get(venueId)?.source;
-          if (src === 'yoyacool' && row.updated_at > latestYoyacool) {
-            latestYoyacool = row.updated_at;
-          } else if (src === 'spacepad' && row.updated_at > latestSpacepad) {
-            latestSpacepad = row.updated_at;
-          }
-        }
-
-        if (data.length < AVAILABILITY_PAGE_SIZE) break;
-      }
-
-      if (isCancelled) return;
-      if (!Object.keys(openMap).length && !Object.keys(bookedMap).length) {
-        return;
-      }
-
-      setOpenVenuesBySlot(openMap);
-      setBookedVenuesBySlot(bookedMap);
-      setLastSyncedAt({
-        yoyacool: formatJstTimestamp(latestYoyacool),
-        spacepad: formatJstTimestamp(latestSpacepad),
-      });
-    }
-
-    fetchVotes();
-    fetchBookedSessions();
-    fetchSessionAttendees();
-    fetchAvailability();
-
-    const votesChannel = supabase
-      .channel('calendar-votes-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'calendar_votes' },
-        fetchVotes
-      )
-      .subscribe();
-
-    const bookingsChannel = supabase
-      .channel('booked-sessions-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'booked_sessions' },
-        (payload) => {
-          if (isCancelled) return;
-          if (payload.eventType === 'DELETE' && payload.old?.date_key) {
-            const deletedDate = normalizeSessionDateKey(payload.old.date_key);
-            setBookedSessionsByDate((prev) => {
-              const next = { ...prev };
-              delete next[deletedDate];
-              return next;
-            });
-            return;
-          }
-          const normalized = normalizeBookedRow(payload.new);
-          if (!normalized) return;
-          setBookedSessionsByDate((prev) => ({
-            ...prev,
-            [normalized.dateKey]: normalized,
-          }));
-        }
-      )
-      .subscribe();
-
-    const attendeesChannel = supabase
-      .channel('session-attendees-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'session_attendees' },
-        fetchSessionAttendees
-      )
-      .subscribe();
-
-    return () => {
-      isCancelled = true;
-      supabase.removeChannel(votesChannel);
-      supabase.removeChannel(bookingsChannel);
-      supabase.removeChannel(attendeesChannel);
-    };
-  }, [fetchVotes, fetchBookedSessions, fetchSessionAttendees]);
-
-  const { calendarWeeks, allOpenSlots, hasLiveAvailability } = useMemo(() => {
-    const hasLive =
-      Object.keys(openVenuesBySlot).length > 0 ||
-      Object.keys(bookedVenuesBySlot).length > 0;
-    const days = [];
-
-    for (let offset = 0; offset < 28; offset += 1) {
-      const meta = getJstDayMeta(offset);
-      const isWeekendOrHoliday =
-        meta.dayType === 'saturday' ||
-        meta.dayType === 'sunday' ||
-        meta.dayType === 'holiday';
-
-      const slots = {};
-      let openCount = 0;
-
-      for (const block of TIME_BLOCKS) {
-        const key = `${meta.dateKey}_${block.id}`;
-        const openIds = openVenuesBySlot[key];
-        const bookedIds = bookedVenuesBySlot[key];
-
-        const filteredOpenVenues = openIds
-          ? VENUES.filter((v) => openIds.has(v.id))
-          : [];
-        const filteredBookedVenues = bookedIds
-          ? VENUES.filter((v) => bookedIds.has(v.id))
-          : [];
-
-        const isOpen = filteredOpenVenues.length > 0;
-        if (isOpen) openCount += 1;
-
-        slots[block.id] = {
-          isOpen,
-          isFullyBooked: !isOpen && filteredBookedVenues.length > 0,
-          openVenues: filteredOpenVenues,
-          openVenueIds: new Set(filteredOpenVenues.map((v) => v.id)),
-          summaryText: filteredOpenVenues.map((v) => v.shortName).join(' / '),
-          studentPrime: isWeekendOrHoliday || block.isStudentPrime,
-        };
-      }
-
-      days.push({ ...meta, allBooked: openCount === 0, slots });
-    }
-
-    const weeks = [0, 7, 14, 21].map((start, idx) => {
-      const slice = days.slice(start, start + 7);
-      return {
-        id: `week${idx + 1}`,
-        shortTitle: isJa
-          ? `第${idx + 1}週: ${slice[0].shortDate}–${slice[6].shortDate}`
-          : `Week ${idx + 1}: ${slice[0].shortDate}–${slice[6].shortDate}`,
-        rangeLabel:
-          `${slice[0].year}年 ${slice[0].jpDate}(${slice[0].dow}) 〜 ` +
-          `${slice[6].jpDate}(${slice[6].dow})`,
-        days: slice,
-      };
-    });
-
-    const openSlots = [];
-    weeks.forEach((week, weekIndex) => {
-      for (const day of week.days) {
-        const bookedEntry = bookedSessionsByDate[day.dateKey];
-        for (const block of TIME_BLOCKS) {
-          const cell = day.slots[block.id];
-          const inBookedWindow =
-            bookedEntry &&
-            block.startHour >= bookedEntry.startHour &&
-            block.startHour + 1 <= bookedEntry.endHour;
-          if (!cell?.isOpen && !inBookedWindow) continue;
-
-          openSlots.push({
-            slotKey: `${day.dateKey}_${block.id}`,
-            weekIndex,
-            dateKey: day.dateKey,
-            jpDate: day.jpDate,
-            dow: day.dow,
-            holiday: day.holiday,
-            dayType: day.dayType,
-            blockId: block.id,
-            startHour: block.startHour,
-            timeLabel: block.label,
-            openVenues: cell?.openVenues || [],
-            openVenueIds: cell?.openVenueIds || new Set(),
-            venueSummary: cell?.summaryText || '',
-            studentPrime: Boolean(cell?.studentPrime),
-          });
-        }
-      }
-    });
-
-    return {
-      calendarWeeks: weeks,
-      allOpenSlots: openSlots,
-      hasLiveAvailability: hasLive,
-    };
-  }, [openVenuesBySlot, bookedVenuesBySlot, bookedSessionsByDate, isJa]);
+  const { calendarWeeks, allOpenSlots, hasLiveAvailability } = useMemo(
+    () =>
+      buildCalendarWeeks({
+        openVenuesBySlot,
+        bookedVenuesBySlot,
+        bookedSessionsByDate,
+        isJa,
+      }),
+    [openVenuesBySlot, bookedVenuesBySlot, bookedSessionsByDate, isJa]
+  );
 
   // Keep RSVP-only and note-only voters visible alongside open-slot voters.
-  const activeVotes = useMemo(() => {
-    const openKeySet = new Set(allOpenSlots.map((s) => s.slotKey));
-    const rsvpNames = new Set();
-    for (const rows of Object.values(attendeesByDate)) {
-      for (const row of rows || []) {
-        if (row.attendeeName) rsvpNames.add(row.attendeeName);
-      }
-    }
+  const activeVotes = useMemo(
+    () => filterActiveVotes({ votes, allOpenSlots, attendeesByDate }),
+    [votes, allOpenSlots, attendeesByDate]
+  );
 
-    return votes.filter((vote) => {
-      const hasOpenSlotVote = Object.keys(
-        normalizeResponsesMap(vote.responses)
-      ).some((k) => openKeySet.has(k));
-      const hasSessionRsvp = rsvpNames.has(String(vote.name || '').trim());
-      const hasNote = Boolean(String(vote.note || '').trim());
-      return hasOpenSlotVote || hasSessionRsvp || hasNote;
-    });
-  }, [votes, allOpenSlots, attendeesByDate]);
+  const { twoHourHighlightMap, twoHourEligibleSlotKeys } = useMemo(
+    () => computeTwoHourHighlights({ calendarWeeks, openVenuesBySlot }),
+    [calendarWeeks, openVenuesBySlot]
+  );
 
-  const { twoHourHighlightMap, twoHourEligibleSlotKeys } = useMemo(() => {
-    const cellMeta = {};
-    const eligible = new Set();
+  const slotTallies = useMemo(
+    () => computeSlotTallies({ allOpenSlots, votes, openVenuesBySlot }),
+    [allOpenSlots, votes, openVenuesBySlot]
+  );
 
-    for (const week of calendarWeeks) {
-      for (const day of week.days) {
-        const candidates = [];
-
-        for (let i = 0; i < TIME_BLOCKS.length - 1; i += 1) {
-          const b1 = TIME_BLOCKS[i];
-          const b2 = TIME_BLOCKS[i + 1];
-          const key1 = `${day.dateKey}_${b1.id}`;
-          const key2 = `${day.dateKey}_${b2.id}`;
-
-          const ids1 = openVenuesBySlot[key1];
-          const ids2 = openVenuesBySlot[key2];
-          if (!ids1 || !ids2) continue;
-
-          const shared = VENUES.filter((v) => ids1.has(v.id) && ids2.has(v.id));
-          if (!shared.length) continue;
-
-          eligible.add(key1);
-          eligible.add(key2);
-
-          const topVenue = rankRecommendedVenues(
-            shared,
-            day.dateKey,
-            [b1.startHour, b2.startHour],
-            openVenuesBySlot,
-            1
-          )[0];
-
-          candidates.push({
-            key1,
-            key2,
-            spanLabel:
-              `${b1.shortLabel}–${String(b2.startHour + 1).padStart(2, '0')}:00`,
-            isIndoor: topVenue?.courtType === 'indoor' ? 1 : 0,
-            timePrefRank: getTwoHourPreferenceRank(
-              b1.startHour,
-              topVenue?.courtType
-            ),
-            facilityTier: topVenue?.facilityTier ?? 0,
-            distanceKm: topVenue?.distanceKm ?? 99,
-            topVenueName: topVenue?.shortName || '',
-          });
-        }
-
-        if (!candidates.length) continue;
-
-        candidates.sort((a, b) => {
-          if (b.isIndoor !== a.isIndoor) return b.isIndoor - a.isIndoor;
-          if (a.timePrefRank !== b.timePrefRank) {
-            return a.timePrefRank - b.timePrefRank;
-          }
-          if (b.facilityTier !== a.facilityTier) {
-            return b.facilityTier - a.facilityTier;
-          }
-          return a.distanceKm - b.distanceKm;
-        });
-
-        for (const candidate of candidates) {
-          for (const key of [candidate.key1, candidate.key2]) {
-            if (!cellMeta[key]) {
-              cellMeta[key] = {
-                isTwoHourPart: true,
-                isPriorityTwoHour: false,
-                spanLabel: candidate.spanLabel,
-                topVenueName: candidate.topVenueName,
-              };
-            }
-          }
-        }
-
-        const best = candidates[0];
-        for (const key of [best.key1, best.key2]) {
-          cellMeta[key] = {
-            isTwoHourPart: true,
-            isPriorityTwoHour: true,
-            spanLabel: best.spanLabel,
-            topVenueName: best.topVenueName,
-          };
-        }
-      }
-    }
-
-    return { twoHourHighlightMap: cellMeta, twoHourEligibleSlotKeys: eligible };
-  }, [calendarWeeks, openVenuesBySlot]);
-
-  const slotTallies = useMemo(() => {
-    const tallyMap = {};
-    let bestScore = 0;
-
-    for (const slot of allOpenSlots) {
-      const yesPlayers = [];
-      const maybePlayers = [];
-      const noPlayers = [];
-
-      for (const vote of votes) {
-        const choice = getMergedVoterChoice(vote.responses, slot.slotKey);
-        if (choice === 'yes') yesPlayers.push(vote);
-        else if (choice === 'maybe') maybePlayers.push(vote);
-        else if (choice === 'no') noPlayers.push(vote);
-      }
-
-      const score = yesPlayers.length * 100 + maybePlayers.length * 10;
-      if (yesPlayers.length > 0 && score > bestScore) bestScore = score;
-
-      const prevHour = String(slot.startHour - 1).padStart(2, '0');
-      const currHour = String(slot.startHour).padStart(2, '0');
-      const nextHour = String(slot.startHour + 1).padStart(2, '0');
-      const endPlusTwo = String(slot.startHour + 2).padStart(2, '0');
-
-      const prevIds =
-        openVenuesBySlot[`${slot.dateKey}_${prevHour}:00-${currHour}:00`];
-      const nextIds =
-        openVenuesBySlot[`${slot.dateKey}_${nextHour}:00-${endPlusTwo}:00`];
-
-      const twoHourEligibleVenues = slot.openVenues.filter(
-        (v) => prevIds?.has(v.id) || nextIds?.has(v.id)
-      );
-
-      tallyMap[slot.slotKey] = {
-        ...slot,
-        isTwoHourBlock: false,
-        yesPlayers,
-        maybePlayers,
-        noPlayers,
-        yesCount: yesPlayers.length,
-        maybeCount: maybePlayers.length,
-        noCount: noPlayers.length,
-        score,
-        openVenues: twoHourEligibleVenues,
-        recommendedVenues: rankRecommendedVenues(
-          twoHourEligibleVenues,
-          slot.dateKey,
-          [slot.startHour],
-          openVenuesBySlot,
-          3
-        ),
-        isSweetSpot: yesPlayers.length >= 6 && yesPlayers.length <= 8,
-        isDoubleCourt: yesPlayers.length >= 9,
-        isTopPick: false,
-      };
-    }
-
-    if (bestScore > 0) {
-      for (const slot of allOpenSlots) {
-        if (tallyMap[slot.slotKey].score === bestScore) {
-          tallyMap[slot.slotKey].isTopPick = true;
-        }
-      }
-    }
-
-    return tallyMap;
-  }, [allOpenSlots, votes, openVenuesBySlot]);
-
-  const rankedTwoHourBlocks = useMemo(() => {
-    const bestByDate = [];
-
-    for (const week of calendarWeeks) {
-      for (const day of week.days) {
-        if (day.allBooked || bookedSessionsByDate[day.dateKey]) continue;
-        const dayBlocks = [];
-
-        for (let i = 0; i < TIME_BLOCKS.length - 1; i += 1) {
-          const b1 = TIME_BLOCKS[i];
-          const b2 = TIME_BLOCKS[i + 1];
-          const slotKey1 = `${day.dateKey}_${b1.id}`;
-          const slotKey2 = `${day.dateKey}_${b2.id}`;
-
-          const ids1 = openVenuesBySlot[slotKey1];
-          const ids2 = openVenuesBySlot[slotKey2];
-          if (!ids1 || !ids2) continue;
-
-          const filteredShared = VENUES.filter(
-            (v) => ids1.has(v.id) && ids2.has(v.id)
-          );
-          if (!filteredShared.length) continue;
-
-          const bothYesPlayers = [];
-          const flexBothPlayers = [];
-          const partialYesPlayers = [];
-          const noPlayers = [];
-
-          for (const vote of votes) {
-            const c1 = getMergedVoterChoice(vote.responses, slotKey1);
-            const c2 = getMergedVoterChoice(vote.responses, slotKey2);
-
-            if (c1 === 'yes' && c2 === 'yes') {
-              bothYesPlayers.push(vote);
-            } else if (
-              (c1 === 'yes' || c1 === 'maybe') &&
-              (c2 === 'yes' || c2 === 'maybe')
-            ) {
-              flexBothPlayers.push(vote);
-            } else if (c1 === 'yes' || c2 === 'yes') {
-              partialYesPlayers.push(vote);
-            } else if (c1 === 'no' || c2 === 'no') {
-              noPlayers.push(vote);
-            }
-          }
-
-          const totalVotes =
-            bothYesPlayers.length +
-            flexBothPlayers.length +
-            partialYesPlayers.length;
-          if (totalVotes < 3) continue;
-
-          const score =
-            bothYesPlayers.length * 1000 +
-            flexBothPlayers.length * 100 +
-            partialYesPlayers.length * 10;
-
-          const recommendedVenues = rankRecommendedVenues(
-            filteredShared,
-            day.dateKey,
-            [b1.startHour, b2.startHour],
-            openVenuesBySlot,
-            3
-          );
-          const topCourtType = recommendedVenues[0]?.courtType;
-
-          dayBlocks.push({
-            slotKey: `${day.dateKey}_${b1.id}__2h`,
-            slotKey1,
-            slotKey2,
-            isTwoHourBlock: true,
-            dateKey: day.dateKey,
-            jpDate: day.jpDate,
-            dow: day.dow,
-            holiday: day.holiday,
-            timeLabel:
-              `${b1.shortLabel}–${String(b2.startHour + 1).padStart(2, '0')}:00 ` +
-              `(2時間)`,
-            isIndoor: topCourtType === 'indoor' ? 1 : 0,
-            timePrefRank: getTwoHourPreferenceRank(b1.startHour, topCourtType),
-            openVenues: filteredShared,
-            recommendedVenues,
-            venueSummary: recommendedVenues.map((v) => v.shortName).join(' / '),
-            yesPlayers: bothYesPlayers,
-            maybePlayers: [...flexBothPlayers, ...partialYesPlayers],
-            noPlayers,
-            bothYesCount: bothYesPlayers.length,
-            flexBothCount: flexBothPlayers.length,
-            partialYesCount: partialYesPlayers.length,
-            totalVotes,
-            score,
-            isSweetSpot: bothYesPlayers.length >= 6 && bothYesPlayers.length <= 8,
-            isDoubleCourt: bothYesPlayers.length >= 9,
-          });
-        }
-
-        if (!dayBlocks.length) continue;
-
-        dayBlocks.sort((a, b) => {
-          if (b.score !== a.score) return b.score - a.score;
-          if (b.isIndoor !== a.isIndoor) return b.isIndoor - a.isIndoor;
-          return a.timePrefRank - b.timePrefRank;
-        });
-        const [primaryBlock, secondBestBlock = null] = dayBlocks;
-
-        bestByDate.push({
-          ...primaryBlock,
-          alternativeTwoHourBlock: secondBestBlock,
-        });
-      }
-    }
-
-    return bestByDate.sort((a, b) => b.score - a.score).slice(0, 5);
-  }, [calendarWeeks, openVenuesBySlot, votes, bookedSessionsByDate]);
+  const rankedTwoHourBlocks = useMemo(
+    () =>
+      computeRankedTwoHourBlocks({
+        calendarWeeks,
+        openVenuesBySlot,
+        votes,
+        bookedSessionsByDate,
+      }),
+    [calendarWeeks, openVenuesBySlot, votes, bookedSessionsByDate]
+  );
 
   const applyBookingToForm = useCallback((booking) => {
     const hasCustomVenue = Boolean(booking.venueName?.trim());
@@ -1660,49 +548,23 @@ export default function App() {
     );
   }, []);
 
-  const buildBookingPayload = useCallback(() => {
-    const [rawStart, rawEnd] = bookingTime.split('-');
-    const startHour = parseHourValue(rawStart || '17:00');
-    const endHour = Math.max(startHour + 1, parseHourValue(rawEnd || '19:00'));
-    const isOther =
-      selectedBookingVenueId === OTHER_VENUE_OPTION || !selectedBookingVenueId;
-    const venueName = isOther ? customBookingVenue.trim() : '';
-    const mapUrl = isOther ? customBookingMapUrl.trim() : '';
-    const venueId = isOther ? MANUAL_VENUE_ID : selectedBookingVenueId;
-    const matchedVenue = !isOther ? VENUE_BY_ID.get(venueId) : null;
-    const courtType = isOther
-      ? normalizeCourtType(bookingCourtType, 'indoor')
-      : normalizeCourtType(matchedVenue?.courtType, 'indoor');
-    const displayName = isOther
-      ? venueName
-      : matchedVenue?.fullName || matchedVenue?.shortName || '';
-
-    return {
-      dbRow: {
-        start_hour: startHour,
-        end_hour: endHour,
-        venue_id: venueId,
-        venue_name: venueName,
-        map_url: mapUrl,
-        court_type: courtType,
-        updated_at: new Date().toISOString(),
-      },
-      stateEntry: {
-        startHour,
-        endHour,
-        venueId,
-        venueName: displayName,
-        mapUrl,
-        courtType,
-      },
-    };
-  }, [
-    bookingTime,
-    selectedBookingVenueId,
-    customBookingVenue,
-    customBookingMapUrl,
-    bookingCourtType,
-  ]);
+  const buildBookingPayload = useCallback(
+    () =>
+      buildBookingPayloadFromForm({
+        bookingTime,
+        selectedBookingVenueId,
+        customBookingVenue,
+        customBookingMapUrl,
+        bookingCourtType,
+      }),
+    [
+      bookingTime,
+      selectedBookingVenueId,
+      customBookingVenue,
+      customBookingMapUrl,
+      bookingCourtType,
+    ]
+  );
 
   const handleOpenBookingModal = () => {
     setHasCustomizedBooking(true);
@@ -1764,11 +626,7 @@ export default function App() {
     const { dbRow, stateEntry } = buildBookingPayload();
     setIsSavingBooking(true);
     try {
-      const { error } = await supabase
-        .from('booked_sessions')
-        .update(dbRow)
-        .eq('date_key', editingBookingDateKey);
-      if (error) throw error;
+      await updateBookedSession({ dateKey: editingBookingDateKey, dbRow });
 
       setBookedSessionsByDate((prev) => ({
         ...prev,
@@ -1808,13 +666,27 @@ export default function App() {
     }
 
     const { dbRow, stateEntry } = buildBookingPayload();
+    const autoAttendeeNames = findAttendeesAvailableForSession({
+      votes,
+      dateKey: bookingDate,
+      startHour: stateEntry.startHour,
+      endHour: stateEntry.endHour,
+    });
+    const resolvedVenueName = resolveBookingVenueLabel(stateEntry, t.venueTbd);
+
     setIsSavingBooking(true);
     try {
-      const { error } = await supabase.from('booked_sessions').insert({
-        date_key: bookingDate,
-        ...dbRow,
+      const result = await createBookedSession({
+        dateKey: bookingDate,
+        dbRow,
+        autoAttendeeNames,
+        venueName: resolvedVenueName,
       });
-      if (error) throw error;
+      if (result.isDuplicate) {
+        triggerToast(t.toastDuplicateDateBooking(bookingDate));
+        return;
+      }
+      if (!result.ok) throw result.error;
 
       setBookedSessionsByDate((prev) => ({
         ...prev,
@@ -1823,6 +695,9 @@ export default function App() {
           ...stateEntry,
         },
       }));
+      if (autoAttendeeNames.length > 0) {
+        await refreshVotesAndAttendees();
+      }
       setShowBookingModal(false);
       calendarSectionRef.current?.scrollIntoView({
         behavior: 'smooth',
@@ -1830,10 +705,6 @@ export default function App() {
       });
       triggerToast(t.toastMarkedBooked(bookingDate));
     } catch (err) {
-      if (err?.code === '23505') {
-        triggerToast(t.toastDuplicateDateBooking(bookingDate));
-        return;
-      }
       console.error('Supabase booking save error:', err);
       triggerToast(t.toastBookingSaveError);
     } finally {
@@ -1853,16 +724,7 @@ export default function App() {
 
     const { dateKey } = bookingToUnmark;
     try {
-      const { error } = await supabase
-        .from('booked_sessions')
-        .delete()
-        .eq('date_key', dateKey);
-      if (error) throw error;
-
-      await supabase
-        .from('session_attendees')
-        .delete()
-        .eq('session_date', dateKey);
+      await clearBookedSessionCascade({ dateKey });
 
       setBookedSessionsByDate((prev) => {
         const next = { ...prev };
@@ -1886,7 +748,14 @@ export default function App() {
       console.error('Supabase booking delete error:', err);
       triggerToast(t.toastBookingDeleteError);
     }
-  }, [bookingToUnmark, unmarkConfirmInput, t, triggerToast]);
+  }, [
+    bookingToUnmark,
+    unmarkConfirmInput,
+    t,
+    triggerToast,
+    setBookedSessionsByDate,
+    setAttendeesByDate,
+  ]);
 
   const handleToggleBookingAttendee = useCallback(
     (booking, currentlyGoing) => {
@@ -1922,15 +791,7 @@ export default function App() {
       return;
     }
 
-    setResponses((prev) => {
-      const current = prev[slotKey];
-      const next = { ...prev };
-      if (!current) next[slotKey] = 'yes';
-      else if (current === 'yes') next[slotKey] = 'maybe';
-      else if (current === 'maybe') next[slotKey] = 'no';
-      else delete next[slotKey];
-      return next;
-    });
+    setResponses((prev) => cycleSlotChoice(prev, slotKey));
   };
 
   const handleSelectDayWindow = (day, windowMode) => {
@@ -1949,28 +810,9 @@ export default function App() {
       return next;
     });
 
-    setResponses((prev) => {
-      const next = { ...prev };
-      for (const block of TIME_BLOCKS) {
-        const slotKey = `${day.dateKey}_${block.id}`;
-        const cell = day.slots[block.id];
-        if (!cell?.isOpen || !twoHourEligibleSlotKeys.has(slotKey)) continue;
-
-        if (!nextMode) {
-          delete next[slotKey];
-          continue;
-        }
-
-        const matchesWindow =
-          nextMode === 'all' ||
-          (nextMode === 'afternoon' && block.startHour < 18) ||
-          (nextMode === 'evening' && block.startHour >= 18);
-
-        if (matchesWindow) next[slotKey] = 'yes';
-        else delete next[slotKey];
-      }
-      return next;
-    });
+    setResponses((prev) =>
+      applyDayWindowToResponses(prev, day, nextMode, twoHourEligibleSlotKeys)
+    );
   };
 
   const handleFillActiveWeekAll = () => {
@@ -1980,25 +822,15 @@ export default function App() {
     }
 
     const week = calendarWeeks[activeWeekIdx];
-    const nextWindows = {};
+    const { responses: nextResponses, dayWindows } = fillWeekAllResponses(
+      responses,
+      week,
+      bookedSessionsByDate,
+      twoHourEligibleSlotKeys
+    );
 
-    setResponses((prev) => {
-      const next = { ...prev };
-      for (const day of week.days) {
-        if (day.allBooked || bookedSessionsByDate[day.dateKey]) continue;
-        nextWindows[day.dateKey] = 'all';
-
-        for (const block of TIME_BLOCKS) {
-          const slotKey = `${day.dateKey}_${block.id}`;
-          const cell = day.slots[block.id];
-          if (!cell?.isOpen || !twoHourEligibleSlotKeys.has(slotKey)) continue;
-          next[slotKey] = 'yes';
-        }
-      }
-      return next;
-    });
-
-    setDayWindowByDate((prev) => ({ ...prev, ...nextWindows }));
+    setResponses(nextResponses);
+    setDayWindowByDate((prev) => ({ ...prev, ...dayWindows }));
     triggerToast(`${week.shortTitle}: ${t.weekFillAll}`);
   };
 
@@ -2019,15 +851,7 @@ export default function App() {
       return next;
     });
 
-    setResponses((prev) => {
-      const next = { ...prev };
-      for (const slot of allOpenSlots) {
-        if (slot.weekIndex === activeWeekIdx) {
-          delete next[slot.slotKey];
-        }
-      }
-      return next;
-    });
+    setResponses((prev) => clearWeekResponses(prev, allOpenSlots, activeWeekIdx));
 
     triggerToast(`${t.weekClearAll}: ${week.shortTitle}`);
   };
@@ -2091,45 +915,19 @@ export default function App() {
   const handleBookingDateChange = (nextDate) => {
     setHasCustomizedBooking(true);
     setBookingDate(nextDate);
-    if (!nextDate) return;
-
-    const minAllowedStart = getMinStartHourForDate(
-      nextDate,
-      todayJstDateKey,
-      currentJstHour
+    setBookingTime((prev) =>
+      clampBookingTimeForDate(nextDate, prev, todayJstDateKey, currentJstHour)
     );
-    const [rawStart, rawEnd] = bookingTime.split('-');
-    const currentStart = parseHourValue(rawStart || '17:00');
-    const currentEnd = parseHourValue(rawEnd || '19:00');
-
-    if (currentStart < minAllowedStart) {
-      const nextStart = Math.min(21, minAllowedStart);
-      const nextEnd = Math.min(22, Math.max(currentEnd, nextStart + 1));
-      setBookingTime(`${formatHourSlot(nextStart)}-${formatHourSlot(nextEnd)}`);
-    }
   };
 
   const handleStartTimeChange = (nextStart) => {
     setHasCustomizedBooking(true);
-    const currentEnd = bookingTime.split('-')[1] || '19:00';
-    const startHour = parseHourValue(nextStart);
-    const endHour = parseHourValue(currentEnd);
-    const adjustedEnd =
-      endHour <= startHour
-        ? formatHourSlot(Math.min(22, startHour + 1))
-        : currentEnd;
-    setBookingTime(`${nextStart}-${adjustedEnd}`);
+    setBookingTime((prev) => adjustBookingEndForStart(nextStart, prev));
   };
 
   const handleEndTimeChange = (nextEnd) => {
     setHasCustomizedBooking(true);
-    const currentStart = bookingTime.split('-')[0] || '17:00';
-    const startHour = parseHourValue(currentStart);
-    const endHour = parseHourValue(nextEnd);
-    const minEndHour = Math.min(22, startHour + 1);
-    const clampedEnd =
-      endHour <= startHour ? formatHourSlot(minEndHour) : nextEnd;
-    setBookingTime(`${currentStart}-${clampedEnd}`);
+    setBookingTime((prev) => clampBookingEndTime(nextEnd, prev));
   };
 
   const handleBookingVenueSelect = (nextId) => {
@@ -2140,50 +938,6 @@ export default function App() {
       setBookingCourtType(presetVenue.courtType);
     }
   };
-
-  const syncPendingSessionAttendees = useCallback(
-    async (attendeeName) => {
-      const entries = Object.entries(pendingRsvpByDate);
-      if (!entries.length) return;
-
-      for (const [dateKey, choice] of entries) {
-        const booking = bookedSessionsByDate[dateKey];
-        if (!booking) continue;
-
-        if (choice === 'yes') {
-          const { error } = await supabase.from('session_attendees').upsert(
-            {
-              session_date: dateKey,
-              start_hour: booking.startHour,
-              end_hour: booking.endHour,
-              venue_id: booking.venueId || '',
-              venue_name: resolveBookingVenueLabel(booking, t.venueTbd),
-              attendee_name: attendeeName,
-              status: 'yes',
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'session_date,attendee_name' }
-          );
-          if (error) throw error;
-        } else {
-          const { data: deletedRows, error } = await supabase
-            .from('session_attendees')
-            .delete()
-            .eq('session_date', dateKey)
-            .ilike('attendee_name', attendeeName)
-            .select('id');
-          if (error) throw error;
-          if (!deletedRows?.length) {
-            console.warn(
-              'No session_attendees row deleted; check DELETE RLS policy.',
-              { dateKey, attendeeName }
-            );
-          }
-        }
-      }
-    },
-    [pendingRsvpByDate, bookedSessionsByDate, t.venueTbd]
-  );
 
   const handleSubmitVote = async (e) => {
     e.preventDefault();
@@ -2211,31 +965,25 @@ export default function App() {
     setIsSubmitting(true);
     try {
       // Save calendar_votes even for RSVP-only entries so notes and edits stay linked.
-      const payload = {
-        name: trimmedName,
-        note: voterNote.trim(),
-        responses: cleanResponses,
-      };
-
-      const { error } = editingVoteId
-        ? await supabase
-            .from('calendar_votes')
-            .update({ ...payload, updated_at: new Date().toISOString() })
-            .eq('id', editingVoteId)
-        : await supabase.from('calendar_votes').insert([payload]);
-
-      if (error) throw error;
-
-      if (hasPendingRsvp) {
-        await syncPendingSessionAttendees(trimmedName);
-      }
+      await saveVoteWithRsvps({
+        editingVoteId,
+        payload: {
+          name: trimmedName,
+          note: voterNote.trim(),
+          responses: cleanResponses,
+        },
+        pendingRsvpByDate,
+        bookedSessionsByDate,
+        attendeeName: trimmedName,
+        fallbackVenueLabel: t.venueTbd,
+      });
 
       triggerToast(
         editingVoteId
           ? t.toastUpdatedVote(trimmedName)
           : t.toastSubmittedVote(trimmedName)
       );
-      await Promise.all([fetchVotes(), fetchSessionAttendees()]);
+      await refreshVotesAndAttendees();
       resetVoterForm();
     } catch (err) {
       console.error('Supabase save error:', err);
@@ -2261,19 +1009,9 @@ export default function App() {
     const targetNameLower = targetName.toLowerCase();
 
     try {
-      const { error } = await supabase
-        .from('calendar_votes')
-        .delete()
-        .eq('id', voteToDelete.id);
-      if (error) throw error;
+      await deleteVoteCascade({ voteId: voteToDelete.id, targetName });
 
       if (targetName) {
-        const { error: attendeeDeleteError } = await supabase
-          .from('session_attendees')
-          .delete()
-          .ilike('attendee_name', targetName);
-        if (attendeeDeleteError) throw attendeeDeleteError;
-
         setAttendeesByDate((prev) => {
           const next = {};
           for (const [dateKey, rows] of Object.entries(prev)) {
@@ -2291,7 +1029,7 @@ export default function App() {
       ) {
         resetVoterForm();
       }
-      await Promise.all([fetchVotes(), fetchSessionAttendees()]);
+      await refreshVotesAndAttendees();
       triggerToast(t.toastDeletedVote(voteToDelete.name));
     } catch (err) {
       console.error('Supabase delete error:', err);
@@ -2402,10 +1140,6 @@ export default function App() {
     bookingDate === todayJstDateKey && minStartForSelectedDate >= 21;
   const isSelectedStartPast = activeStartHour < minStartForSelectedDate;
   const activeMap = viewingResponsesMap || responses;
-  const isDeleteKeywordMatched =
-    deleteConfirmInput.trim() === t.deleteKeyword;
-  const isUnmarkKeywordMatched =
-    unmarkConfirmInput.trim() === t.deleteKeyword;
   const hasBookingForSelectedDate = Boolean(
     bookingDate && bookedSessionsByDate[bookingDate]
   );
@@ -3654,675 +2388,125 @@ export default function App() {
         </footer>
       </main>
 
-      {inspectGoingSession && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3.5 bg-emerald-900 text-white flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <div className="text-[11px] text-lime-300 font-bold">
-                  {t.goingTallyModalTitle}
-                </div>
-                <h3
-                  translate="no"
-                  className="font-extrabold text-sm sm:text-base truncate"
-                >
-                  {inspectGoingSession.day.jpDate}({inspectGoingSession.day.dow}){' '}
-                  {inspectGoingSession.timeRangeLabel}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setInspectGoingSession(null)}
-                className="p-1 rounded-lg hover:bg-white/15 text-slate-200 cursor-pointer shrink-0"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      <GoingTallyModal
+        session={inspectGoingSession}
+        yesList={inspectedYesList}
+        maybeList={inspectedMaybeList}
+        onClose={() => setInspectGoingSession(null)}
+        t={t}
+      />
 
-            <div className="p-4 space-y-3 text-xs max-h-[80vh] overflow-y-auto">
-              <div className="flex items-center justify-between gap-2 text-slate-700 font-bold">
-                <span className="truncate">{inspectGoingSession.venueLabel}</span>
-                <span
-                  translate="no"
-                  className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 font-extrabold shrink-0"
-                >
-                  {t.goingCountSummary(
-                    inspectedYesList.length,
-                    inspectedMaybeList.length
-                  )}
-                </span>
-              </div>
+      <BookingFormModal
+        open={showBookingModal}
+        mode="create"
+        onClose={() => setShowBookingModal(false)}
+        onSubmit={handleSaveBookedSessionRow}
+        isSavingBooking={isSavingBooking}
+        canSubmit={
+          !hasBookingForSelectedDate &&
+          Boolean(selectedBookingVenueId) &&
+          !isSelectedDateClosedForNew &&
+          !isSelectedStartPast
+        }
+        formFields={renderBookingFormFields({
+          showDuplicateWarning: true,
+          includePlaceholderOption: true,
+          enforcePastTimeGuard: true,
+        })}
+        t={t}
+      />
 
-              {!inspectedYesList.length && !inspectedMaybeList.length ? (
-                <p className="text-slate-500 py-3 text-center">
-                  {t.noGoingAttendees}
-                </p>
-              ) : (
-                <div className="space-y-2.5">
-                  <div>
-                    <div className="font-extrabold text-emerald-800 mb-1">
-                      ◯ {t.goingLabel} ({inspectedYesList.length})
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {!inspectedYesList.length ? (
-                        <span className="text-slate-400">{t.noneLabel}</span>
-                      ) : (
-                        inspectedYesList.map((row) => (
-                          <span
-                            key={row.attendeeName}
-                            translate="no"
-                            className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-950 font-bold"
-                          >
-                            {row.attendeeName}
-                          </span>
-                        ))
-                      )}
-                    </div>
-                  </div>
+      <BookingFormModal
+        open={showEditBookingModal}
+        mode="edit"
+        onClose={() => {
+          setShowEditBookingModal(false);
+          setEditingBookingDateKey('');
+        }}
+        onSubmit={handleSaveEditedBooking}
+        isSavingBooking={isSavingBooking}
+        canSubmit={Boolean(selectedBookingVenueId)}
+        formFields={renderBookingFormFields({ lockDateField: true })}
+        t={t}
+      />
 
-                  {inspectedMaybeList.length > 0 && (
-                    <div>
-                      <div className="font-extrabold text-amber-800 mb-1">
-                        △ ({inspectedMaybeList.length})
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {inspectedMaybeList.map((row) => (
-                          <span
-                            key={row.attendeeName}
-                            translate="no"
-                            className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-950 font-bold"
-                          >
-                            {row.attendeeName}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+      <SlotInspectModal
+        inspectSlot={inspectSlot}
+        onSelectSlot={setInspectSlot}
+        onClose={() => setInspectSlot(null)}
+        viewingVote={viewingVote}
+        t={t}
+      />
 
-              <div className="pt-2 flex justify-end border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setInspectGoingSession(null)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer whitespace-nowrap"
-                >
-                  {t.closeBtn}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <EditPickerModal
+        open={showEditPickerModal}
+        activeVotes={activeVotes}
+        onSelectVoter={handleSelectVoterToEdit}
+        onClose={() => setShowEditPickerModal(false)}
+        t={t}
+      />
 
-      {showBookingModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3.5 bg-emerald-900 text-white flex items-center justify-between gap-2">
-              <h3 className="font-extrabold text-sm sm:text-base flex items-center gap-2">
-                <CalendarCheck className="w-4 h-4 text-lime-300 shrink-0" />
-                <span>{t.bookModalTitle}</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowBookingModal(false)}
-                className="p-1 rounded-lg hover:bg-white/15 text-slate-200 cursor-pointer shrink-0"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      <ShareInviteModal
+        open={showShareModal}
+        canEditBooking={Boolean(shareModalBooking || closestBookedSession)}
+        onOpenEditBooking={handleOpenEditBookingFromShare}
+        bookingFormat={bookingFormat}
+        onChangeFormat={(nextFormat) => {
+          setHasCustomizedBooking(true);
+          setBookingFormat(nextFormat);
+        }}
+        confirmedBookingText={confirmedBookingText}
+        textareaRef={textareaRef}
+        copiedShare={copiedShare}
+        onCopyShareText={handleCopyShareText}
+        onClose={() => setShowShareModal(false)}
+        t={t}
+      />
 
-            <div className="p-4 space-y-3 max-h-[85vh] overflow-y-auto text-xs">
-              {renderBookingFormFields({
-                showDuplicateWarning: true,
-                includePlaceholderOption: true,
-                enforcePastTimeGuard: true,
-              })}
-
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowBookingModal(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer whitespace-nowrap"
-                >
-                  {t.cancelBtn}
-                </button>
-                <button
-                  type="button"
-                  disabled={
-                    isSavingBooking ||
-                    hasBookingForSelectedDate ||
-                    !selectedBookingVenueId ||
-                    isSelectedDateClosedForNew ||
-                    isSelectedStartPast
-                  }
-                  onClick={handleSaveBookedSessionRow}
-                  className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-lime-300 font-extrabold cursor-pointer whitespace-nowrap"
-                >
-                  {isSavingBooking ? t.submittingBtn : t.saveBookedRowBtn}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showEditBookingModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3.5 bg-[#1B365D] text-white flex items-center justify-between gap-2">
-              <h3 className="font-extrabold text-sm sm:text-base flex items-center gap-2">
-                <Edit3 className="w-4 h-4 text-lime-300 shrink-0" />
-                <span>{t.editBookingModalTitle}</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowEditBookingModal(false);
-                  setEditingBookingDateKey('');
-                }}
-                className="p-1 rounded-lg hover:bg-white/15 text-slate-200 cursor-pointer shrink-0"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 space-y-3 max-h-[85vh] overflow-y-auto text-xs">
-              {renderBookingFormFields({ lockDateField: true })}
-
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowEditBookingModal(false);
-                    setEditingBookingDateKey('');
-                  }}
-                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer whitespace-nowrap"
-                >
-                  {t.cancelBtn}
-                </button>
-                <button
-                  type="button"
-                  disabled={isSavingBooking || !selectedBookingVenueId}
-                  onClick={handleSaveEditedBooking}
-                  className="px-4 py-2.5 rounded-xl bg-[#1B365D] hover:bg-[#274b7d] disabled:opacity-50 text-lime-300 font-extrabold cursor-pointer whitespace-nowrap"
-                >
-                  {isSavingBooking ? t.submittingBtn : t.saveEditedBookingBtn}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {inspectSlot && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3.5 bg-[#1B365D] text-white flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <div className="text-[11px] text-lime-300 font-bold">
-                  {t.modalTopTitle}
-                </div>
-                <h3
-                  translate="no"
-                  className="font-extrabold text-sm sm:text-base"
-                >
-                  {inspectSlot.jpDate}({inspectSlot.dow}){' '}
-                  {inspectSlot.timeLabel}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setInspectSlot(null)}
-                className="p-1 rounded-lg hover:bg-white/15 text-slate-200 cursor-pointer shrink-0"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 space-y-3 text-xs max-h-[82vh] overflow-y-auto">
-              {inspectSlot.alternativeTwoHourBlock && (
-                <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-extrabold text-indigo-700">
-                      {t.altSecondChoice}
-                    </div>
-                    <div
-                      translate="no"
-                      className="font-extrabold text-slate-900 truncate"
-                    >
-                      {inspectSlot.alternativeTwoHourBlock.timeLabel} —{' '}
-                      {
-                        inspectSlot.alternativeTwoHourBlock
-                          .recommendedVenues[0]?.shortName
-                      }
-                    </div>
-                    <div
-                      translate="no"
-                      className="text-[10px] text-slate-600"
-                    >
-                      2h◯ {inspectSlot.alternativeTwoHourBlock.bothYesCount} /{' '}
-                      {inspectSlot.alternativeTwoHourBlock.totalVotes}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setInspectSlot({
-                        ...inspectSlot.alternativeTwoHourBlock,
-                        alternativeTwoHourBlock: {
-                          ...inspectSlot,
-                          alternativeTwoHourBlock: null,
-                        },
-                      })
-                    }
-                    className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-[11px] shrink-0 cursor-pointer whitespace-nowrap"
-                  >
-                    {t.seeDetailsBtn}
-                  </button>
-                </div>
-              )}
-
-              <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-extrabold text-[#1B365D] inline-flex items-center gap-1">
-                    <Award className="w-4 h-4 text-amber-500 shrink-0" />
-                    <span>
-                      {t.recTopHeading(
-                        inspectSlot.recommendedVenues?.length || 0
-                      )}
-                    </span>
-                  </span>
-                  <span className="text-[10px] text-slate-500 whitespace-nowrap">
-                    {t.openCountLabel(inspectSlot.openVenues?.length || 0)}
-                  </span>
-                </div>
-
-                {inspectSlot.recommendedVenues?.map((v, idx) => (
-                  <div
-                    key={v.id}
-                    className={`p-2 rounded-lg border flex items-center justify-between gap-2 ${
-                      idx === 0
-                        ? 'bg-white border-lime-400 shadow-2xs'
-                        : 'bg-white/80 border-slate-200'
-                    }`}
-                  >
-                    <div className="min-w-0 space-y-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          translate="no"
-                          className={`w-4 h-4 rounded-full text-[10px] font-extrabold flex items-center justify-center shrink-0 ${
-                            idx === 0
-                              ? 'bg-[#1B365D] text-lime-300'
-                              : 'bg-slate-200 text-slate-700'
-                          }`}
-                        >
-                          {idx + 1}
-                        </span>
-                        <span
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold shrink-0 whitespace-nowrap ${
-                            v.courtType === 'outdoor'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-sky-100 text-sky-800'
-                          }`}
-                        >
-                          {v.courtType === 'outdoor'
-                            ? v.hasLights
-                              ? t.outdoorLights
-                              : t.outdoorShort
-                            : t.indoorShort}
-                        </span>
-                        <span className="font-extrabold text-slate-900 truncate">
-                          {v.fullName}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-1.5 pl-5 text-[10px]">
-                        {v.continuousSpan && (
-                          <span
-                            translate="no"
-                            className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold"
-                          >
-                            {v.continuousSpan}
-                          </span>
-                        )}
-                        <span className="text-slate-500">
-                          {t.distanceFromOkayama(v.distanceKm)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <a
-                      href={v.bookingUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-0.5 px-2 py-1 rounded bg-[#1B365D] text-lime-300 font-extrabold text-[11px] hover:bg-[#274b7d] shrink-0 whitespace-nowrap"
-                    >
-                      <span>{t.bookLink}</span>
-                      <ExternalLink className="w-3 h-3 shrink-0" />
-                    </a>
-                  </div>
-                ))}
-              </div>
-
-              {[
-                {
-                  label: inspectSlot.isTwoHourBlock
-                    ? t.twoHourYesGroup(inspectSlot.yesPlayers.length)
-                    : t.oneHourYesGroup(inspectSlot.yesPlayers.length),
-                  players: inspectSlot.yesPlayers,
-                  titleClass: 'text-emerald-700',
-                  badgeClass: 'bg-emerald-100 text-emerald-900',
-                },
-                {
-                  label: inspectSlot.isTwoHourBlock
-                    ? t.twoHourMaybeGroup(inspectSlot.maybePlayers.length)
-                    : t.oneHourMaybeGroup(inspectSlot.maybePlayers.length),
-                  players: inspectSlot.maybePlayers,
-                  titleClass: 'text-amber-700',
-                  badgeClass: 'bg-amber-100 text-amber-900',
-                },
-                {
-                  label: t.noGroup(inspectSlot.noPlayers.length),
-                  players: inspectSlot.noPlayers,
-                  titleClass: 'text-rose-700',
-                  badgeClass: 'bg-rose-100 text-rose-900',
-                },
-              ].map((group) => (
-                <div key={group.label}>
-                  <div className={`font-extrabold ${group.titleClass} mb-1`}>
-                    {group.label}
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {!group.players.length ? (
-                      <span className="text-slate-400">{t.noneLabel}</span>
-                    ) : (
-                      group.players.map((p) => (
-                        <span
-                          key={p.id}
-                          translate="no"
-                          className={`px-2.5 py-1 rounded-full ${group.badgeClass} font-bold`}
-                        >
-                          {p.name}
-                        </span>
-                      ))
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-200">
-                <span className="text-[11px] text-slate-500">
-                  {viewingVote ? t.modalViewingNote(viewingVote.name) : null}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setInspectSlot(null)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer ml-auto whitespace-nowrap"
-                >
-                  {t.closeBtn}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showEditPickerModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3.5 bg-[#1B365D] text-white flex items-center justify-between gap-2">
-              <h3 className="font-extrabold text-sm sm:text-base flex items-center gap-2">
-                <UserCheck className="w-4 h-4 text-lime-300 shrink-0" />
-                <span>{t.pickVoterTitle}</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowEditPickerModal(false)}
-                className="p-1 rounded-lg hover:bg-white/15 text-slate-200 cursor-pointer shrink-0"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 space-y-2.5 text-xs">
-              <p className="text-slate-600">{t.pickVoterPrompt}</p>
-
-              <div className="space-y-1.5 max-h-72 overflow-y-auto">
-                {activeVotes.map((v) => {
-                  const count = Object.keys(
-                    normalizeResponsesMap(v.responses)
-                  ).length;
-                  return (
-                    <button
-                      key={v.id}
-                      type="button"
-                      onClick={() => handleSelectVoterToEdit(v)}
-                      className="w-full p-2.5 rounded-xl bg-slate-50 hover:bg-amber-50 border border-slate-200 hover:border-amber-400 flex items-center justify-between gap-2 text-left transition cursor-pointer"
-                    >
-                      <div className="min-w-0">
-                        <div
-                          translate="no"
-                          className="font-extrabold text-slate-900 text-sm"
-                        >
-                          {v.name}
-                        </div>
-                        {v.note && (
-                          <div className="text-[11px] text-slate-500 truncate">
-                            {v.note}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-bold text-[11px] whitespace-nowrap">
-                          {t.answeredSlotsCount(count)}
-                        </span>
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#1B365D] text-lime-300 font-extrabold whitespace-nowrap">
-                          <Edit3 className="w-3 h-3 shrink-0" />
-                          <span>{t.editAction}</span>
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="pt-2 flex justify-end border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setShowEditPickerModal(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer whitespace-nowrap"
-                >
-                  {t.closeBtn}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showShareModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3.5 bg-[#1B365D] text-white flex items-center justify-between gap-2">
-              <h3 className="font-extrabold text-sm sm:text-base flex items-center gap-2">
-                <Share2 className="w-4 h-4 text-lime-300 shrink-0" />
-                <span>{t.shareModalTitle}</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowShareModal(false)}
-                className="p-1 rounded-lg hover:bg-white/15 text-slate-200 cursor-pointer shrink-0"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 space-y-3 max-h-[85vh] overflow-y-auto text-xs">
-              <div className="flex items-center justify-between gap-2">
-                {(shareModalBooking || closestBookedSession) && (
-                  <button
-                    type="button"
-                    onClick={handleOpenEditBookingFromShare}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-[#1B365D] font-extrabold text-[11px] cursor-pointer whitespace-nowrap"
-                  >
-                    <Edit3 className="w-3 h-3 shrink-0" />
-                    <span>{t.editBookingBtn}</span>
-                  </button>
-                )}
-
-                <div className="flex items-center gap-1.5 ml-auto">
-                  {[
-                    { id: 'ja', label: 'JA' },
-                    { id: 'en', label: 'EN' },
-                    { id: 'bilingual', label: 'JA/EN' },
-                  ].map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        setHasCustomizedBooking(true);
-                        setBookingFormat(item.id);
-                      }}
-                      className={`px-2.5 py-1 rounded-lg border font-extrabold text-[11px] cursor-pointer ${
-                        bookingFormat === item.id
-                          ? 'bg-[#1B365D] text-lime-300 border-[#1B365D]'
-                          : 'bg-white text-slate-600 border-slate-300'
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <p className="text-xs text-slate-600">{t.sharePrompt}</p>
-
-              <textarea
-                ref={textareaRef}
-                readOnly
-                rows={10}
-                value={confirmedBookingText}
-                onFocus={(e) => e.target.select()}
-                className="w-full p-3 rounded-xl bg-slate-50 border border-slate-300 text-xs font-sans leading-relaxed text-slate-800 focus:outline-none break-all"
-              />
-
-              <button
-                type="button"
-                onClick={handleCopyShareText}
-                className="w-full py-3 rounded-xl bg-lime-400 hover:bg-lime-300 text-[#1B365D] font-extrabold text-sm flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
-              >
-                {copiedShare ? (
-                  <>
-                    <Check className="w-4 h-4 shrink-0" />
-                    <span>{t.copiedBtn}</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4 shrink-0" />
-                    <span>{t.copyBtn}</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {bookingToUnmark && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4">
-            <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>{t.unmarkModalTitle}</span>
-            </h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              {t.unmarkModalBody(
+      <ConfirmKeywordModal
+        open={Boolean(bookingToUnmark)}
+        title={t.unmarkModalTitle}
+        body={
+          bookingToUnmark
+            ? t.unmarkModalBody(
                 bookingToUnmark.label,
                 bookingToUnmark.venueLabel
-              )}
-            </p>
-            <div className="space-y-1">
-              <label className="block text-[11px] font-bold text-slate-700">
-                {t.deleteKeywordHint(t.deleteKeyword)}
-              </label>
-              <input
-                type="text"
-                value={unmarkConfirmInput}
-                onChange={(e) => setUnmarkConfirmInput(e.target.value)}
-                placeholder={t.deleteKeywordPlaceholder(t.deleteKeyword)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-900 focus:border-amber-500 outline-none"
-              />
-            </div>
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setBookingToUnmark(null);
-                  setUnmarkConfirmInput('');
-                }}
-                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 cursor-pointer whitespace-nowrap"
-              >
-                {t.cancelBtn}
-              </button>
-              <button
-                type="button"
-                disabled={!isUnmarkKeywordMatched}
-                onClick={handleConfirmClearBooking}
-                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:pointer-events-none text-white text-xs font-bold cursor-pointer whitespace-nowrap"
-              >
-                {t.confirmUnmarkBtn}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              )
+            : ''
+        }
+        keyword={t.deleteKeyword}
+        keywordHint={t.deleteKeywordHint(t.deleteKeyword)}
+        keywordPlaceholder={t.deleteKeywordPlaceholder(t.deleteKeyword)}
+        confirmInput={unmarkConfirmInput}
+        onConfirmInputChange={setUnmarkConfirmInput}
+        onCancel={() => {
+          setBookingToUnmark(null);
+          setUnmarkConfirmInput('');
+        }}
+        onConfirm={handleConfirmClearBooking}
+        cancelLabel={t.cancelBtn}
+        confirmLabel={t.confirmUnmarkBtn}
+        tone="amber"
+      />
 
-      {voteToDelete && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4">
-            <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>{t.deleteModalTitle}</span>
-            </h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              {t.deleteModalBody(voteToDelete.name)}
-            </p>
-            <div className="space-y-1">
-              <label className="block text-[11px] font-bold text-slate-700">
-                {t.deleteKeywordHint(t.deleteKeyword)}
-              </label>
-              <input
-                type="text"
-                value={deleteConfirmInput}
-                onChange={(e) => setDeleteConfirmInput(e.target.value)}
-                placeholder={t.deleteKeywordPlaceholder(t.deleteKeyword)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-900 focus:border-rose-500 outline-none"
-              />
-            </div>
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setVoteToDelete(null);
-                  setDeleteConfirmInput('');
-                }}
-                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 cursor-pointer whitespace-nowrap"
-              >
-                {t.cancelBtn}
-              </button>
-              <button
-                type="button"
-                disabled={!isDeleteKeywordMatched}
-                onClick={handleConfirmDeleteVote}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:pointer-events-none text-white text-xs font-bold cursor-pointer whitespace-nowrap"
-              >
-                {t.confirmDeleteBtn}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmKeywordModal
+        open={Boolean(voteToDelete)}
+        title={t.deleteModalTitle}
+        body={voteToDelete ? t.deleteModalBody(voteToDelete.name) : ''}
+        keyword={t.deleteKeyword}
+        keywordHint={t.deleteKeywordHint(t.deleteKeyword)}
+        keywordPlaceholder={t.deleteKeywordPlaceholder(t.deleteKeyword)}
+        confirmInput={deleteConfirmInput}
+        onConfirmInputChange={setDeleteConfirmInput}
+        onCancel={() => {
+          setVoteToDelete(null);
+          setDeleteConfirmInput('');
+        }}
+        onConfirm={handleConfirmDeleteVote}
+        cancelLabel={t.cancelBtn}
+        confirmLabel={t.confirmDeleteBtn}
+        tone="rose"
+      />
     </div>
   );
 }

@@ -1,8 +1,7 @@
-import { VENUES } from '../src/config/venues.js';
+import { VENUE_BY_ID } from '../src/config/venues.js';
 
 const DOW_JP = ['日', '月', '火', '水', '木', '金', '土'];
 const DOW_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const VENUE_BY_ID = new Map(VENUES.map((venue) => [venue.id, venue]));
 const IN_APP_UA_PATTERN =
   /LINE|FBAN|FBAV|Instagram|FB_IAB|Twitter|MicroMessenger|KAKAOTALK|GSA|wv/i;
 
@@ -64,71 +63,6 @@ const EVENT_COPY = {
     outdoorCourtShoes:
       '👟 Tennis or hard-court shoes recommended for outdoor courts',
     indoorShoes: '👟 Indoor-only court shoes required for gymnasiums',
-  },
-};
-
-// Supplement venues.js entries with street addresses and coordinates for
-// calendar LOCATION/GEO fields and map queries when a known venue ID is passed.
-const VENUE_META_BY_ID = {
-  mabi: {
-    address: '岡山県倉敷市真備町箭田2208-1',
-    lat: 34.642562,
-    lng: 133.685144,
-  },
-  kurashiki_gym: {
-    address: '岡山県倉敷市上富井1-8',
-    lat: 34.585989,
-    lng: 133.745118,
-  },
-  kurashiki_weightlifting: {
-    address: '岡山県倉敷市四十瀬4',
-    lat: 34.589062,
-    lng: 133.745787,
-  },
-  mizushima: {
-    address: '岡山県倉敷市水島西千鳥町3-21-303',
-    lat: 34.52977,
-    lng: 133.739137,
-  },
-  fukuda: {
-    address: '岡山県倉敷市福田町古新田1027',
-    lat: 34.53335,
-    lng: 133.7681,
-  },
-  nakayama: {
-    address: '岡山県倉敷市児島小川町2831',
-    lat: 34.480789,
-    lng: 133.810104,
-  },
-  seto: {
-    address: '岡山県岡山市東区瀬戸町南方1311',
-    lat: 34.7481279,
-    lng: 134.0692336,
-  },
-  okayama_sogo: {
-    address: '岡山県岡山市南区浦安南町493-2',
-    lat: 34.600133,
-    lng: 133.915802,
-  },
-  futsukaichi: {
-    address: '岡山県岡山市北区二日市町51',
-    lat: 34.644472,
-    lng: 133.929792,
-  },
-  hyakkengawa_a: {
-    address: '岡山県岡山市中区東川原',
-    lat: 34.678536,
-    lng: 133.946369,
-  },
-  hyakkengawa_c: {
-    address: '岡山県岡山市中区兼基',
-    lat: 34.671356,
-    lng: 133.969445,
-  },
-  nadasaki: {
-    address: '岡山県岡山市南区彦崎2686',
-    lat: 34.549681,
-    lng: 133.83803,
   },
 };
 
@@ -356,7 +290,6 @@ export default function handler(req, res) {
 
   const venueId = String(v || '').trim();
   const venueRecord = VENUE_BY_ID.get(venueId) || null;
-  const fallbackMeta = VENUE_META_BY_ID[venueId] || null;
 
   const venueName =
     venueRecord?.fullName ||
@@ -366,11 +299,9 @@ export default function handler(req, res) {
     extractVenueFromMapUrl(rawMap) ||
     copy.undecidedVenue;
 
-  const address = venueRecord?.address || fallbackMeta?.address || '';
-  const lat =
-    typeof venueRecord?.lat === 'number' ? venueRecord.lat : fallbackMeta?.lat;
-  const lng =
-    typeof venueRecord?.lng === 'number' ? venueRecord.lng : fallbackMeta?.lng;
+  const address = venueRecord?.address || '';
+  const lat = venueRecord?.lat;
+  const lng = venueRecord?.lng;
   const hasCoords = typeof lat === 'number' && typeof lng === 'number';
 
   const mapUrl =

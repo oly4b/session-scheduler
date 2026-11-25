@@ -1,7 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
+import {
+  DAY_MS,
+  JST_OFFSET_MS,
+  getCurrentJstHour,
+  getJstDateString,
+  getJstParts,
+  isSlotPastCurrentJst,
+} from '../../src/utils/jst.js';
 
-export const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
-export const DAY_MS = 86_400_000;
+export {
+  DAY_MS,
+  JST_OFFSET_MS,
+  getCurrentJstHour,
+  getJstDateString,
+  getJstParts,
+  isSlotPastCurrentJst,
+};
 export const SCRAPE_DAYS = 28;
 export const CONCURRENCY = 3;
 export const UPSERT_BATCH_SIZE = 600;
@@ -30,74 +44,6 @@ const BLOCKED_RESOURCE_TYPES = new Set(['image', 'font', 'media']);
  *   updated_at: string,
  * }} CourtSlotRecord
  */
-
-/**
- * Returns a JST calendar date string (`YYYY-MM-DD`) offset from today.
- *
- * @param {number} [offsetDays=0]
- * @returns {string}
- */
-export function getJstDateString(offsetDays = 0) {
-  const timestamp = Date.now() + JST_OFFSET_MS + offsetDays * DAY_MS;
-  return new Date(timestamp).toISOString().slice(0, 10);
-}
-
-/**
- * Returns calendar components and ISO keys for a JST date offset from today.
- *
- * @param {number} [offsetDays=0]
- * @returns {JstDateParts}
- */
-export function getJstParts(offsetDays = 0) {
-  const jst = new Date(Date.now() + JST_OFFSET_MS + offsetDays * DAY_MS);
-  const year = jst.getUTCFullYear();
-  const month = jst.getUTCMonth() + 1;
-  const day = jst.getUTCDate();
-
-  return {
-    year,
-    month,
-    day,
-    monthPrefix: `${year}-${String(month).padStart(2, '0')}`,
-    dateKey: jst.toISOString().slice(0, 10),
-  };
-}
-
-/**
- * Returns the current hour (`0`–`23`) in `Asia/Tokyo` (JST).
- *
- * @returns {number}
- */
-export function getCurrentJstHour() {
-  const jstHour = new Date(Date.now() + JST_OFFSET_MS).getUTCHours();
-  return Number.isFinite(jstHour) ? jstHour : 0;
-}
-
-/**
- * Returns whether a slot on `dateKey` starting at `startHour` has already
- * started or passed relative to the current JST date and hour.
- *
- * @param {string} dateKey
- * @param {number} startHour
- * @param {string} todayDateKey
- * @param {number} currentJstHour
- * @returns {boolean}
- */
-export function isSlotPastCurrentJst(
-  dateKey,
-  startHour,
-  todayDateKey,
-  currentJstHour
-) {
-  if (!dateKey) return true;
-  if (dateKey < todayDateKey) return true;
-  if (dateKey > todayDateKey) return false;
-
-  const parsedStartHour = Number(startHour);
-  if (!Number.isFinite(parsedStartHour)) return false;
-
-  return parsedStartHour <= currentJstHour;
-}
 
 /**
  * Formats an integer start hour (e.g., `14`) into a 1-hour block (`14:00-15:00`).

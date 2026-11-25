@@ -1,8 +1,13 @@
-import { VENUES } from '../config/venues';
+import { VENUES } from '../config/venues.js';
+import {
+  DAY_MS,
+  DOW_JP,
+  JST_OFFSET_MS,
+  formatJstTimestamp,
+  getJstParts,
+} from './jst.js';
 
-export const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
-const DOW_JP = ['日', '月', '火', '水', '木', '金', '土'];
+export { JST_OFFSET_MS, formatJstTimestamp };
 
 export const ACTIVE_VENUE_IDS = new Set(VENUES.map((v) => v.id));
 
@@ -131,13 +136,7 @@ function getJapaneseHolidaysForYear(year) {
  * @param {number} offsetDays
  */
 export function getJstDayMeta(offsetDays) {
-  const jstDate = new Date(Date.now() + JST_OFFSET_MS + offsetDays * DAY_MS);
-  const year = jstDate.getUTCFullYear();
-  const month = jstDate.getUTCMonth() + 1;
-  const day = jstDate.getUTCDate();
-  const dowIdx = jstDate.getUTCDay();
-
-  const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const { year, month, day, dowIdx, dateKey } = getJstParts(offsetDays);
   const isHoliday = getJapaneseHolidaysForYear(year).has(dateKey);
   const holiday = isHoliday ? '祝' : '';
 
@@ -156,24 +155,8 @@ export function getJstDayMeta(offsetDays) {
   };
 }
 
-/**
- * Formats an ISO timestamp string into `MM/DD HH:mm` in JST.
- *
- * @param {string | null | undefined} isoString
- * @returns {string}
- */
-export function formatJstTimestamp(isoString) {
-  if (!isoString) return '';
-  const d = new Date(new Date(isoString).getTime() + JST_OFFSET_MS);
-  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(d.getUTCDate()).padStart(2, '0');
-  const hh = String(d.getUTCHours()).padStart(2, '0');
-  const min = String(d.getUTCMinutes()).padStart(2, '0');
-  return `${mm}/${dd} ${hh}:${min}`;
-}
-
-const CHOICE_PRIORITY = { yes: 3, maybe: 2, no: 1 };
-const LEGACY_PREFIX = 'spacepad_1_3_';
+export const CHOICE_PRIORITY = { yes: 3, maybe: 2, no: 1 };
+export const LEGACY_PREFIX = 'spacepad_1_3_';
 
 /**
  * Normalizes a voter's response map, stripping legacy Spacepad prefixes and
@@ -218,8 +201,7 @@ export function getMergedVoterChoice(responses, slotKey) {
  * Ranks available venues for a slot or 2-hour block, strictly prioritizing:
  * 1. Indoor gyms over outdoor courts (`indoor` > `outdoor`)
  * 2. Continuous multi-hour open spans (`isContinuous`)
- * 3. Facility tier (`facilityTier`)
- * 4. Proximity to Okayama Station (`distanceKm`)
+ * 3. Proximity to Okayama Station (`distanceKm`)
  *
  * @param {Array<object>} candidateVenues
  * @param {string} dateKey
@@ -270,7 +252,6 @@ export function rankRecommendedVenues(
       const bIndoor = b.courtType === 'indoor' ? 1 : 0;
       if (bIndoor !== aIndoor) return bIndoor - aIndoor;
       if (b.isContinuous !== a.isContinuous) return b.isContinuous - a.isContinuous;
-      if (b.facilityTier !== a.facilityTier) return b.facilityTier - a.facilityTier;
       return a.distanceKm - b.distanceKm;
     })
     .slice(0, limit);

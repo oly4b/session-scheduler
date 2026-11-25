@@ -1,137 +1,135 @@
-const DOW_JP = ['日', '月', '火', '水', '木', '金', '土'];
-const DOW_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+import { VENUE_BY_ID } from '../config/venues.js';
+import {
+  DAY_MS,
+  formatHourSlot,
+  getTodayJstIsoDate,
+  parseHourValue,
+} from './jst.js';
+import { getJstDayMeta } from './scheduler.js';
 
-export function getTodayJstIsoDate() {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
+export { getTodayJstIsoDate };
 
-  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
-  return `${map.year}-${map.month}-${map.day}`;
+export const OTHER_VENUE_OPTION = '__other__';
+export const MANUAL_VENUE_ID = 'other';
+
+export function normalizeCourtType(value, fallback = 'indoor') {
+  return value === 'outdoor' || value === 'indoor' ? value : fallback;
 }
 
-export function parseTimeRangeInput(rawTime) {
-  const match = String(rawTime || '')
-    .trim()
-    .match(/(\d{1,2})(?::(\d{2}))?\s*(?:[-~〜–—]|to)\s*(\d{1,2})(?::(\d{2}))?/i);
-
-  if (!match) return null;
-
-  const startHour = Number(match[1]);
-  const startMin = Number(match[2] || '0');
-  const endHour = Number(match[3]);
-  const endMin = Number(match[4] || '0');
-
-  if (
-    startHour < 0 ||
-    startHour > 23 ||
-    endHour < 1 ||
-    endHour > 24 ||
-    startMin > 59 ||
-    endMin > 59
-  ) {
-    return null;
-  }
-
-  const startStr = `${String(startHour).padStart(2, '0')}:${String(startMin).padStart(2, '0')}`;
-  const endStr = `${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
-
-  return {
-    startHour,
-    endHour,
-    formattedRange: `${startStr}–${endStr}`,
-  };
-}
-
-export function buildConfirmedBookingInvite({
-  origin = window.location.origin,
-  dateIso = getTodayJstIsoDate(),
-  timeRangeText = '18:00-20:00',
+export function buildShortEventUrl({
+  origin,
+  dateIso,
+  startHour,
+  endHour,
+  venueId = '',
   venueName = '',
   mapUrl = '',
-  courtType = 'indoor',
-  format = 'ja', // 'ja' | 'en' | 'bilingual'
 }) {
-  const cleanDate = /^\d{4}-\d{2}-\d{2}$/.test(dateIso)
-    ? dateIso
-    : getTodayJstIsoDate();
-  const parsedTime = parseTimeRangeInput(timeRangeText) || {
-    startHour: 18,
-    endHour: 20,
-    formattedRange: String(timeRangeText || '18:00–20:00').trim(),
-  };
+  const url = new URL('/api/event', origin);
+  url.searchParams.set('date', dateIso);
+  url.searchParams.set('start', String(startHour));
+  url.searchParams.set('end', String(endHour));
 
-  const dt = new Date(`${cleanDate}T00:00:00Z`);
-  const month = Number.isNaN(dt.getTime()) ? '' : dt.getUTCMonth() + 1;
-  const day = Number.isNaN(dt.getTime()) ? '' : dt.getUTCDate();
-  const dowIdx = Number.isNaN(dt.getTime()) ? 0 : dt.getUTCDay();
-
-  const jpDateLabel =
-    month && day ? `${month}月${day}日(${DOW_JP[dowIdx]})` : cleanDate;
-  const enDateLabel =
-    month && day ? `${DOW_EN[dowIdx]}, ${month}/${day}` : cleanDate;
-
-  const trimmedVenue = String(venueName || '').trim() || '未定';
-  const trimmedMap = String(mapUrl || '').trim();
-
-  const eventUrl = new URL('/api/event', origin);
-  eventUrl.searchParams.set('date', cleanDate);
-  eventUrl.searchParams.set('jpDate', jpDateLabel);
-  eventUrl.searchParams.set('start', String(parsedTime.startHour));
-  eventUrl.searchParams.set('end', String(parsedTime.endHour));
-  eventUrl.searchParams.set('venue', trimmedVenue);
-  if (trimmedMap) {
-    eventUrl.searchParams.set('map', trimmedMap);
+  if (venueId && venueId !== MANUAL_VENUE_ID && VENUE_BY_ID.has(venueId)) {
+    url.searchParams.set('v', venueId);
+    return url.toString();
   }
 
-  const calendarLink = eventUrl.toString();
+  if (venueName) url.searchParams.set('venue', venueName);
+  if (mapUrl) url.searchParams.set('map', mapUrl);
+  return url.toString();
+}
+
+export function formatConfirmedSessionInvite({
+  origin,
+  dateIso,
+  timeRangeText,
+  venueId,
+  customVenueName = '',
+  customMapUrl = '',
+  courtType = 'indoor',
+  format = 'ja',
+}) {
+  const isOther =
+    venueId === OTHER_VENUE_OPTION || venueId === MANUAL_VENUE_ID;
+  const matchedVenue = isOther ? null : VENUE_BY_ID.get(venueId) || null;
+  const displayVenue = isOther
+    ? customVenueName.trim() || '未定'
+    : matchedVenue?.fullName || '未定';
+  const effectiveCourtType = isOther
+    ? normalizeCourtType(courtType, 'indoor')
+    : normalizeCourtType(matchedVenue?.courtType, courtType);
+
+  const [rawStart, rawEnd] = String(timeRangeText || '').split('-');
+  const startHour = parseHourValue(rawStart || '18:00');
+  const endHour = parseHourValue(rawEnd || '20:00');
+  const formattedTime =
+    `${formatHourSlot(startHour)}–${formatHourSlot(endHour)}`;
+
+  const dayMeta = getJstDayMeta(0);
+  const targetOffset = Math.round(
+    (new Date(`${dateIso}T00:00:00+09:00`).getTime() -
+      new Date(`${dayMeta.dateKey}T00:00:00+09:00`).getTime()) /
+      DAY_MS
+  );
+  const targetDay =
+    Number.isFinite(targetOffset) && targetOffset >= 0 && targetOffset < 28
+      ? getJstDayMeta(targetOffset)
+      : null;
+
+  const jpDateText = targetDay
+    ? `${targetDay.jpDate}(${targetDay.dow})`
+    : dateIso;
+  const enDateText = targetDay
+    ? `${targetDay.dow}, ${targetDay.shortDate}`
+    : dateIso;
+
+  const eventUrl = buildShortEventUrl({
+    origin,
+    dateIso,
+    startHour,
+    endHour,
+    venueId: isOther ? '' : matchedVenue?.id || '',
+    venueName: isOther ? customVenueName.trim() : '',
+    mapUrl: isOther ? customMapUrl.trim() : '',
+  });
+
+  const isOutdoor = effectiveCourtType === 'outdoor';
+  const shoesJa = isOutdoor
+    ? '屋外コートのためテニス・ハードコート用シューズ推奨'
+    : '室内専用シューズ必須';
+  const shoesEn = isOutdoor
+    ? 'Outdoor court — tennis/court shoes recommended'
+    : 'Indoor shoes required';
 
   if (format === 'en') {
-    const shoesEn =
-      courtType === 'outdoor'
-        ? 'Outdoor hard court — tennis/court shoes recommended'
-        : 'Indoor gym — indoor-only court shoes required';
-
     return [
-      '🏓 岡大dinks | Confirmed Session',
-      `📅 Date & Time: ${enDateLabel} · ${parsedTime.formattedRange}`,
-      `🏟 Venue: ${trimmedVenue}`,
-      `👟 Footwear: ${shoesEn}`,
-      '🗓 Calendar & Map 👇',
-      calendarLink,
+      '桃dinks | Session Confirmed',
+      `Date & Time: ${enDateText} · ${formattedTime}`,
+      `Venue: ${displayVenue}`,
+      `Shoes: ${shoesEn}`,
+      'Calendar & Map:',
+      eventUrl,
     ].join('\n');
   }
 
-  if (format === 'bilingual') {
-    const shoesBi =
-      courtType === 'outdoor'
-        ? '屋外コート用シューズ推奨 (Outdoor court shoes)'
-        : '室内専用シューズ必須 (Indoor shoes required)';
-
+  if (format === 'ja') {
     return [
-      '🏓 岡大dinks | 次回セッション確定案内 (Session Confirmed)',
-      `📅 日時 / Time: ${jpDateLabel} ${parsedTime.formattedRange}`,
-      `🏟 会場 / Venue: ${trimmedVenue}`,
-      `👟 シューズ / Shoes: ${shoesBi}`,
-      '🗓 カレンダー・地図 / Calendar & Map 👇',
-      calendarLink,
+      '桃dinks | 次回セッション確定案内',
+      `日時: ${jpDateText} ${formattedTime}`,
+      `会場: ${displayVenue}`,
+      `シューズ: ${shoesJa}`,
+      'カレンダー・地図:',
+      eventUrl,
     ].join('\n');
   }
-
-  const shoesJa =
-    courtType === 'outdoor'
-      ? '屋外コート用シューズ推奨'
-      : '室内専用シューズ必須';
 
   return [
-    '🏓 岡大dinks | 次回セッション確定案内',
-    `📅 日時: ${jpDateLabel} ${parsedTime.formattedRange}`,
-    `🏟 会場: ${trimmedVenue}`,
-    `👟 シューズ: ${shoesJa}`,
-    '🗓 カレンダー・地図はこちら 👇',
-    calendarLink,
+    '桃dinks | 次回セッション確定案内 (Session Confirmed)',
+    `日時 / Time: ${jpDateText} ${formattedTime}`,
+    `会場 / Venue: ${displayVenue}`,
+    `シューズ / Shoes: ${shoesJa} (${shoesEn})`,
+    'カレンダー・地図 / Calendar & Map:',
+    eventUrl,
   ].join('\n');
 }

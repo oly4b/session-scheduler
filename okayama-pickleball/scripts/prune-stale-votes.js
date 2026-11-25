@@ -1,9 +1,11 @@
 import { CONCURRENCY, runWithConcurrency } from './lib/scraper-utils.js';
 import { isSlotPastCurrentJst } from './lib/scraper-utils.js';
+import {
+  CHOICE_PRIORITY as RESPONSE_PRIORITY,
+  LEGACY_PREFIX,
+} from '../src/utils/scheduler.js';
 
 const PAGE_SIZE = 1000;
-const LEGACY_PREFIX = 'spacepad_1_3_';
-const RESPONSE_PRIORITY = { yes: 3, maybe: 2, no: 1 };
 
 /**
  * @typedef {import('@supabase/supabase-js').SupabaseClient} SupabaseClient
