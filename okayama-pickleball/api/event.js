@@ -446,7 +446,7 @@ export default function handler(req, res) {
 
   const originUrl = `https://${req.headers.host}`;
   const currentFullUrl = `${originUrl}${req.url}`;
-  const ogImageUrl = `${originUrl}/og-image.png`;
+  const ogImageUrl = `${originUrl}/og-image.png?v=2`;
   const pageDescription = descriptionLines.join(' · ');
 
   const downloadUrl = new URL(currentFullUrl);
