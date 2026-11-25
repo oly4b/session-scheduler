@@ -7,8 +7,10 @@ import {
   Info,
   Languages,
   MapPin,
+  Moon,
   RefreshCw,
   Share2,
+  Sun,
 } from 'lucide-react';
 import { VENUES } from './config/venues';
 import {
@@ -27,6 +29,7 @@ import { useSchedulerData } from './hooks/useSchedulerData';
 import { useBookingForm } from './hooks/useBookingForm';
 import { useVoterForm } from './hooks/useVoterForm';
 import { useLanguage } from './i18n/useLanguage';
+import { useTheme } from './hooks/useTheme';
 import { FloatingStepReminderBanner } from './components/calendar/FloatingStepReminderBanner';
 import { CalendarGrid } from './components/calendar/CalendarGrid';
 import { TopRecommendations } from './components/TopRecommendations';
@@ -60,8 +63,9 @@ function PickleballIcon() {
  * @returns {JSX.Element}
  */
 export default function App() {
-  // === 1. Localization & Clock ===
+  // === 1. Localization, Theme & Clock ===
   const { isJa, t, setLang } = useLanguage();
+  const { isDark, toggleTheme } = useTheme();
   const todayJstDateKey = useMemo(() => getTodayJstIsoDate(), []);
   const currentJstHour = useMemo(() => getCurrentJstHour(), []);
   const minTodayStartHour = useMemo(
@@ -239,7 +243,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#eef2f6] text-slate-900 pb-16 font-sans selection:bg-lime-300 selection:text-slate-950">
+    <div className="min-h-screen bg-[#eef2f6] dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-16 font-sans selection:bg-lime-300 selection:text-slate-950 transition-colors">
       {!voterForm.viewingVote && voterForm.hasSelectionProgress && (
         <FloatingStepReminderBanner
           message={voterForm.reminderMessage}
@@ -264,13 +268,13 @@ export default function App() {
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-2 py-0.5 rounded bg-lime-400 text-[#1B365D] text-[11px] font-extrabold tracking-tight whitespace-nowrap">
+                  <span className="px-2.5 py-0.5 rounded-full bg-lime-400 text-slate-950 text-[11px] font-extrabold tracking-tight whitespace-nowrap">
                     {t.badgeIntegrated(VENUES.length)}
                   </span>
                   {hasLiveAvailability ? (
                     <span
                       translate={isJa ? undefined : 'no'}
-                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-white/10 text-[10px] text-lime-200 font-semibold whitespace-nowrap"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/10 border border-white/10 text-[10px] text-lime-200 font-semibold whitespace-nowrap"
                     >
                       <RefreshCw className="w-2.5 h-2.5 shrink-0" />
                       <span>
@@ -279,14 +283,24 @@ export default function App() {
                       </span>
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-400/20 text-[10px] text-amber-200 font-semibold">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-400/20 border border-amber-300/20 text-[10px] text-amber-200 font-semibold">
                       {t.syncedWaiting}
                     </span>
                   )}
                 </div>
 
                 <h1 className="text-base sm:text-xl font-extrabold tracking-tight text-white mt-0.5">
-                  {t.appTitle}
+                  {t.appTitle.startsWith('桃dinks') ? (
+                    <>
+                      <span translate="no">
+                        <span className="text-[#FF8A80]">桃</span>
+                        <span className="text-white">dinks</span>
+                      </span>
+                      {t.appTitle.slice('桃dinks'.length)}
+                    </>
+                  ) : (
+                    t.appTitle
+                  )}
                 </h1>
 
                 <p className="text-[11px] sm:text-xs text-sky-200 flex items-center gap-1.5 mt-1">
@@ -305,16 +319,16 @@ export default function App() {
             <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
               <div
                 translate="no"
-                className="inline-flex rounded-xl bg-white/10 p-0.5 border border-white/20 text-xs font-extrabold whitespace-nowrap"
+                className="inline-flex rounded-full bg-slate-900/70 p-0.5 border border-white/10 text-xs font-bold whitespace-nowrap"
                 title="Synced with browser language; toggle JA or EN to override"
               >
                 <button
                   type="button"
                   onClick={() => setLang('ja')}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition cursor-pointer ${
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full transition-transform duration-150 ease-out active:scale-[0.97] cursor-pointer ${
                     isJa
-                      ? 'bg-lime-400 text-[#1B365D] shadow-xs'
-                      : 'text-sky-100 hover:text-white'
+                      ? 'bg-lime-400 text-slate-950 font-bold shadow-xs'
+                      : 'text-slate-300 hover:text-white'
                   }`}
                 >
                   <Languages className="w-3.5 h-3.5 shrink-0" />
@@ -323,10 +337,10 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setLang('en')}
-                  className={`px-2.5 py-1.5 rounded-lg transition cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-full transition-transform duration-150 ease-out active:scale-[0.97] cursor-pointer ${
                     !isJa
-                      ? 'bg-white text-[#1B365D] shadow-xs'
-                      : 'text-sky-100 hover:text-white'
+                      ? 'bg-lime-400 text-slate-950 font-bold shadow-xs'
+                      : 'text-slate-300 hover:text-white'
                   }`}
                 >
                   EN
@@ -335,8 +349,22 @@ export default function App() {
 
               <button
                 type="button"
+                onClick={toggleTheme}
+                aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                title={isDark ? 'Day mode' : 'Night mode'}
+                className="w-9 h-9 rounded-full bg-slate-800/80 border border-white/15 hover:border-white/30 text-lime-300 flex items-center justify-center transition-transform duration-150 ease-out active:scale-[0.97] cursor-pointer shrink-0"
+              >
+                {isDark ? (
+                  <Sun className="w-4 h-4 shrink-0" />
+                ) : (
+                  <Moon className="w-4 h-4 shrink-0" />
+                )}
+              </button>
+
+              <button
+                type="button"
                 onClick={bookingForm.handleOpenShareModal}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-lime-400 hover:bg-lime-300 active:scale-95 text-[#1B365D] text-xs sm:text-sm font-extrabold shadow transition cursor-pointer whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-lime-400 hover:bg-lime-300 text-slate-950 text-xs sm:text-sm font-semibold shadow transition-transform duration-150 ease-out active:scale-[0.97] cursor-pointer whitespace-nowrap"
               >
                 <Share2 className="w-4 h-4 shrink-0" />
                 <span>{t.shareToSns}</span>
@@ -348,8 +376,8 @@ export default function App() {
 
       <main className="max-w-6xl mx-auto px-2.5 sm:px-5 pt-4 space-y-4">
         {errorMsg && (
-          <div className="bg-rose-50 border border-rose-300 text-rose-800 px-4 py-3 rounded-xl flex items-center gap-2 text-xs sm:text-sm">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <div className="bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 px-4 py-3 rounded-xl flex items-center gap-2 text-xs sm:text-sm">
+            <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
             <span>{errorMsg}</span>
           </div>
         )}
@@ -432,18 +460,18 @@ export default function App() {
           />
         </div>
 
-        <footer className="bg-white border border-slate-200 rounded-2xl p-3.5 text-[11px] sm:text-xs text-slate-600 space-y-2.5">
+        <footer className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-3.5 text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 space-y-2.5">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="font-extrabold text-slate-800 inline-flex items-center gap-1.5 tabular-nums">
-                <Info className="w-4 h-4 text-[#1B365D] shrink-0" />
+              <span className="font-extrabold text-slate-800 dark:text-slate-100 inline-flex items-center gap-1.5 tabular-nums">
+                <Info className="w-4 h-4 text-[#1B365D] dark:text-lime-300 shrink-0" />
                 <span>{t.directoryTitle(VENUES.length)}</span>
               </span>
               <button
                 type="button"
                 onClick={() => setShowVenueList((prev) => !prev)}
                 aria-expanded={showVenueList}
-                className="tactile-press active:scale-[0.97] inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover-surface-slate-200 text-[#1B365D] font-extrabold text-xs border border-slate-300 cursor-pointer whitespace-nowrap"
+                className="transition-transform duration-150 ease-out active:scale-[0.97] inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover-surface-slate-200 text-[#1B365D] dark:text-lime-300 font-extrabold text-xs border border-slate-300 dark:border-slate-600 cursor-pointer whitespace-nowrap"
               >
                 <span>{showVenueList ? t.hideVenueList : t.showVenueList}</span>
                 <ChevronDown
@@ -461,14 +489,14 @@ export default function App() {
               {VENUES.map((v) => (
                 <div
                   key={v.id}
-                  className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
+                  className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2"
                 >
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span
                       className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold shrink-0 whitespace-nowrap ${
                         v.courtType === 'outdoor'
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-sky-100 text-sky-800'
+                          ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300'
+                          : 'bg-sky-100 dark:bg-sky-950/70 text-sky-800 dark:text-sky-300'
                       }`}
                     >
                       {v.courtType === 'outdoor'
@@ -479,7 +507,7 @@ export default function App() {
                       href={v.mapUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-bold text-slate-800 hover:text-[#1B365D] underline truncate"
+                      className="font-bold text-slate-800 dark:text-slate-100 no-underline hover:text-sky-600 dark:hover:text-lime-300 transition-colors truncate"
                     >
                       {v.fullName}
                     </a>
@@ -488,7 +516,7 @@ export default function App() {
                     href={v.bookingUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-0.5 text-[#1B365D] font-extrabold underline shrink-0 whitespace-nowrap"
+                    className="inline-flex items-center gap-0.5 text-[#1B365D] dark:text-lime-300 font-extrabold no-underline hover:opacity-80 transition-opacity shrink-0 whitespace-nowrap"
                   >
                     <span>{t.bookLink}</span>
                     <ExternalLink className="w-3 h-3 shrink-0" />

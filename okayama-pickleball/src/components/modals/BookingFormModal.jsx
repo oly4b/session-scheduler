@@ -21,7 +21,7 @@ export function BookingFormModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
         <div
           className={`px-4 py-3.5 text-white flex items-center justify-between gap-2 ${
             isEdit ? 'bg-[#1B365D]' : 'bg-emerald-900'
@@ -53,7 +53,7 @@ export function BookingFormModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer whitespace-nowrap"
+              className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-white/15 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-100 dark:hover:bg-slate-700/80 cursor-pointer whitespace-nowrap transition-transform duration-150 ease-out active:scale-[0.97]"
             >
               {t.cancelBtn}
             </button>

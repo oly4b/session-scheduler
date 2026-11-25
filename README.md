@@ -12,6 +12,7 @@ A real-time group scheduling web app for coordinating pickleball sessions across
 * **Independent-Date Top 5 Recommendations & Same-Day Alternatives:** Ranks the top 5 unbooked dates with at least **3 member votes** across continuous 2-hour blocks (automatically excluding dates that already have a confirmed booking), surfaces the top 3 recommended courts per slot, and lets users inspect the **2nd-best 2-hour option on that same day (`同日の第2候補`)**.
 * **Real-Time Group Voting, View/Edit Guardrails & Invite Sharing:** Players submit `◯` / `△` / `✕` availability and notes with live updates via Supabase Realtime, inspect responses in read-only mode (`閲覧モード`), edit existing responses via a voter picker, and generate `JA` / `EN` / bilingual SNS invites with `/api/event` `.ics` calendar & map links (plus an in-app browser gate for LINE/Instagram).
 * **JST Time-Aware Scraping & Vote Pruning:** Headless Playwright scrapers sync both `yoyacool` and `Spacepad` via GitHub Actions while skipping already-passed hours on the current JST date (`isSlotPastCurrentJst`), followed by `run-prune-votes.js` (`prune-stale-votes.js`) to clean up stale or booked-out poll slots and voters with zero remaining active votes.
+* **System-Synced Day / Night Mode:** Defaults to the device/browser `prefers-color-scheme` (`useTheme.js`), tracks OS theme changes until overridden by the header toggle (persisted in `localStorage` under `momodinks_theme`), prevents load flashes via an inline `<head>` boot script in `index.html`, and styles `/api/event` share pages with `@media (prefers-color-scheme: dark)`.
 
 ---
 
@@ -57,6 +58,7 @@ okayama-pickleball/
 │   ├── hooks/
 │   │   ├── useBookingForm.js       # Confirmed-session booking, share invite & unmark state/handlers
 │   │   ├── useSchedulerData.js     # Initial fetch & Supabase Realtime subscription lifecycle
+│   │   ├── useTheme.js             # System color-scheme detection, OS listener & localStorage theme toggle
 │   │   └── useVoterForm.js         # Voter form, view/edit mode, day/week presets & vote mutations
 │   ├── i18n/
 │   │   ├── copy.js                 # Bilingual (EN / JA) UI dictionary

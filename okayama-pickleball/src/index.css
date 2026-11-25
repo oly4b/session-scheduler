@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Enable class-based `.dark` toggling on <html> instead of media-query-only dark mode */
+@custom-variant dark (&:where(.dark, .dark *));
 
 .tactile-press {
   transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1),
@@ -33,5 +35,23 @@
   }
   .priority-cell:hover .priority-cell-hover-layer {
     background-color: rgb(99 102 241 / 0.12);
+  }
+  .dark .slot-cell-hover:hover {
+    background-color: var(--slot-hover-bg-dark, rgb(30 41 59));
+  }
+  .dark .hover-surface-sky:hover {
+    background-color: rgb(12 74 110 / 0.35);
+  }
+  .dark .hover-surface-slate:hover {
+    background-color: rgb(30 41 59);
+  }
+  .dark .hover-surface-emerald:hover {
+    background-color: rgb(6 78 59 / 0.35);
+  }
+  .dark .hover-surface-slate-200:hover {
+    background-color: rgb(51 65 85);
+  }
+  .dark .priority-cell:hover .priority-cell-hover-layer {
+    background-color: rgb(129 140 248 / 0.18);
   }
 }

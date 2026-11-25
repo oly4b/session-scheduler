@@ -26,16 +26,18 @@ export function DayVotingRow({
 }) {
   const dateTextColor =
     day.dayType === 'saturday'
-      ? 'text-blue-700'
+      ? 'text-blue-700 dark:text-blue-300'
       : day.dayType === 'sunday' || day.dayType === 'holiday'
-        ? 'text-red-600'
-        : 'text-slate-900';
+        ? 'text-red-600 dark:text-rose-400'
+        : 'text-slate-900 dark:text-slate-100';
+  // Keep sticky Date / Day cell backgrounds 100% opaque in both themes so
+  // horizontally scrolling circles slide cleanly behind the pinned column.
   const dateBgColor =
     day.dayType === 'saturday'
-      ? 'bg-[#EFF5FF]'
+      ? 'bg-[#EFF5FF] dark:bg-[#0f1f3d]'
       : day.dayType === 'sunday' || day.dayType === 'holiday'
-        ? 'bg-[#FFF5F5]'
-        : 'bg-white';
+        ? 'bg-[#FFF5F5] dark:bg-[#2a1216]'
+        : 'bg-white dark:bg-slate-900';
   const activeWindowMode = dayWindowByDate[day.dateKey] || null;
   const isFullyClosedDay =
     day.allBooked &&
@@ -46,14 +48,14 @@ export function DayVotingRow({
   const dayLabel = formatDayLabel(day, isJa);
 
   return (
-    <tr className="h-[96px] divide-x divide-slate-200">
+    <tr className="h-[96px] divide-x divide-slate-200 dark:divide-slate-700/80">
       <td
-        className={`sticky left-0 z-20 ${dateBgColor} h-[96px] px-2 py-1.5 text-left border-r border-slate-200 shadow-[4px_0_8px_-4px_rgba(15,23,42,0.08)] align-middle`}
+        className={`sticky left-0 z-20 ${dateBgColor} h-[96px] px-2 py-1.5 text-left border-r border-slate-200 dark:border-slate-700 shadow-[4px_0_8px_-4px_rgba(15,23,42,0.08)] align-middle`}
       >
         <div className="flex items-center gap-1 flex-wrap">
           <span
             translate={isJa ? undefined : 'no'}
-            className={`text-sm sm:text-base font-extrabold underline decoration-slate-300 whitespace-nowrap tabular-nums ${dateTextColor}`}
+            className={`text-sm sm:text-base font-extrabold whitespace-nowrap tabular-nums ${dateTextColor}`}
           >
             {dayLabel}
           </span>
@@ -74,7 +76,7 @@ export function DayVotingRow({
           <div
             role="group"
             aria-label={`${dayLabel} ${t.dateColHeader}`}
-            className="mt-1 inline-flex rounded-lg bg-white/95 border border-slate-300 divide-x divide-slate-300 text-[10px] font-extrabold overflow-hidden"
+            className="mt-1 inline-flex rounded-lg bg-white/95 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 divide-x divide-slate-300 dark:divide-slate-600 text-[10px] font-extrabold overflow-hidden"
           >
             {[
               { id: 'all', label: t.dayAllFree },
@@ -103,7 +105,7 @@ export function DayVotingRow({
                   } ${
                     activeWindowMode === opt.id
                       ? 'bg-[#1B365D] text-lime-300'
-                      : 'text-slate-600'
+                      : 'text-slate-600 dark:text-slate-300'
                   }`}
                 >
                   {opt.label}
@@ -118,9 +120,9 @@ export function DayVotingRow({
         <td
           colSpan={TIME_BLOCKS.length}
           title={t.closedTitle}
-          className="h-[96px] bg-slate-100/75 px-4 align-middle text-left select-none cursor-not-allowed"
+          className="h-[96px] bg-slate-100/75 dark:bg-slate-900/70 px-4 align-middle text-left select-none cursor-not-allowed"
         >
-          <div className="inline-flex items-center gap-2 text-xs font-semibold text-slate-400">
+          <div className="inline-flex items-center gap-2 text-xs font-semibold text-slate-400 dark:text-slate-500">
             <span translate="no">—</span>
             <span>{t.closedDayRow}</span>
           </div>
@@ -136,10 +138,12 @@ export function DayVotingRow({
                 key={block.id}
                 title={isBooked ? t.bookedTitle : t.closedTitle}
                 className={`${
-                  isBooked ? 'bg-slate-100/75' : 'bg-slate-100/90'
+                  isBooked
+                    ? 'bg-slate-100/75 dark:bg-slate-900/75'
+                    : 'bg-slate-100/90 dark:bg-slate-900/90'
                 } h-[96px] px-0.5 align-middle select-none cursor-not-allowed`}
               >
-                <div className="h-full flex flex-col items-center justify-center gap-0.5 max-w-[74px] mx-auto leading-tight text-slate-400">
+                <div className="h-full flex flex-col items-center justify-center gap-0.5 max-w-[74px] mx-auto leading-tight text-slate-400 dark:text-slate-500">
                   <span
                     translate="no"
                     className="text-xs font-extrabold leading-none"
@@ -166,9 +170,9 @@ export function DayVotingRow({
                 key={block.id}
                 onClick={() => onCycleSlot(slotKey)}
                 title={t.no2hTitle}
-                className="bg-slate-200/70 h-[96px] px-0.5 align-middle select-none cursor-not-allowed"
+                className="bg-slate-200/70 dark:bg-slate-800/70 h-[96px] px-0.5 align-middle select-none cursor-not-allowed"
               >
-                <div className="h-full flex flex-col items-center justify-center gap-0.5 text-slate-500 max-w-[74px] mx-auto leading-tight">
+                <div className="h-full flex flex-col items-center justify-center gap-0.5 text-slate-500 dark:text-slate-400 max-w-[74px] mx-auto leading-tight">
                   <span
                     translate="no"
                     className="text-xs font-extrabold leading-none"
@@ -204,25 +208,32 @@ export function DayVotingRow({
           let cellBg = isPriorityCapsule
             ? ''
             : block.isStudentPrime
-              ? 'bg-amber-50/45 [--slot-hover-bg:rgb(254_243_199_/_0.8)]'
-              : 'bg-white [--slot-hover-bg:rgb(240_249_255)]';
+              ? 'bg-amber-50/45 dark:bg-amber-400/[0.06] [--slot-hover-bg:rgb(254_243_199_/_0.8)] [--slot-hover-bg-dark:rgb(251_191_36_/_0.14)]'
+              : 'bg-white dark:bg-slate-900 [--slot-hover-bg:rgb(240_249_255)] [--slot-hover-bg-dark:rgb(30_41_59)]';
 
           if (!isPriorityCapsule && showTallyDetails) {
             if (tally.yesCount >= 6) {
-              cellBg = 'bg-emerald-200/90 [--slot-hover-bg:rgb(167_243_208)]';
+              cellBg =
+                'bg-emerald-200/90 dark:bg-emerald-900/60 [--slot-hover-bg:rgb(167_243_208)] [--slot-hover-bg-dark:rgb(6_95_70_/_0.75)]';
             } else if (tally.yesCount >= 3) {
-              cellBg = 'bg-emerald-100/80 [--slot-hover-bg:rgb(209_250_229)]';
+              cellBg =
+                'bg-emerald-100/80 dark:bg-emerald-950/60 [--slot-hover-bg:rgb(209_250_229)] [--slot-hover-bg-dark:rgb(6_78_59_/_0.7)]';
             } else if (tally.yesCount >= 1) {
-              cellBg = 'bg-lime-50 [--slot-hover-bg:rgb(236_252_203)]';
+              cellBg =
+                'bg-lime-50 dark:bg-lime-950/35 [--slot-hover-bg:rgb(236_252_203)] [--slot-hover-bg-dark:rgb(54_83_20_/_0.5)]';
             } else {
-              cellBg = 'bg-slate-50/70 [--slot-hover-bg:rgb(241_245_249)]';
+              cellBg =
+                'bg-slate-50/70 dark:bg-slate-900/60 [--slot-hover-bg:rgb(241_245_249)] [--slot-hover-bg-dark:rgb(30_41_59)]';
             }
           } else if (!isPriorityCapsule && activeChoice === 'yes') {
-            cellBg = 'bg-emerald-50/90 [--slot-hover-bg:rgb(209_250_229_/_0.8)]';
+            cellBg =
+              'bg-emerald-50/90 dark:bg-emerald-950/50 [--slot-hover-bg:rgb(209_250_229_/_0.8)] [--slot-hover-bg-dark:rgb(6_78_59_/_0.65)]';
           } else if (!isPriorityCapsule && activeChoice === 'maybe') {
-            cellBg = 'bg-amber-50/90 [--slot-hover-bg:rgb(254_243_199_/_0.8)]';
+            cellBg =
+              'bg-amber-50/90 dark:bg-amber-950/45 [--slot-hover-bg:rgb(254_243_199_/_0.8)] [--slot-hover-bg-dark:rgb(120_53_15_/_0.6)]';
           } else if (!isPriorityCapsule && activeChoice === 'no') {
-            cellBg = 'bg-rose-50/80 [--slot-hover-bg:rgb(255_228_230_/_0.7)]';
+            cellBg =
+              'bg-rose-50/80 dark:bg-rose-950/45 [--slot-hover-bg:rgb(255_228_230_/_0.7)] [--slot-hover-bg-dark:rgb(136_19_55_/_0.55)]';
           }
 
           const topPickRing =
@@ -240,7 +251,7 @@ export function DayVotingRow({
               {isPriorityStart && (
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none absolute top-[3px] bottom-[3px] left-[3px] w-[calc(200%-6px)] rounded-lg border-[1.5px] border-indigo-400/90 bg-indigo-500/[0.06] z-[5]"
+                  className="pointer-events-none absolute top-[3px] bottom-[3px] left-[3px] w-[calc(200%-6px)] rounded-lg border-[1.5px] border-indigo-400/90 bg-indigo-500/[0.06] dark:bg-indigo-400/[0.10] z-[5]"
                 />
               )}
               {isPriorityCapsule && (
@@ -284,8 +295,8 @@ export function DayVotingRow({
                       <div
                         className={`text-xs sm:text-sm tabular-nums ${
                           tally.yesCount >= 1
-                            ? 'font-semibold text-[#1B365D]'
-                            : 'opacity-30 font-normal text-slate-500'
+                            ? 'font-semibold text-[#1B365D] dark:text-lime-300'
+                            : 'opacity-30 font-normal text-slate-500 dark:text-slate-400'
                         }`}
                       >
                         ◯ {tally.yesCount}
@@ -293,8 +304,8 @@ export function DayVotingRow({
                       <div
                         className={`text-xs sm:text-sm tabular-nums ${
                           tally.maybeCount >= 1
-                            ? 'font-semibold text-amber-700'
-                            : 'opacity-30 font-normal text-slate-500'
+                            ? 'font-semibold text-amber-700 dark:text-amber-300'
+                            : 'opacity-30 font-normal text-slate-500 dark:text-slate-400'
                         }`}
                       >
                         △ {tally.maybeCount}
@@ -317,7 +328,7 @@ export function DayVotingRow({
                   <button
                     type="button"
                     onClick={() => onInspectSlot(tally)}
-                    className="relative z-10 tactile-press active:scale-[0.97] w-full py-0.5 px-1.5 rounded-md bg-white/85 hover:bg-[#1B365D] hover:text-white text-[10px] sm:text-[11px] font-bold text-slate-600 flex items-center justify-center gap-1 border border-slate-200/90 cursor-pointer whitespace-nowrap"
+                    className="relative z-10 tactile-press active:scale-[0.97] w-full py-0.5 px-1.5 rounded-md bg-white/85 dark:bg-slate-800/90 hover:bg-[#1B365D] hover:text-white text-[10px] sm:text-[11px] font-bold text-slate-600 dark:text-slate-200 flex items-center justify-center gap-1 border border-slate-200/90 dark:border-slate-600 cursor-pointer whitespace-nowrap"
                     title={cellData.summaryText}
                   >
                     <span>{t.detailsLabel}</span>

@@ -14,7 +14,7 @@ export function VoterList({
   onSelectVoterToView,
 }) {
   return (
-    <section className="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+    <section className="lg:col-span-5 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col">
       <div className="px-4 py-3 bg-[#264673] text-white flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <MessageSquare className="w-4 h-4 text-lime-300 shrink-0" />
@@ -35,7 +35,7 @@ export function VoterList({
 
       <div
         className={`p-3.5 space-y-2.5 max-h-[430px] overflow-y-auto flex-1 transition ${
-          isNotesLockedForEdit ? 'bg-slate-100/70' : ''
+          isNotesLockedForEdit ? 'bg-slate-100/70 dark:bg-slate-800/40' : ''
         }`}
       >
         {!activeVotes.length ? (
@@ -60,20 +60,20 @@ export function VoterList({
                     onClick={() => onSelectVoterToView(v)}
                     className={`tactile-press w-full p-2.5 rounded-xl border flex items-start justify-between gap-2 text-left ${
                       isNotesLockedForEdit
-                        ? 'bg-slate-100/90 border-slate-200/80 opacity-60 cursor-not-allowed'
+                        ? 'bg-slate-100/90 dark:bg-slate-800/60 border-slate-200/80 dark:border-slate-700 opacity-60 cursor-not-allowed'
                         : isSelected
-                          ? 'active:scale-[0.97] bg-sky-50 border-sky-500 ring-2 ring-sky-400/40 cursor-pointer'
-                          : 'active:scale-[0.97] bg-slate-50 hover-surface-sky border-slate-200 cursor-pointer'
+                          ? 'active:scale-[0.97] bg-sky-50 dark:bg-sky-950/50 border-sky-500 ring-2 ring-sky-400/40 cursor-pointer'
+                          : 'active:scale-[0.97] bg-slate-50 dark:bg-slate-800/75 hover-surface-sky border-slate-200 dark:border-slate-700 cursor-pointer'
                     }`}
                   >
                     <div className="min-w-0">
                       <div
                         translate="no"
-                        className="text-xs font-extrabold text-[#1B365D]"
+                        className="text-xs font-extrabold text-[#1B365D] dark:text-sky-300"
                       >
                         {v.name}
                       </div>
-                      <p className="text-xs text-slate-600 mt-0.5 break-words">
+                      <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 break-words">
                         {v.note}
                       </p>
                     </div>
@@ -95,7 +95,7 @@ export function VoterList({
               <div
                 className={
                   activeVotes.some((v) => Boolean(String(v.note || '').trim()))
-                    ? 'pt-2 border-t border-slate-200/80'
+                    ? 'pt-2 border-t border-slate-200/80 dark:border-slate-700'
                     : ''
                 }
               >
@@ -117,18 +117,20 @@ export function VoterList({
                           aria-pressed={isSelected}
                           title={previewTitle}
                           onClick={() => onSelectVoterToView(v)}
-                          className={`tactile-press inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-bold ${
+                          className={`transition-transform duration-150 ease-out inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-bold ${
                             isNotesLockedForEdit
-                              ? 'bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed'
+                              ? 'bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-white/10 text-slate-400 opacity-60 cursor-not-allowed'
                               : isSelected
-                                ? 'active:scale-[0.97] bg-sky-100 border-sky-500 text-sky-950 ring-2 ring-sky-400/40 cursor-pointer'
-                                : 'active:scale-[0.97] bg-slate-50 hover-surface-sky border-slate-200 text-[#1B365D] cursor-pointer'
+                                ? 'active:scale-[0.97] bg-sky-100 border-sky-500 text-sky-950 ring-2 ring-sky-400/40 dark:bg-lime-400/15 dark:border-lime-400/60 dark:text-lime-300 dark:ring-lime-400/30 cursor-pointer'
+                                : 'active:scale-[0.97] bg-slate-50 hover:bg-sky-50 border-slate-200 text-[#1B365D] dark:bg-slate-800/80 dark:border-white/15 dark:text-slate-100 dark:hover:bg-slate-700/80 dark:hover:border-white/30 cursor-pointer'
                           }`}
                         >
                           <span translate="no">{v.name}</span>
                           <Eye
                             className={`w-3 h-3 shrink-0 ${
-                              isSelected ? 'text-sky-700' : 'text-slate-400'
+                              isSelected
+                                ? 'text-sky-700 dark:text-lime-300'
+                                : 'text-slate-400 dark:text-slate-400'
                             }`}
                           />
                         </button>
@@ -142,7 +144,7 @@ export function VoterList({
       </div>
 
       {activeVotes.length > 0 && !isNotesLockedForEdit && (
-        <div className="px-3.5 py-2 border-t border-slate-200/80 bg-slate-50/70 text-[11px] text-slate-500 flex items-center gap-1.5">
+        <div className="px-3.5 py-2 border-t border-slate-200/80 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
           <Eye className="w-3 h-3 text-slate-400 shrink-0" />
           <span>{t.notesTapHint}</span>
         </div>

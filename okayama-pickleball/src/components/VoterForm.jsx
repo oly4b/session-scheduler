@@ -35,10 +35,10 @@ export function VoterForm({
       ref={voterBarRef}
       className={`rounded-2xl shadow-sm border-2 transition overflow-hidden ${
         editingVoteId
-          ? 'bg-amber-50/90 border-amber-400'
+          ? 'bg-amber-50/90 dark:bg-amber-950/35 border-amber-400'
           : viewingVote
-            ? 'bg-sky-50/90 border-sky-400'
-            : 'bg-white border-[#1B365D]/20'
+            ? 'bg-sky-50/90 dark:bg-sky-950/35 border-sky-400'
+            : 'bg-white dark:bg-slate-900 border-[#1B365D]/20 dark:border-slate-700'
       }`}
     >
       <div
@@ -96,8 +96,8 @@ export function VoterForm({
       <form onSubmit={onSubmit} className="p-3.5 sm:p-4">
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
           <div className="sm:col-span-4">
-            <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
-              {t.nameLabel} <span className="text-rose-600">*</span>
+            <label className="block text-[11px] font-extrabold text-slate-600 dark:text-slate-300 mb-1">
+              {t.nameLabel} <span className="text-rose-600 dark:text-rose-400">*</span>
             </label>
             <input
               type="text"
@@ -111,12 +111,12 @@ export function VoterForm({
               }}
               onBlur={(e) => setVoterName(e.target.value.trim())}
               placeholder={t.namePlaceholder}
-              className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:border-[#1B365D] focus:ring-2 focus:ring-[#1B365D]/20 outline-none text-sm font-bold"
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-[#1B365D] dark:focus:border-lime-400 focus:ring-2 focus:ring-[#1B365D]/20 dark:focus:ring-lime-400/20 outline-none text-sm font-bold"
             />
           </div>
 
           <div className="sm:col-span-5">
-            <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
+            <label className="block text-[11px] font-extrabold text-slate-600 dark:text-slate-300 mb-1">
               {t.noteLabel}
             </label>
             <input
@@ -127,7 +127,7 @@ export function VoterForm({
                 setVoterNote(e.target.value);
               }}
               placeholder={t.notePlaceholder}
-              className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:border-[#1B365D] focus:ring-2 focus:ring-[#1B365D]/20 outline-none text-sm"
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-[#1B365D] dark:focus:border-lime-400 focus:ring-2 focus:ring-[#1B365D]/20 dark:focus:ring-lime-400/20 outline-none text-sm"
             />
           </div>
 
@@ -136,7 +136,7 @@ export function VoterForm({
               <button
                 type="button"
                 onClick={onOpenEditPicker}
-                className="tactile-press active:scale-[0.97] w-full py-2.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs sm:text-sm shadow border border-amber-500 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                className="transition-transform duration-150 ease-out active:scale-[0.97] w-full py-2.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs sm:text-sm shadow border border-amber-500 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
               >
                 <UserCheck className="w-4 h-4 shrink-0" />
                 <span>{t.editExistingBtn}</span>
@@ -145,7 +145,7 @@ export function VoterForm({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="tactile-press active:scale-[0.97] w-full py-2.5 px-4 rounded-xl bg-[#1B365D] hover:bg-[#274b7d] text-lime-300 font-extrabold text-xs sm:text-sm shadow flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                className="transition-transform duration-150 ease-out active:scale-[0.97] w-full py-2.5 px-4 rounded-xl bg-[#1B365D] hover:bg-[#274b7d] text-lime-300 font-extrabold text-xs sm:text-sm shadow flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
               >
                 <Check className="w-4 h-4 shrink-0" />
                 <span>

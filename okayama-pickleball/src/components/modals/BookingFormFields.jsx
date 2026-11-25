@@ -39,9 +39,9 @@ export function BookingFormFields({
   t,
 }) {
   return (
-    <div className="space-y-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden">
+    <div className="space-y-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 overflow-hidden">
       <div className="min-w-0 overflow-hidden">
-        <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
+        <label className="block text-[11px] font-extrabold text-slate-600 dark:text-slate-300 mb-1">
           {isJa ? '日付' : 'Date'}
         </label>
         <input
@@ -50,7 +50,7 @@ export function BookingFormFields({
           min={enforcePastTimeGuard ? todayJstDateKey : undefined}
           disabled={lockDateField}
           onChange={(e) => onBookingDateChange(e.target.value)}
-          className="block w-full max-w-full min-w-0 box-border px-2.5 py-2 rounded-lg border border-slate-300 bg-white disabled:bg-slate-100 font-bold text-slate-800 text-xs appearance-none"
+          className="block w-full max-w-full min-w-0 box-border px-2.5 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 disabled:bg-slate-100 dark:disabled:bg-slate-800 font-bold text-slate-800 dark:text-slate-100 text-xs appearance-none"
         />
         {enforcePastTimeGuard && isSelectedDateClosedForNew && (
           <p className="mt-1 text-[11px] font-bold text-rose-700">
@@ -65,7 +65,7 @@ export function BookingFormFields({
       </div>
 
       <div className="min-w-0">
-        <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
+        <label className="block text-[11px] font-extrabold text-slate-600 dark:text-slate-300 mb-1">
           {isJa ? '時間' : 'Time'}
         </label>
         <div className="flex items-center gap-1.5 min-w-0">
@@ -74,7 +74,7 @@ export function BookingFormFields({
             value={selectedStartHour || '17:00'}
             onChange={(e) => onStartTimeChange(e.target.value)}
             translate="no"
-            className="flex-1 min-w-0 px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs cursor-pointer"
+            className="flex-1 min-w-0 px-2.5 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-100 text-xs cursor-pointer"
           >
             {START_HOUR_OPTIONS.map((slot) => {
               const slotHour = parseHourValue(slot);
@@ -104,7 +104,7 @@ export function BookingFormFields({
             value={selectedEndHour || '19:00'}
             onChange={(e) => onEndTimeChange(e.target.value)}
             translate="no"
-            className="flex-1 min-w-0 px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs cursor-pointer"
+            className="flex-1 min-w-0 px-2.5 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-100 text-xs cursor-pointer"
           >
             {END_HOUR_OPTIONS.map((slot) => (
               <option
@@ -122,7 +122,7 @@ export function BookingFormFields({
       <div className="min-w-0">
         <label
           htmlFor="confirmed-venue-select"
-          className="block text-[11px] font-extrabold text-slate-600 mb-1"
+          className="block text-[11px] font-extrabold text-slate-600 dark:text-slate-300 mb-1"
         >
           {isJa ? '会場' : 'Venue'}
         </label>
@@ -131,7 +131,7 @@ export function BookingFormFields({
             id="confirmed-venue-select"
             value={selectedBookingVenueId}
             onChange={(e) => onBookingVenueSelect(e.target.value)}
-            className="w-full appearance-none box-border px-3 py-2 pr-8 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs cursor-pointer"
+            className="w-full appearance-none box-border px-3 py-2 pr-8 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-100 text-xs cursor-pointer"
           >
             {includePlaceholderOption && (
               <option value="">{t.selectVenuePlaceholder}</option>
@@ -154,7 +154,7 @@ export function BookingFormFields({
       {isOtherVenue && (
         <>
           <div className="min-w-0">
-            <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
+            <label className="block text-[11px] font-extrabold text-slate-600 dark:text-slate-300 mb-1">
               {t.customVenueLabel}
             </label>
             <input
@@ -165,12 +165,12 @@ export function BookingFormFields({
                 setCustomBookingVenue(e.target.value);
               }}
               placeholder={t.customVenuePlaceholder}
-              className="w-full min-w-0 box-border px-3 py-2 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs"
+              className="w-full min-w-0 box-border px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-100 text-xs"
             />
           </div>
 
           <div className="min-w-0">
-            <label className="block text-[11px] font-extrabold text-slate-600 mb-1">
+            <label className="block text-[11px] font-extrabold text-slate-600 dark:text-slate-300 mb-1">
               {t.customMapLabel}
             </label>
             <input
@@ -181,12 +181,12 @@ export function BookingFormFields({
                 setCustomBookingMapUrl(e.target.value);
               }}
               placeholder="https://maps.google.com/?q=..."
-              className="w-full min-w-0 box-border px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs"
+              className="w-full min-w-0 box-border px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-xs"
             />
           </div>
 
           <div className="flex items-center justify-start pt-1">
-            <div className="inline-flex rounded-lg bg-white p-0.5 border border-slate-300 font-extrabold text-[11px] shrink-0">
+            <div className="inline-flex rounded-lg bg-white dark:bg-slate-900 p-0.5 border border-slate-300 dark:border-slate-600 font-extrabold text-[11px] shrink-0">
               <button
                 type="button"
                 onClick={() => {
@@ -195,8 +195,8 @@ export function BookingFormFields({
                 }}
                 className={`px-2.5 py-1 rounded cursor-pointer ${
                   bookingCourtType === 'indoor'
-                    ? 'bg-sky-100 text-sky-900'
-                    : 'text-slate-500'
+                    ? 'bg-sky-100 dark:bg-sky-500/20 text-sky-900 dark:text-sky-300'
+                    : 'text-slate-500 dark:text-slate-400'
                 }`}
               >
                 {isJa ? '屋内' : 'Indoor'}
@@ -209,8 +209,8 @@ export function BookingFormFields({
                 }}
                 className={`px-2.5 py-1 rounded cursor-pointer ${
                   bookingCourtType === 'outdoor'
-                    ? 'bg-amber-100 text-amber-900'
-                    : 'text-slate-500'
+                    ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-900 dark:text-amber-300'
+                    : 'text-slate-500 dark:text-slate-400'
                 }`}
               >
                 {isJa ? '屋外' : 'Outdoor'}
