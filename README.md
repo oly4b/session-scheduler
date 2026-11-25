@@ -44,7 +44,7 @@ okayama-pickleball/
 │   └── scrape-yoyacool.js          # Playwright scraper for Okayama City yoyacool venues
 ├── src/
 │   ├── components/
-│   │   ├── calendar/               # CalendarGrid, BookedSessionFullRowCard, NoBookingsTodayRowCard, SlotChoiceCircle, FloatingStepReminderBanner
+│   │   ├── calendar/               # CalendarGrid, DayVotingRow, BookedSessionFullRowCard, NoBookingsTodayRowCard, SlotChoiceCircle, FloatingStepReminderBanner
 │   │   ├── modals/                 # Booking, BookingFormFields, Share, SlotInspect, GoingTally, EditPicker, ConfirmKeyword
 │   │   ├── TopRecommendations.jsx  # Top 5 ranked 2h blocks panel
 │   │   ├── VoterForm.jsx           # Voter name/note submission & edit/delete bar
