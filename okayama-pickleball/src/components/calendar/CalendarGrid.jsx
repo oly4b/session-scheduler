@@ -225,7 +225,7 @@ export function CalendarGrid({
                   );
                   if (chosen) onSelectVoterToView(chosen);
                 }}
-                className="appearance-none px-3 py-1.5 pr-8 rounded-lg bg-white dark:bg-slate-900 disabled:opacity-50 border border-slate-300 dark:border-slate-600 text-xs font-extrabold text-[#1B365D] dark:text-slate-100 focus:border-[#1B365D] dark:focus:border-lime-400 outline-none cursor-pointer max-w-[200px]"
+                className="appearance-none px-3 py-1.5 pr-8 rounded-lg bg-white dark:bg-slate-900 disabled:opacity-50 border border-slate-300 dark:border-slate-600 text-xs font-extrabold text-[#1B365D] dark:text-slate-100 focus:border-[#1B365D] dark:focus:border-lime-400 outline-none cursor-pointer max-w-50"
               >
                 <option value="">
                   {activeVotes.length ? t.viewPlayerPlaceholder : t.noVotesYet}
@@ -313,16 +313,16 @@ export function CalendarGrid({
               {/* Sticky column z-index hierarchy:
                   z-30 sticky header > z-20 opaque date cells > z-10 interactive buttons
                   > z-[6] 2h capsule cell-hover > z-[5] 2h spanning capsule */}
-              <th className="sticky left-0 z-30 bg-[#dce5f0] dark:bg-slate-800 py-2.5 px-2 min-w-[116px] sm:min-w-[140px] text-left text-xs font-extrabold text-[#1B365D] dark:text-slate-100 border-r border-slate-300 dark:border-slate-700 shadow-[4px_0_8px_-4px_rgba(15,23,42,0.08)] whitespace-nowrap">
+              <th className="sticky left-0 z-30 bg-[#dce5f0] dark:bg-slate-800 py-2.5 px-2 min-w-29 sm:min-w-35 text-left text-xs font-extrabold text-[#1B365D] dark:text-slate-100 border-r border-slate-300 dark:border-slate-700 shadow-[4px_0_8px_-4px_rgba(15,23,42,0.08)] whitespace-nowrap">
                 {t.dateColHeader}
               </th>
               {TIME_BLOCKS.map((block) => (
                 <th
                   key={block.id}
                   title={block.label}
-                  className={`py-2.5 px-1 min-w-[54px] sm:min-w-[78px] border-r border-slate-300 dark:border-slate-700 last:border-r-0 transition ${
+                  className={`py-2.5 px-1 min-w-13.5 sm:min-w-19.5 border-r border-slate-300 dark:border-slate-700 last:border-r-0 transition ${
                     block.isStudentPrime
-                      ? 'bg-amber-100/90 dark:bg-amber-400/[0.06] border-b-2 border-b-amber-400 dark:border-b-amber-400/60'
+                      ? 'bg-amber-100/90 dark:bg-amber-400/6 border-b-2 border-b-amber-400 dark:border-b-amber-400/60'
                       : ''
                   }`}
                 >

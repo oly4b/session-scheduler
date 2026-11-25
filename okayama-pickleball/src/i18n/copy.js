@@ -74,7 +74,7 @@ export const COPY = {
     closedDayRow: 'Closed — No available slots',
     notesTapHint: 'Tap a player to highlight their votes',
     legendHint:
-      '※ Switch to "Group Tally" and tap "Details" for top venues & voters',
+      'Tap "Details" for top venues & voters',
     dateColHeader: 'Date / Day',
     allBookedDay: 'No slots',
     bookedTitle: 'All matching venues are booked (Full)',
@@ -244,7 +244,7 @@ export const COPY = {
     closedDayRow: '休場・空き枠なし',
     notesTapHint: 'メンバーをタップで投票を表示',
     legendHint:
-      '※ 「みんなの集計」の「詳細」タップでおすすめ予約候補と投票メンバーを表示',
+      '「詳細」タップでおすすめ予約候補と投票メンバーを表示',
     dateColHeader: '日付 / 曜日',
     allBookedDay: '空きなし',
     bookedTitle: '対象施設はすべて予約済み（満員）です',

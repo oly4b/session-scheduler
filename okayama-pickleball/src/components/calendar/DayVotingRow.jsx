@@ -48,9 +48,9 @@ export function DayVotingRow({
   const dayLabel = formatDayLabel(day, isJa);
 
   return (
-    <tr className="h-[96px] divide-x divide-slate-200 dark:divide-slate-700/80">
+    <tr className="h-24 divide-x divide-slate-200 dark:divide-slate-700/80">
       <td
-        className={`sticky left-0 z-20 ${dateBgColor} h-[96px] px-2 py-1.5 text-left border-r border-slate-200 dark:border-slate-700 shadow-[4px_0_8px_-4px_rgba(15,23,42,0.08)] align-middle`}
+        className={`sticky left-0 z-20 ${dateBgColor} h-24 px-2 py-1.5 text-left border-r border-slate-200 dark:border-slate-700 shadow-[4px_0_8px_-4px_rgba(15,23,42,0.08)] align-middle`}
       >
         <div className="flex items-center gap-1 flex-wrap">
           <span
@@ -120,7 +120,7 @@ export function DayVotingRow({
         <td
           colSpan={TIME_BLOCKS.length}
           title={t.closedTitle}
-          className="h-[96px] bg-slate-100/75 dark:bg-slate-900/70 px-4 align-middle text-left select-none cursor-not-allowed"
+          className="h-24 bg-slate-100/75 dark:bg-slate-900/70 px-4 align-middle text-left select-none cursor-not-allowed"
         >
           <div className="inline-flex items-center gap-2 text-xs font-semibold text-slate-400 dark:text-slate-500">
             <span translate="no">—</span>
@@ -141,9 +141,9 @@ export function DayVotingRow({
                   isBooked
                     ? 'bg-slate-100/75 dark:bg-slate-900/75'
                     : 'bg-slate-100/90 dark:bg-slate-900/90'
-                } h-[96px] px-0.5 align-middle select-none cursor-not-allowed`}
+                } h-24 px-0.5 align-middle select-none cursor-not-allowed`}
               >
-                <div className="h-full flex flex-col items-center justify-center gap-0.5 max-w-[74px] mx-auto leading-tight text-slate-400 dark:text-slate-500">
+                <div className="h-full flex flex-col items-center justify-center gap-0.5 max-w-18.5 mx-auto leading-tight text-slate-400 dark:text-slate-500">
                   <span
                     translate="no"
                     className="text-xs font-extrabold leading-none"
@@ -151,7 +151,7 @@ export function DayVotingRow({
                     {isBooked ? '✕' : '—'}
                   </span>
                   <span
-                    className={`text-[10px] text-center break-words line-clamp-2 ${
+                    className={`text-[10px] text-center wrap-break-word line-clamp-2 ${
                       isBooked ? 'font-semibold' : 'font-medium'
                     }`}
                   >
@@ -170,16 +170,16 @@ export function DayVotingRow({
                 key={block.id}
                 onClick={() => onCycleSlot(slotKey)}
                 title={t.no2hTitle}
-                className="bg-slate-200/70 dark:bg-slate-800/70 h-[96px] px-0.5 align-middle select-none cursor-not-allowed"
+                className="bg-slate-200/70 dark:bg-slate-800/70 h-24 px-0.5 align-middle select-none cursor-not-allowed"
               >
-                <div className="h-full flex flex-col items-center justify-center gap-0.5 text-slate-500 dark:text-slate-400 max-w-[74px] mx-auto leading-tight">
+                <div className="h-full flex flex-col items-center justify-center gap-0.5 text-slate-500 dark:text-slate-400 max-w-18.5 mx-auto leading-tight">
                   <span
                     translate="no"
                     className="text-xs font-extrabold leading-none"
                   >
                     —
                   </span>
-                  <span className="text-[10px] font-bold text-center break-words line-clamp-2">
+                  <span className="text-[10px] font-bold text-center wrap-break-word line-clamp-2">
                     {t.legendNo2h}
                   </span>
                 </div>
@@ -208,7 +208,7 @@ export function DayVotingRow({
           let cellBg = isPriorityCapsule
             ? ''
             : block.isStudentPrime
-              ? 'bg-amber-50/45 dark:bg-amber-400/[0.06] [--slot-hover-bg:rgb(254_243_199_/_0.8)] [--slot-hover-bg-dark:rgb(251_191_36_/_0.14)]'
+              ? 'bg-amber-50/45 dark:bg-amber-400/6 [--slot-hover-bg:rgb(254_243_199_/_0.8)] [--slot-hover-bg-dark:rgb(251_191_36_/_0.14)]'
               : 'bg-white dark:bg-slate-900 [--slot-hover-bg:rgb(240_249_255)] [--slot-hover-bg-dark:rgb(30_41_59)]';
 
           if (!isPriorityCapsule && showTallyDetails) {
@@ -244,23 +244,23 @@ export function DayVotingRow({
           return (
             <td
               key={block.id}
-              className={`relative p-1 h-[96px] align-middle transition-colors ${
+              className={`relative p-1 h-24 align-middle transition-colors ${
                 isPriorityCapsule ? 'priority-cell' : 'slot-cell-hover'
               } ${cellBg} ${topPickRing}`}
             >
               {isPriorityStart && (
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none absolute top-[3px] bottom-[3px] left-[3px] w-[calc(200%-6px)] rounded-lg border-[1.5px] border-indigo-400/90 bg-indigo-500/[0.06] dark:bg-indigo-400/[0.10] z-[5]"
+                  className="pointer-events-none absolute top-0.75 bottom-0.75 left-0.75 w-[calc(200%-6px)] rounded-lg border-[1.5px] border-indigo-400/90 bg-indigo-500/6 dark:bg-indigo-400/10 z-5"
                 />
               )}
               {isPriorityCapsule && (
                 <div
                   aria-hidden="true"
-                  className={`priority-cell-hover-layer pointer-events-none absolute top-[3px] bottom-[3px] z-[6] transition-colors duration-150 ease-out ${
+                  className={`priority-cell-hover-layer pointer-events-none absolute top-0.75 bottom-0.75 z-6 transition-colors duration-150 ease-out ${
                     twoHourInfo.priorityPosition === 'start'
-                      ? 'left-[3px] right-0 rounded-l-lg'
-                      : 'left-0 right-[3px] rounded-r-lg'
+                      ? 'left-0.75 right-0 rounded-l-lg'
+                      : 'left-0 right-0.75 rounded-r-lg'
                   }`}
                 />
               )}
@@ -275,7 +275,7 @@ export function DayVotingRow({
                   className={`tactile-press w-full max-w-full px-0.5 rounded-xl flex items-center justify-center ${
                     showTallyDetails
                       ? 'flex-1 min-h-0'
-                      : 'h-full min-h-[34px] sm:min-h-[38px]'
+                      : 'h-full min-h-8.5 sm:min-h-9.5'
                   } ${
                     viewingVote
                       ? 'cursor-default'
