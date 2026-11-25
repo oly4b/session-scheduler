@@ -1791,22 +1791,22 @@ export default function App() {
                   return (
                     <tr
                       key={day.dateKey}
-                      className="h-[88px] sm:h-[96px] divide-x divide-slate-300"
+                      className="h-[96px] divide-x divide-slate-300"
                     >
                       <td
-                        className={`sticky left-0 z-10 ${dateBgColor} h-full px-2 py-1.5 text-left border-r-2 border-slate-300 align-middle`}
+                        className={`sticky left-0 z-10 ${dateBgColor} h-[96px] px-2 py-1.5 text-left border-r-2 border-slate-300 align-middle`}
                       >
                         <div className="flex items-center gap-1 flex-wrap">
                           <span
                             translate={isJa ? undefined : 'no'}
-                            className={`text-xs sm:text-sm font-extrabold underline decoration-slate-300 whitespace-nowrap ${dateTextColor}`}
+                            className={`text-sm sm:text-base font-extrabold underline decoration-slate-300 whitespace-nowrap ${dateTextColor}`}
                           >
                             {day.jpDate}({day.dow})
                           </span>
                           {day.holiday && (
                             <span
                               translate="no"
-                              className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-600 text-white text-[10px] font-extrabold shrink-0"
+                              className="inline-flex items-center justify-center w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-red-600 text-white text-[10px] sm:text-[11px] font-extrabold shrink-0"
                             >
                               {day.holiday}
                             </span>
@@ -1862,7 +1862,7 @@ export default function App() {
                               title={isBooked ? t.bookedTitle : t.closedTitle}
                               className={`${
                                 isBooked ? 'bg-[#e5e7eb]' : 'bg-slate-100/90'
-                              } h-full px-0.5 align-middle select-none cursor-not-allowed`}
+                              } h-[96px] px-0.5 align-middle select-none cursor-not-allowed`}
                             >
                               <div
                                 className={`h-full flex flex-col items-center justify-center gap-0.5 max-w-[74px] mx-auto leading-tight ${
@@ -1895,7 +1895,7 @@ export default function App() {
                               key={block.id}
                               onClick={() => handleCycleSlot(slotKey)}
                               title={t.no2hTitle}
-                              className="bg-slate-200/85 h-full px-0.5 align-middle select-none cursor-not-allowed"
+                              className="bg-slate-200/85 h-[96px] px-0.5 align-middle select-none cursor-not-allowed"
                             >
                               <div className="h-full flex flex-col items-center justify-center gap-0.5 text-slate-500 max-w-[74px] mx-auto leading-tight">
                                 <span
@@ -1957,7 +1957,7 @@ export default function App() {
                         return (
                           <td
                             key={block.id}
-                            className={`p-1 h-full align-middle transition ${cellBg} ${highlightRing}`}
+                            className={`p-1 h-[96px] align-middle transition ${cellBg} ${highlightRing}`}
                           >
                             <div className="h-full w-full flex flex-col items-center justify-center gap-1">
                               <button
