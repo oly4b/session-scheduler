@@ -2041,7 +2041,7 @@ export default function App() {
                               ? 'bg-amber-50/45 [--slot-hover-bg:rgb(254_243_199_/_0.8)]'
                               : 'bg-white [--slot-hover-bg:rgb(240_249_255)]';
 
-                          if (showTallyDetails) {
+                          if (!isPriorityCapsule && showTallyDetails) {
                             if (tally.yesCount >= 6) {
                               cellBg =
                                 'bg-emerald-200/90 [--slot-hover-bg:rgb(167_243_208)]';
@@ -2096,11 +2096,19 @@ export default function App() {
                                   }`}
                                 />
                               )}
-                              <div className="relative z-10 h-full w-full flex flex-col items-center justify-center gap-1">
+                              <div
+                                className={`relative z-10 h-full w-full flex flex-col items-center justify-center gap-1 ${
+                                  showTallyDetails ? 'px-1.5 py-2' : ''
+                                }`}
+                              >
                                 <button
                                   type="button"
                                   onClick={() => handleCycleSlot(slotKey)}
-                                  className={`tactile-press w-full h-full min-h-[34px] sm:min-h-[38px] max-w-full px-0.5 rounded-xl flex items-center justify-center ${
+                                  className={`tactile-press w-full max-w-full px-0.5 rounded-xl flex items-center justify-center ${
+                                    showTallyDetails
+                                      ? 'flex-1 min-h-0'
+                                      : 'h-full min-h-[34px] sm:min-h-[38px]'
+                                  } ${
                                     viewingVote
                                       ? 'cursor-default'
                                       : 'active:scale-[0.97] cursor-pointer'
@@ -2116,10 +2124,22 @@ export default function App() {
                                       translate="no"
                                       className="flex flex-col items-center justify-center leading-tight whitespace-nowrap tabular-nums"
                                     >
-                                      <div className="text-sm font-extrabold text-[#1B365D]">
+                                      <div
+                                        className={`text-xs sm:text-sm tabular-nums ${
+                                          tally.yesCount >= 1
+                                            ? 'font-semibold text-[#1B365D]'
+                                            : 'opacity-30 font-normal text-slate-500'
+                                        }`}
+                                      >
                                         ◯ {tally.yesCount}
                                       </div>
-                                      <div className="text-sm font-bold text-amber-700">
+                                      <div
+                                        className={`text-xs sm:text-sm tabular-nums ${
+                                          tally.maybeCount >= 1
+                                            ? 'font-semibold text-amber-700'
+                                            : 'opacity-30 font-normal text-slate-500'
+                                        }`}
+                                      >
                                         △ {tally.maybeCount}
                                       </div>
                                     </div>
@@ -2140,7 +2160,7 @@ export default function App() {
                                   <button
                                     type="button"
                                     onClick={() => setInspectSlot(tally)}
-                                    className="tactile-press active:scale-[0.97] w-full py-0.5 px-1 rounded bg-slate-100/90 hover:bg-[#1B365D] hover:text-white text-[10px] font-extrabold text-slate-700 flex items-center justify-center gap-1 border border-slate-200 cursor-pointer whitespace-nowrap"
+                                    className="relative z-10 tactile-press active:scale-[0.97] w-full py-0.5 px-1.5 rounded-md bg-white/85 hover:bg-[#1B365D] hover:text-white text-[10px] sm:text-[11px] font-bold text-slate-600 flex items-center justify-center gap-1 border border-slate-200/90 cursor-pointer whitespace-nowrap"
                                     title={cellData.summaryText}
                                   >
                                     <span>{t.detailsLabel}</span>
