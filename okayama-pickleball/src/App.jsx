@@ -82,6 +82,14 @@ function isoDateToUtcMs(dateKey) {
   return Date.parse(`${dateKey}T00:00:00Z`);
 }
 
+function formatDayLabel(day, isJa) {
+  if (!day) return '';
+  if (isJa) return `${day.jpDate}(${day.dow})`;
+  return day.enDate && day.enDow
+    ? `${day.enDate} (${day.enDow})`
+    : `${day.jpDate}(${day.dow})`;
+}
+
 function PickleballIcon() {
   return (
     <span
@@ -152,9 +160,9 @@ function NoBookingsTodayRowCard({
             </span>
             <span
               translate={isJa ? undefined : 'no'}
-              className="text-base sm:text-lg font-extrabold text-slate-900 whitespace-nowrap"
+              className="text-base sm:text-lg font-extrabold text-slate-900 whitespace-nowrap tabular-nums"
             >
-              {day.jpDate}({day.dow})
+              {formatDayLabel(day, isJa)}
             </span>
           </div>
           <span className="text-sm sm:text-base font-extrabold text-slate-700 truncate">
@@ -231,13 +239,13 @@ function BookedSessionFullRowCard({
               </span>
               <span
                 translate={isJa ? undefined : 'no'}
-                className="text-xs sm:text-sm font-extrabold text-slate-900 shrink-0 whitespace-nowrap"
+                className="text-xs sm:text-sm font-extrabold text-slate-900 shrink-0 whitespace-nowrap tabular-nums"
               >
-                {day.jpDate}({day.dow})
+                {formatDayLabel(day, isJa)}
               </span>
               <span
                 translate="no"
-                className="inline-flex items-center gap-1 text-xs sm:text-sm font-extrabold text-[#1B365D] shrink-0 whitespace-nowrap"
+                className="inline-flex items-center gap-1 text-xs sm:text-sm font-extrabold text-[#1B365D] shrink-0 whitespace-nowrap tabular-nums"
               >
                 <Clock className="w-3 h-3 text-emerald-700 shrink-0 hidden sm:inline" />
                 <span>{timeRangeLabel}</span>
@@ -259,7 +267,7 @@ function BookedSessionFullRowCard({
                     timeRangeLabel,
                   })
                 }
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100/90 hover:bg-emerald-200 text-emerald-950 text-[10px] sm:text-[11px] font-extrabold border border-emerald-300 shrink-0 whitespace-nowrap cursor-pointer transition"
+                className="tactile-press active:scale-[0.97] inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100/90 hover:bg-emerald-200 text-emerald-950 text-[10px] sm:text-[11px] font-extrabold border border-emerald-300 shrink-0 whitespace-nowrap cursor-pointer tabular-nums"
               >
                 <Check className="w-3 h-3 text-emerald-700 shrink-0" />
                 <span>
@@ -272,11 +280,40 @@ function BookedSessionFullRowCard({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div
+            aria-hidden="true"
+            className="hidden md:flex flex-col items-center gap-1 px-3 shrink-0 w-44 lg:w-56"
+          >
+            <div className="w-full grid grid-cols-10 gap-0.5">
+              {TIME_BLOCKS.map((block) => {
+                const inSpan =
+                  block.startHour >= booking.startHour &&
+                  block.startHour < booking.endHour;
+                return (
+                  <span
+                    key={block.id}
+                    className={`h-2 rounded-xs transition-colors ${
+                      inSpan
+                        ? 'bg-emerald-600'
+                        : 'bg-slate-200/80'
+                    }`}
+                  />
+                );
+              })}
+            </div>
+            <span
+              translate="no"
+              className="text-[10px] font-bold text-emerald-800/80 tabular-nums"
+            >
+              {timeRangeLabel}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={() => onShareBooking(booking)}
-              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-xl bg-lime-400 hover:bg-lime-300 text-[#1B365D] text-[10px] sm:text-[11px] font-extrabold border border-lime-500 cursor-pointer whitespace-nowrap"
+              className="tactile-press active:scale-[0.97] inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-lime-400 hover:bg-lime-300 text-[#1B365D] text-[10px] sm:text-[11px] font-extrabold border border-lime-500 cursor-pointer whitespace-nowrap"
             >
               <Share2 className="w-3 h-3 shrink-0" />
             </button>
@@ -285,14 +322,14 @@ function BookedSessionFullRowCard({
               type="button"
               disabled={Boolean(viewingVote)}
               onClick={() => onToggleBookingAttendee(booking, isGoing)}
-              className={`inline-flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-extrabold border transition whitespace-nowrap ${
+              className={`tactile-press inline-flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-extrabold border whitespace-nowrap ${
                 viewingVote
                   ? isGoing
                     ? 'cursor-default bg-emerald-100/80 border-emerald-400 text-emerald-950'
                     : 'opacity-60 cursor-default bg-slate-100 border-slate-300 text-slate-500'
                   : isGoing
-                    ? 'bg-emerald-100 hover:bg-emerald-200 border-emerald-400 text-emerald-950 cursor-pointer'
-                    : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-900 cursor-pointer'
+                    ? 'active:scale-[0.97] bg-emerald-100 hover:bg-emerald-200 border-emerald-400 text-emerald-950 cursor-pointer'
+                    : 'active:scale-[0.97] bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-900 cursor-pointer'
               }`}
             >
               <span
@@ -304,20 +341,26 @@ function BookedSessionFullRowCard({
             </button>
 
             {!viewingVote && (
-              <button
-                type="button"
-                onClick={() =>
-                  onRequestClearBooking({
-                    dateKey: day.dateKey,
-                    label: `${day.jpDate}(${day.dow})`,
-                    venueLabel,
-                  })
-                }
-                aria-label={t.unmarkBookingBtn}
-                className="ml-0.5 px-2 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 text-[10px] sm:text-[11px] font-bold border border-slate-300 cursor-pointer whitespace-nowrap"
-              >
-                {t.unmarkBookingBtn}
-              </button>
+              <>
+                <span
+                  aria-hidden="true"
+                  className="h-6 w-px bg-emerald-300/80 mx-0.5 shrink-0"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    onRequestClearBooking({
+                      dateKey: day.dateKey,
+                      label: `${day.jpDate}(${day.dow})`,
+                      venueLabel,
+                    })
+                  }
+                  aria-label={t.unmarkBookingBtn}
+                  className="tactile-press active:scale-[0.97] px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-100 hover:text-rose-700 hover:border-rose-300 text-slate-600 text-[10px] sm:text-[11px] font-extrabold border border-slate-300 cursor-pointer whitespace-nowrap"
+                >
+                  {t.unmarkBookingBtn}
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -327,23 +370,30 @@ function BookedSessionFullRowCard({
 }
 
 function SlotChoiceCircle({ choice, isViewing }) {
+  const hoverCls = isViewing ? '' : 'slot-circle-hover';
   if (choice === 'yes') {
     return (
-      <span className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-emerald-600 text-white font-extrabold text-lg sm:text-xl flex items-center justify-center shadow-xs shrink-0">
+      <span
+        className={`tactile-press ${hoverCls} w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-emerald-600 text-white font-extrabold text-lg sm:text-xl flex items-center justify-center shadow-xs shrink-0`}
+      >
         ◯
       </span>
     );
   }
   if (choice === 'maybe') {
     return (
-      <span className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-amber-500 text-white font-extrabold text-lg sm:text-xl flex items-center justify-center shadow-xs shrink-0">
+      <span
+        className={`tactile-press ${hoverCls} w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-amber-500 text-white font-extrabold text-lg sm:text-xl flex items-center justify-center shadow-xs shrink-0`}
+      >
         △
       </span>
     );
   }
   if (choice === 'no') {
     return (
-      <span className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-rose-600 text-white font-extrabold text-lg sm:text-xl flex items-center justify-center shadow-xs shrink-0">
+      <span
+        className={`tactile-press ${hoverCls} w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-rose-600 text-white font-extrabold text-lg sm:text-xl flex items-center justify-center shadow-xs shrink-0`}
+      >
         ✕
       </span>
     );
@@ -351,7 +401,7 @@ function SlotChoiceCircle({ choice, isViewing }) {
 
   return (
     <span
-      className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-dashed font-extrabold text-lg sm:text-xl flex items-center justify-center bg-white shrink-0 ${
+      className={`tactile-press ${hoverCls} w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-dashed font-extrabold text-lg sm:text-xl flex items-center justify-center bg-white shrink-0 ${
         isViewing
           ? 'border-slate-300 text-slate-300'
           : 'border-[#1B365D]/40 text-[#1B365D]'
@@ -1481,18 +1531,18 @@ export default function App() {
               type="button"
               disabled={activeWeekIdx === 0}
               onClick={() => setActiveWeekIdx((i) => Math.max(0, i - 1))}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#2B547E] hover:bg-[#366799] disabled:opacity-40 disabled:pointer-events-none text-xs font-extrabold border border-white/20 cursor-pointer whitespace-nowrap shrink-0"
+              className="tactile-press active:scale-[0.97] inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#2B547E] hover:bg-[#366799] disabled:opacity-40 disabled:pointer-events-none text-xs font-extrabold border border-white/20 cursor-pointer whitespace-nowrap shrink-0"
             >
               <ChevronLeft className="w-4 h-4 shrink-0" />
             </button>
 
             <div className="text-center min-w-0">
-              <div className="inline-block px-2 py-0.5 rounded bg-rose-700 text-white text-[10px] font-extrabold tracking-wider mb-0.5 whitespace-nowrap">
+              <div className="inline-block px-2.5 py-0.5 rounded-full bg-white/10 text-white/80 text-[11px] font-medium tracking-wide mb-0.5 whitespace-nowrap">
                 {t.oneHourSubLabel}
               </div>
               <div
                 translate={isJa ? undefined : 'no'}
-                className="text-sm sm:text-base font-extrabold tracking-tight text-white"
+                className="text-sm sm:text-base font-extrabold tracking-tight text-white tabular-nums"
               >
                 {currentWeek.rangeLabel}
               </div>
@@ -1506,7 +1556,7 @@ export default function App() {
                   Math.min(calendarWeeks.length - 1, i + 1)
                 )
               }
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#2B547E] hover:bg-[#366799] disabled:opacity-40 disabled:pointer-events-none text-xs font-extrabold border border-white/20 cursor-pointer whitespace-nowrap shrink-0"
+              className="tactile-press active:scale-[0.97] inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#2B547E] hover:bg-[#366799] disabled:opacity-40 disabled:pointer-events-none text-xs font-extrabold border border-white/20 cursor-pointer whitespace-nowrap shrink-0"
             >
               <ChevronRight className="w-4 h-4 shrink-0" />
             </button>
@@ -1519,7 +1569,7 @@ export default function App() {
                   key={w.id}
                   type="button"
                   onClick={() => setActiveWeekIdx(idx)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer border whitespace-nowrap ${
+                  className={`tactile-press active:scale-[0.97] px-3 py-1.5 rounded-lg text-xs font-extrabold cursor-pointer border whitespace-nowrap tabular-nums ${
                     activeWeekIdx === idx
                       ? 'bg-[#1B365D] text-lime-300 border-[#1B365D] shadow-xs'
                       : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
@@ -1536,7 +1586,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={handleOpenBookingModal}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-lime-300 font-extrabold text-xs border border-emerald-900 transition cursor-pointer whitespace-nowrap"
+                className="tactile-press active:scale-[0.97] inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-lime-300 font-extrabold text-xs border border-emerald-900 cursor-pointer whitespace-nowrap"
               >
                 <CalendarCheck className="w-3.5 h-3.5 shrink-0" />
                 <span>{t.bookSessionBtn}</span>
@@ -1544,28 +1594,38 @@ export default function App() {
               <button
                 type="button"
                 onClick={handleFillActiveWeekAll}
-                className="px-2.5 py-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-extrabold text-xs border border-emerald-300 transition cursor-pointer whitespace-nowrap"
+                className="tactile-press active:scale-[0.97] px-2.5 py-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-extrabold text-xs border border-emerald-300 cursor-pointer whitespace-nowrap"
               >
                 {t.weekFillAll}
               </button>
               <button
                 type="button"
                 onClick={handleClearActiveWeek}
-                className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 font-extrabold text-xs border border-slate-300 transition cursor-pointer whitespace-nowrap"
+                className="tactile-press active:scale-[0.97] px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 font-extrabold text-xs border border-slate-300 cursor-pointer whitespace-nowrap"
               >
                 {t.weekClearAll}
               </button>
 
-              <div className="inline-flex rounded-xl bg-slate-200 p-0.5 border border-slate-300 ml-1">
+              <div className="relative grid grid-cols-2 rounded-xl bg-slate-200 p-0.5 border border-slate-300 ml-1 overflow-hidden">
+                <span
+                  aria-hidden="true"
+                  className={`segmented-thumb pointer-events-none absolute top-0.5 bottom-0.5 left-0.5 w-[calc(50%-2px)] rounded-lg shadow-xs ${
+                    viewingVote
+                      ? 'opacity-0'
+                      : gridViewMode === 'heatmap'
+                        ? 'translate-x-full bg-[#1B365D]'
+                        : 'translate-x-0 bg-white'
+                  }`}
+                />
                 <button
                   type="button"
                   onClick={() => {
                     setViewingVote(null);
                     setGridViewMode('vote');
                   }}
-                  className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
+                  className={`relative z-10 tactile-press active:scale-[0.97] inline-flex items-center justify-center gap-1 px-3 py-1 rounded-lg text-xs font-extrabold cursor-pointer whitespace-nowrap transition-colors ${
                     gridViewMode === 'vote' && !viewingVote
-                      ? 'bg-white text-[#1B365D] shadow-xs'
+                      ? 'text-[#1B365D]'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -1574,13 +1634,14 @@ export default function App() {
                 </button>
                 <button
                   type="button"
+                  title={t.legendHint}
                   onClick={() => {
                     setViewingVote(null);
                     setGridViewMode('heatmap');
                   }}
-                  className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
+                  className={`relative z-10 tactile-press active:scale-[0.97] inline-flex items-center justify-center gap-1 px-3 py-1 rounded-lg text-xs font-extrabold cursor-pointer whitespace-nowrap transition-colors ${
                     gridViewMode === 'heatmap' && !viewingVote
-                      ? 'bg-[#1B365D] text-lime-300 shadow-xs'
+                      ? 'text-lime-300'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -1594,7 +1655,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => handleSelectVoterToEdit(viewingVote)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-extrabold border border-amber-500 shadow-xs transition cursor-pointer whitespace-nowrap"
+                    className="tactile-press active:scale-[0.97] inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-extrabold border border-amber-500 shadow-xs cursor-pointer whitespace-nowrap"
                   >
                     <Edit3 className="w-3.5 h-3.5 shrink-0" />
                     <span>{t.editThisBtn}</span>
@@ -1602,7 +1663,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setViewingVote(null)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-sky-700 hover:bg-sky-800 text-white text-xs font-extrabold border border-sky-900 shadow-xs transition cursor-pointer whitespace-nowrap"
+                    className="tactile-press active:scale-[0.97] inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-sky-700 hover:bg-sky-800 text-white text-xs font-extrabold border border-sky-900 shadow-xs cursor-pointer whitespace-nowrap"
                   >
                     <X className="w-3.5 h-3.5 shrink-0" />
                     <span>{t.exitViewBtn}</span>
@@ -1612,7 +1673,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={resetVoterForm}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 text-xs font-extrabold border border-slate-300 shadow-xs transition cursor-pointer whitespace-nowrap"
+                  className="tactile-press active:scale-[0.97] inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 text-xs font-extrabold border border-slate-300 shadow-xs cursor-pointer whitespace-nowrap"
                 >
                   <RotateCcw className="w-3.5 h-3.5 shrink-0" />
                   <span>{t.cancelBtn}</span>
@@ -1704,7 +1765,12 @@ export default function App() {
                 <span>{t.legendPrime}</span>
               </span>
             </div>
-            <span className="font-bold text-[#1B365D]">{t.legendHint}</span>
+            {gridViewMode === 'heatmap' && !viewingVote && (
+              <span className="font-bold text-[#1B365D] inline-flex items-center gap-1">
+                <Info className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                <span>{t.legendHint}</span>
+              </span>
+            )}
           </div>
 
           <div ref={tableScrollRef} className="overflow-x-auto">
@@ -1726,7 +1792,7 @@ export default function App() {
                     >
                       <div
                         translate="no"
-                        className="text-[11px] sm:text-xs font-extrabold text-[#1B365D] tracking-tight whitespace-nowrap"
+                        className="text-[11px] sm:text-xs font-extrabold text-[#1B365D] tracking-tight whitespace-nowrap tabular-nums"
                       >
                         {block.shortLabel}~
                       </div>
@@ -1787,11 +1853,20 @@ export default function App() {
                         ? 'bg-red-50'
                         : 'bg-[#f8fafc]';
                   const activeWindowMode = dayWindowByDate[day.dateKey] || null;
+                  const isFullyClosedDay =
+                    day.allBooked &&
+                    TIME_BLOCKS.every(
+                      (b) =>
+                        !day.slots[b.id]?.isOpen &&
+                        !day.slots[b.id]?.isFullyBooked
+                    );
+
+                  const dayLabel = formatDayLabel(day, isJa);
 
                   return (
                     <tr
                       key={day.dateKey}
-                      className="h-[96px] divide-x divide-slate-300"
+                      className="h-[96px] divide-x divide-slate-200"
                     >
                       <td
                         className={`sticky left-0 z-10 ${dateBgColor} h-[96px] px-2 py-1.5 text-left border-r-2 border-slate-300 align-middle`}
@@ -1799,9 +1874,9 @@ export default function App() {
                         <div className="flex items-center gap-1 flex-wrap">
                           <span
                             translate={isJa ? undefined : 'no'}
-                            className={`text-sm sm:text-base font-extrabold underline decoration-slate-300 whitespace-nowrap ${dateTextColor}`}
+                            className={`text-sm sm:text-base font-extrabold underline decoration-slate-300 whitespace-nowrap tabular-nums ${dateTextColor}`}
                           >
-                            {day.jpDate}({day.dow})
+                            {dayLabel}
                           </span>
                           {day.holiday && (
                             <span
@@ -1814,205 +1889,269 @@ export default function App() {
                         </div>
                         {day.allBooked ? (
                           <span className="inline-block mt-0.5 text-[10px] font-bold text-slate-400 leading-tight">
-                            {t.allBookedDay}
+                            {isFullyClosedDay ? t.legendClosed : t.allBookedDay}
                           </span>
                         ) : (
                           <div
                             role="group"
-                            aria-label={`${day.jpDate} ${t.dateColHeader}`}
-                            className="mt-1 inline-flex rounded-lg bg-white/90 p-0.5 border border-slate-300 text-[10px] font-extrabold"
+                            aria-label={`${dayLabel} ${t.dateColHeader}`}
+                            className="mt-1 inline-flex rounded-lg bg-white/95 border border-slate-300 divide-x divide-slate-300 text-[10px] font-extrabold overflow-hidden"
                           >
                             {[
                               { id: 'all', label: t.dayAllFree },
                               { id: 'afternoon', label: t.dayAfternoonOnly },
                               { id: 'evening', label: t.dayEveningOnly },
-                            ].map((opt) => (
-                              <button
-                                key={opt.id}
-                                type="button"
-                                disabled={Boolean(viewingVote)}
-                                onClick={() =>
-                                  handleSelectDayWindow(day, opt.id)
+                            ].map((opt) => {
+                              const hasEligible = TIME_BLOCKS.some((b) => {
+                                const key = `${day.dateKey}_${b.id}`;
+                                if (!twoHourEligibleSlotKeys.has(key)) {
+                                  return false;
                                 }
-                                className={`px-1.5 py-0.5 rounded transition whitespace-nowrap ${
-                                  viewingVote
-                                    ? 'opacity-50 cursor-default'
-                                    : 'cursor-pointer'
-                                } ${
-                                  activeWindowMode === opt.id
-                                    ? 'bg-[#1B365D] text-lime-300'
-                                    : 'text-slate-600 hover:text-slate-900'
-                                }`}
-                              >
-                                {opt.label}
-                              </button>
-                            ))}
+                                if (opt.id === 'afternoon') {
+                                  return b.startHour < 18;
+                                }
+                                if (opt.id === 'evening') {
+                                  return b.startHour >= 18;
+                                }
+                                return true;
+                              });
+                              const isDisabled =
+                                Boolean(viewingVote) || !hasEligible;
+
+                              return (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  disabled={isDisabled}
+                                  onClick={() =>
+                                    handleSelectDayWindow(day, opt.id)
+                                  }
+                                  className={`tactile-press px-2 py-1 whitespace-nowrap ${
+                                    isDisabled
+                                      ? 'opacity-35 cursor-not-allowed'
+                                      : 'active:scale-[0.97] hover-surface-slate cursor-pointer'
+                                  } ${
+                                    activeWindowMode === opt.id
+                                      ? 'bg-[#1B365D] text-lime-300'
+                                      : 'text-slate-600'
+                                  }`}
+                                >
+                                  {opt.label}
+                                </button>
+                              );
+                            })}
                           </div>
                         )}
                       </td>
 
-                      {TIME_BLOCKS.map((block) => {
-                        const cellData = day.slots[block.id];
+                      {isFullyClosedDay ? (
+                        <td
+                          colSpan={TIME_BLOCKS.length}
+                          title={t.closedTitle}
+                          className="h-[96px] bg-slate-100/75 px-4 align-middle text-left select-none cursor-not-allowed"
+                        >
+                          <div className="inline-flex items-center gap-2 text-xs font-semibold text-slate-400">
+                            <span translate="no">—</span>
+                            <span>{t.closedDayRow}</span>
+                          </div>
+                        </td>
+                      ) : (
+                        TIME_BLOCKS.map((block) => {
+                          const cellData = day.slots[block.id];
 
-                        if (!cellData?.isOpen) {
-                          const isBooked = Boolean(cellData?.isFullyBooked);
-                          return (
-                            <td
-                              key={block.id}
-                              title={isBooked ? t.bookedTitle : t.closedTitle}
-                              className={`${
-                                isBooked ? 'bg-[#e5e7eb]' : 'bg-slate-100/90'
-                              } h-[96px] px-0.5 align-middle select-none cursor-not-allowed`}
-                            >
-                              <div
-                                className={`h-full flex flex-col items-center justify-center gap-0.5 max-w-[74px] mx-auto leading-tight ${
-                                  isBooked ? 'text-slate-500' : 'text-slate-400'
-                                }`}
+                          if (!cellData?.isOpen) {
+                            const isBooked = Boolean(cellData?.isFullyBooked);
+                            return (
+                              <td
+                                key={block.id}
+                                title={isBooked ? t.bookedTitle : t.closedTitle}
+                                className={`${
+                                  isBooked
+                                    ? 'bg-slate-100/75'
+                                    : 'bg-slate-100/90'
+                                } h-[96px] px-0.5 align-middle select-none cursor-not-allowed`}
                               >
-                                <span
-                                  translate="no"
-                                  className="text-xs font-extrabold leading-none"
-                                >
-                                  {isBooked ? '✕' : '—'}
-                                </span>
-                                <span
-                                  className={`text-[10px] text-center break-words line-clamp-2 ${
-                                    isBooked ? 'font-bold' : 'font-medium'
-                                  }`}
-                                >
-                                  {isBooked ? t.legendFull : t.legendClosed}
-                                </span>
-                              </div>
-                            </td>
-                          );
-                        }
-
-                        const slotKey = `${day.dateKey}_${block.id}`;
-
-                        if (!twoHourEligibleSlotKeys.has(slotKey)) {
-                          return (
-                            <td
-                              key={block.id}
-                              onClick={() => handleCycleSlot(slotKey)}
-                              title={t.no2hTitle}
-                              className="bg-slate-200/85 h-[96px] px-0.5 align-middle select-none cursor-not-allowed"
-                            >
-                              <div className="h-full flex flex-col items-center justify-center gap-0.5 text-slate-500 max-w-[74px] mx-auto leading-tight">
-                                <span
-                                  translate="no"
-                                  className="text-xs font-extrabold leading-none"
-                                >
-                                  —
-                                </span>
-                                <span className="text-[10px] font-bold text-center break-words line-clamp-2">
-                                  {t.legendNo2h}
-                                </span>
-                              </div>
-                            </td>
-                          );
-                        }
-
-                        const activeChoice = activeMap[slotKey];
-                        const twoHourInfo = twoHourHighlightMap[slotKey];
-                        const tally = slotTallies[slotKey] || {
-                          yesCount: 0,
-                          maybeCount: 0,
-                          noCount: 0,
-                          isTopPick: false,
-                        };
-                        const showTallyDetails =
-                          gridViewMode === 'heatmap' && !viewingVote;
-
-                        let cellBg = twoHourInfo?.isPriorityTwoHour
-                          ? 'bg-indigo-50/70 hover:bg-indigo-100/70'
-                          : block.isStudentPrime
-                            ? 'bg-amber-50/45 hover:bg-amber-50/80'
-                            : 'bg-white hover:bg-sky-50';
-
-                        if (showTallyDetails) {
-                          if (tally.yesCount >= 6) {
-                            cellBg = 'bg-emerald-200/90 hover:bg-emerald-200';
-                          } else if (tally.yesCount >= 3) {
-                            cellBg = 'bg-emerald-100/80 hover:bg-emerald-100';
-                          } else if (tally.yesCount >= 1) {
-                            cellBg = 'bg-lime-50 hover:bg-lime-100';
-                          } else {
-                            cellBg = 'bg-slate-50/70 hover:bg-slate-100';
-                          }
-                        } else if (activeChoice === 'yes') {
-                          cellBg = 'bg-emerald-50/90 hover:bg-emerald-100/80';
-                        } else if (activeChoice === 'maybe') {
-                          cellBg = 'bg-amber-50/90 hover:bg-amber-100/80';
-                        } else if (activeChoice === 'no') {
-                          cellBg = 'bg-rose-50/80 hover:bg-rose-100/70';
-                        }
-
-                        const highlightRing =
-                          showTallyDetails && tally.isTopPick
-                            ? 'ring-2 ring-inset ring-amber-400'
-                            : twoHourInfo?.isPriorityTwoHour
-                              ? 'ring-2 ring-inset ring-indigo-400'
-                              : '';
-
-                        return (
-                          <td
-                            key={block.id}
-                            className={`p-1 h-[96px] align-middle transition ${cellBg} ${highlightRing}`}
-                          >
-                            <div className="h-full w-full flex flex-col items-center justify-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => handleCycleSlot(slotKey)}
-                                className={`w-full h-full min-h-[34px] sm:min-h-[38px] max-w-full px-0.5 rounded-xl flex items-center justify-center transition ${
-                                  viewingVote
-                                    ? 'cursor-default'
-                                    : 'active:scale-95 cursor-pointer'
-                                }`}
-                                title={
-                                  viewingVote
-                                    ? t.viewingCellTitle(viewingVote.name)
-                                    : `${day.jpDate}(${day.dow}) ${block.label} · ${cellData.summaryText}`
-                                }
-                              >
-                                {showTallyDetails ? (
-                                  <div
-                                    translate="no"
-                                    className="flex flex-col items-center justify-center leading-tight whitespace-nowrap"
-                                  >
-                                    <div className="text-sm font-extrabold text-[#1B365D]">
-                                      ◯ {tally.yesCount}
-                                    </div>
-                                    <div className="text-sm font-bold text-amber-700">
-                                      △ {tally.maybeCount}
-                                    </div>
-                                  </div>
-                                ) : (
+                                <div className="h-full flex flex-col items-center justify-center gap-0.5 max-w-[74px] mx-auto leading-tight text-slate-400">
                                   <span
                                     translate="no"
-                                    className="w-full h-full flex items-center justify-center"
+                                    className="text-xs font-extrabold leading-none"
                                   >
-                                    <SlotChoiceCircle
-                                      choice={activeChoice}
-                                      isViewing={Boolean(viewingVote)}
-                                    />
+                                    {isBooked ? '✕' : '—'}
                                   </span>
-                                )}
-                              </button>
+                                  <span
+                                    className={`text-[10px] text-center break-words line-clamp-2 ${
+                                      isBooked ? 'font-semibold' : 'font-medium'
+                                    }`}
+                                  >
+                                    {isBooked ? t.legendFull : t.legendClosed}
+                                  </span>
+                                </div>
+                              </td>
+                            );
+                          }
 
-                              {showTallyDetails && (
+                          const slotKey = `${day.dateKey}_${block.id}`;
+
+                          if (!twoHourEligibleSlotKeys.has(slotKey)) {
+                            return (
+                              <td
+                                key={block.id}
+                                onClick={() => handleCycleSlot(slotKey)}
+                                title={t.no2hTitle}
+                                className="bg-slate-200/70 h-[96px] px-0.5 align-middle select-none cursor-not-allowed"
+                              >
+                                <div className="h-full flex flex-col items-center justify-center gap-0.5 text-slate-500 max-w-[74px] mx-auto leading-tight">
+                                  <span
+                                    translate="no"
+                                    className="text-xs font-extrabold leading-none"
+                                  >
+                                    —
+                                  </span>
+                                  <span className="text-[10px] font-bold text-center break-words line-clamp-2">
+                                    {t.legendNo2h}
+                                  </span>
+                                </div>
+                              </td>
+                            );
+                          }
+
+                          const activeChoice = activeMap[slotKey];
+                          const twoHourInfo = twoHourHighlightMap[slotKey];
+                          const tally = slotTallies[slotKey] || {
+                            yesCount: 0,
+                            maybeCount: 0,
+                            noCount: 0,
+                            isTopPick: false,
+                          };
+                          const showTallyDetails =
+                            gridViewMode === 'heatmap' && !viewingVote;
+
+                          const isPrioritySpan = Boolean(
+                            twoHourInfo?.isPriorityTwoHour
+                          );
+                          const isPriorityCapsule =
+                            isPrioritySpan &&
+                            !(showTallyDetails && tally.isTopPick);
+                          const isPriorityStart =
+                            isPriorityCapsule &&
+                            twoHourInfo.priorityPosition === 'start';
+
+                          let cellBg = isPriorityCapsule
+                            ? ''
+                            : block.isStudentPrime
+                              ? 'bg-amber-50/45 [--slot-hover-bg:rgb(254_243_199_/_0.8)]'
+                              : 'bg-white [--slot-hover-bg:rgb(240_249_255)]';
+
+                          if (showTallyDetails) {
+                            if (tally.yesCount >= 6) {
+                              cellBg =
+                                'bg-emerald-200/90 [--slot-hover-bg:rgb(167_243_208)]';
+                            } else if (tally.yesCount >= 3) {
+                              cellBg =
+                                'bg-emerald-100/80 [--slot-hover-bg:rgb(209_250_229)]';
+                            } else if (tally.yesCount >= 1) {
+                              cellBg =
+                                'bg-lime-50 [--slot-hover-bg:rgb(236_252_203)]';
+                            } else {
+                              cellBg =
+                                'bg-slate-50/70 [--slot-hover-bg:rgb(241_245_249)]';
+                            }
+                          } else if (!isPriorityCapsule && activeChoice === 'yes') {
+                            cellBg =
+                              'bg-emerald-50/90 [--slot-hover-bg:rgb(209_250_229_/_0.8)]';
+                          } else if (!isPriorityCapsule && activeChoice === 'maybe') {
+                            cellBg =
+                              'bg-amber-50/90 [--slot-hover-bg:rgb(254_243_199_/_0.8)]';
+                          } else if (!isPriorityCapsule && activeChoice === 'no') {
+                            cellBg =
+                              'bg-rose-50/80 [--slot-hover-bg:rgb(255_228_230_/_0.7)]';
+                          }
+
+                          const topPickRing =
+                            showTallyDetails && tally.isTopPick
+                              ? 'ring-2 ring-inset ring-amber-400'
+                              : '';
+
+                          return (
+                            <td
+                              key={block.id}
+                              className={`relative p-1 h-[96px] align-middle transition-colors ${
+                                isPriorityCapsule
+                                  ? 'priority-cell'
+                                  : 'slot-cell-hover'
+                              } ${cellBg} ${topPickRing}`}
+                            >
+                              {isPriorityStart && (
+                                <div
+                                  aria-hidden="true"
+                                  className="pointer-events-none absolute top-[3px] bottom-[3px] left-[3px] w-[calc(200%-6px)] rounded-lg border-[1.5px] border-indigo-400/90 bg-indigo-500/[0.06] z-[5]"
+                                />
+                              )}
+                              {isPriorityCapsule && (
+                                <div
+                                  aria-hidden="true"
+                                  className={`priority-cell-hover-layer pointer-events-none absolute top-[3px] bottom-[3px] z-[6] transition-colors duration-150 ease-out ${
+                                    twoHourInfo.priorityPosition === 'start'
+                                      ? 'left-[3px] right-0 rounded-l-lg'
+                                      : 'left-0 right-[3px] rounded-r-lg'
+                                  }`}
+                                />
+                              )}
+                              <div className="relative z-10 h-full w-full flex flex-col items-center justify-center gap-1">
                                 <button
                                   type="button"
-                                  onClick={() => setInspectSlot(tally)}
-                                  className="w-full py-0.5 px-1 rounded bg-slate-100/90 hover:bg-[#1B365D] hover:text-white text-[10px] font-extrabold text-slate-700 flex items-center justify-center gap-1 border border-slate-200 transition cursor-pointer whitespace-nowrap"
-                                  title={cellData.summaryText}
+                                  onClick={() => handleCycleSlot(slotKey)}
+                                  className={`tactile-press w-full h-full min-h-[34px] sm:min-h-[38px] max-w-full px-0.5 rounded-xl flex items-center justify-center ${
+                                    viewingVote
+                                      ? 'cursor-default'
+                                      : 'active:scale-[0.97] cursor-pointer'
+                                  }`}
+                                  title={
+                                    viewingVote
+                                      ? t.viewingCellTitle(viewingVote.name)
+                                      : `${dayLabel} ${block.label} · ${cellData.summaryText}`
+                                  }
                                 >
-                                  <span>{t.detailsLabel}</span>
+                                  {showTallyDetails ? (
+                                    <div
+                                      translate="no"
+                                      className="flex flex-col items-center justify-center leading-tight whitespace-nowrap tabular-nums"
+                                    >
+                                      <div className="text-sm font-extrabold text-[#1B365D]">
+                                        ◯ {tally.yesCount}
+                                      </div>
+                                      <div className="text-sm font-bold text-amber-700">
+                                        △ {tally.maybeCount}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <span
+                                      translate="no"
+                                      className="w-full h-full flex items-center justify-center"
+                                    >
+                                      <SlotChoiceCircle
+                                        choice={activeChoice}
+                                        isViewing={Boolean(viewingVote)}
+                                      />
+                                    </span>
+                                  )}
                                 </button>
-                              )}
-                            </div>
-                          </td>
-                        );
-                      })}
+
+                                {showTallyDetails && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setInspectSlot(tally)}
+                                    className="tactile-press active:scale-[0.97] w-full py-0.5 px-1 rounded bg-slate-100/90 hover:bg-[#1B365D] hover:text-white text-[10px] font-extrabold text-slate-700 flex items-center justify-center gap-1 border border-slate-200 cursor-pointer whitespace-nowrap"
+                                    title={cellData.summaryText}
+                                  >
+                                    <span>{t.detailsLabel}</span>
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          );
+                        })
+                      )}
                     </tr>
                   );
                 })}
@@ -2126,7 +2265,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setShowEditPickerModal(true)}
-                    className="w-full py-2.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-[0.99] text-slate-950 font-extrabold text-xs sm:text-sm shadow border border-amber-500 transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    className="tactile-press active:scale-[0.97] w-full py-2.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs sm:text-sm shadow border border-amber-500 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
                   >
                     <UserCheck className="w-4 h-4 shrink-0" />
                     <span>{t.editExistingBtn}</span>
@@ -2135,7 +2274,7 @@ export default function App() {
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full py-2.5 px-4 rounded-xl bg-[#1B365D] hover:bg-[#274b7d] active:scale-[0.99] text-lime-300 font-extrabold text-xs sm:text-sm shadow transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                    className="tactile-press active:scale-[0.97] w-full py-2.5 px-4 rounded-xl bg-[#1B365D] hover:bg-[#274b7d] text-lime-300 font-extrabold text-xs sm:text-sm shadow flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
                   >
                     <Check className="w-4 h-4 shrink-0" />
                     <span>
@@ -2152,7 +2291,7 @@ export default function App() {
           </form>
         </section>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
           <section className="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 bg-[#1B365D] text-white flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
@@ -2179,90 +2318,98 @@ export default function App() {
                   <p>{t.noRankedBlocksDesc}</p>
                 </div>
               ) : (
-                rankedTwoHourBlocks.map((block, index) => (
-                  <div
-                    key={block.dateKey}
-                    onClick={() => setInspectSlot(block)}
-                    className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 transition cursor-pointer ${
-                      index === 0
-                        ? 'bg-lime-50/90 border-lime-400'
-                        : 'bg-slate-50 hover:bg-slate-100 border-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-start sm:items-center gap-2.5 flex-1 min-w-0">
-                      <span
-                        translate="no"
-                        className={`w-6 h-6 rounded-full text-xs font-extrabold flex items-center justify-center shrink-0 mt-0.5 sm:mt-0 ${
-                          index === 0
-                            ? 'bg-[#1B365D] text-lime-300'
-                            : 'bg-slate-200 text-slate-700'
-                        }`}
-                      >
-                        {index + 1}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs sm:text-sm font-extrabold text-slate-900 leading-snug">
-                          <span translate="no">
-                            {block.jpDate}({block.dow})
-                            {block.holiday ? `・${block.holiday}` : ''}
-                          </span>{' '}
-                          <span
-                            translate="no"
-                            className="text-[#1B365D] whitespace-nowrap"
-                          >
-                            {block.timeLabel}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-slate-600 flex flex-wrap items-center gap-1.5 mt-1">
-                          <span className="font-bold text-[#1B365D]">
-                            {t.firstChoice(
-                              block.recommendedVenues[0]?.shortName
-                            )}
-                          </span>
-                          {block.openVenues.length > 1 && (
-                            <span className="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700 font-bold text-[10px] whitespace-nowrap">
-                              {t.moreVenues(block.openVenues.length - 1)}
-                            </span>
-                          )}
-                          {block.isSweetSpot && (
-                            <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-extrabold text-[10px] whitespace-nowrap">
-                              {t.sweetSpotBadge}
-                            </span>
-                          )}
-                          {block.isDoubleCourt && (
-                            <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-900 font-extrabold text-[10px] whitespace-nowrap">
-                              {t.doubleCourtBadge}
-                            </span>
-                          )}
-                          {block.alternativeTwoHourBlock && (
-                            <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold text-[10px] whitespace-nowrap">
-                              {t.altBlockBadge}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                rankedTwoHourBlocks.map((block, index) => {
+                  const extraParts = [
+                    block.openVenues.length > 1
+                      ? t.moreVenues(block.openVenues.length - 1).replace(/^\+/, '')
+                      : '',
+                    block.alternativeTwoHourBlock
+                      ? isJa
+                        ? '別時間帯あり'
+                        : 'Alt time'
+                      : '',
+                  ].filter(Boolean);
 
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span
-                        translate="no"
-                        className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 font-extrabold text-xs border border-emerald-300 whitespace-nowrap"
-                      >
-                        {t.twoHourYesPill(block.bothYesCount)}
-                      </span>
-                      {block.flexBothCount + block.partialYesCount > 0 && (
+                  return (
+                    <div
+                      key={block.dateKey}
+                      onClick={() => setInspectSlot(block)}
+                      className={`tactile-press active:scale-[0.99] p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 cursor-pointer ${
+                        index === 0
+                          ? 'bg-emerald-50/70 hover-surface-emerald border-emerald-400'
+                          : 'bg-slate-50 hover-surface-slate border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-start sm:items-center gap-2.5 flex-1 min-w-0">
                         <span
                           translate="no"
-                          className="px-2 py-1 rounded-lg bg-amber-100 text-amber-900 font-bold text-xs border border-amber-300 whitespace-nowrap"
+                          className={`w-6 h-6 rounded-full text-xs font-extrabold flex items-center justify-center shrink-0 mt-0.5 sm:mt-0 tabular-nums ${
+                            index === 0
+                              ? 'bg-[#1B365D] text-lime-300'
+                              : 'bg-slate-200 text-slate-700'
+                          }`}
                         >
-                          {t.flexPill(
-                            block.flexBothCount + block.partialYesCount
-                          )}
+                          {index + 1}
                         </span>
-                      )}
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs sm:text-sm font-extrabold text-slate-900 leading-snug tabular-nums">
+                            <span translate="no">
+                              {formatDayLabel(block, isJa)}
+                              {block.holiday && isJa ? `・${block.holiday}` : ''}
+                            </span>{' '}
+                            <span
+                              translate="no"
+                              className="text-[#1B365D] whitespace-nowrap"
+                            >
+                              {block.timeLabel}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-600 flex flex-wrap items-center gap-1.5 mt-1">
+                            <span translate="no" className="font-bold text-[#1B365D]">
+                              {t.firstChoice(
+                                block.recommendedVenues[0]?.shortName
+                              )}
+                            </span>
+                            {extraParts.length > 0 && (
+                              <span className="px-1.5 py-0.5 rounded bg-slate-200/75 text-slate-600 font-semibold text-[10px] whitespace-nowrap tabular-nums">
+                                {extraParts.join('・')}
+                              </span>
+                            )}
+                            {block.isSweetSpot && (
+                              <span className="px-1.5 py-0.5 rounded bg-slate-200/75 text-slate-700 font-bold text-[10px] whitespace-nowrap tabular-nums">
+                                {t.sweetSpotBadge}
+                              </span>
+                            )}
+                            {block.isDoubleCourt && (
+                              <span className="px-1.5 py-0.5 rounded bg-slate-200/75 text-slate-700 font-bold text-[10px] whitespace-nowrap tabular-nums">
+                                {t.doubleCourtBadge}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0 tabular-nums">
+                        <span
+                          translate="no"
+                          className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 font-extrabold text-xs border border-emerald-300 whitespace-nowrap"
+                        >
+                          {t.twoHourYesPill(block.bothYesCount)}
+                        </span>
+                        {block.flexBothCount + block.partialYesCount > 0 && (
+                          <span
+                            translate="no"
+                            className="px-2 py-1 rounded-lg bg-amber-100 text-amber-900 font-bold text-xs border border-amber-300 whitespace-nowrap"
+                          >
+                            {t.flexPill(
+                              block.flexBothCount + block.partialYesCount
+                            )}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </section>
@@ -2282,14 +2429,14 @@ export default function App() {
               </div>
               <span
                 translate={isJa ? undefined : 'no'}
-                className="text-[11px] text-sky-200 whitespace-nowrap shrink-0"
+                className="text-[11px] text-sky-200 whitespace-nowrap shrink-0 tabular-nums"
               >
                 {t.playerCountSuffix(activeVotes.length)}
               </span>
             </div>
 
             <div
-              className={`p-3.5 space-y-2 max-h-[430px] overflow-y-auto flex-1 transition ${
+              className={`p-3.5 space-y-2.5 max-h-[430px] overflow-y-auto flex-1 transition ${
                 isNotesLockedForEdit ? 'bg-slate-100/70' : ''
               }`}
             >
@@ -2298,46 +2445,123 @@ export default function App() {
                   {t.noNotesYet}
                 </p>
               ) : (
-                activeVotes.map((v) => (
-                  <button
-                    key={v.id}
-                    type="button"
-                    disabled={isNotesLockedForEdit}
-                    aria-disabled={isNotesLockedForEdit}
-                    onClick={() => handleSelectVoterToView(v)}
-                    className={`w-full p-2.5 rounded-xl border flex items-start justify-between gap-2 text-left transition ${
-                      isNotesLockedForEdit
-                        ? 'bg-slate-100/90 border-slate-200/80 opacity-60 cursor-not-allowed'
-                        : 'bg-slate-50 hover:bg-sky-50 border-slate-200 cursor-pointer'
-                    }`}
-                  >
-                    <div className="min-w-0">
-                      <div
-                        translate="no"
-                        className="text-xs font-extrabold text-[#1B365D]"
-                      >
-                        {v.name}
-                      </div>
-                      <p className="text-xs text-slate-600 mt-0.5 break-words">
-                        {v.note || (
-                          <span className="text-slate-400 italic">
-                            {t.noNoteText}
+                <>
+                  {activeVotes
+                    .filter((v) => Boolean(String(v.note || '').trim()))
+                    .map((v) => {
+                      const isSelected = viewingVote?.id === v.id;
+                      const previewTitle = isJa ? '投票を見る' : 'View votes';
+                      return (
+                        <button
+                          key={v.id}
+                          type="button"
+                          disabled={isNotesLockedForEdit}
+                          aria-disabled={isNotesLockedForEdit}
+                          aria-pressed={isSelected}
+                          title={previewTitle}
+                          onClick={() => handleSelectVoterToView(v)}
+                          className={`tactile-press w-full p-2.5 rounded-xl border flex items-start justify-between gap-2 text-left ${
+                            isNotesLockedForEdit
+                              ? 'bg-slate-100/90 border-slate-200/80 opacity-60 cursor-not-allowed'
+                              : isSelected
+                                ? 'active:scale-[0.97] bg-sky-50 border-sky-500 ring-2 ring-sky-400/40 cursor-pointer'
+                                : 'active:scale-[0.97] bg-slate-50 hover-surface-sky border-slate-200 cursor-pointer'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div
+                              translate="no"
+                              className="text-xs font-extrabold text-[#1B365D]"
+                            >
+                              {v.name}
+                            </div>
+                            <p className="text-xs text-slate-600 mt-0.5 break-words">
+                              {v.note}
+                            </p>
+                          </div>
+                          <span
+                            title={previewTitle}
+                            className={`p-1 rounded-lg shrink-0 transition-colors ${
+                              isSelected
+                                ? 'bg-sky-600 text-white'
+                                : 'text-slate-400'
+                            }`}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
                           </span>
-                        )}
-                      </p>
+                        </button>
+                      );
+                    })}
+
+                  {activeVotes.some((v) => !String(v.note || '').trim()) && (
+                    <div
+                      className={
+                        activeVotes.some((v) =>
+                          Boolean(String(v.note || '').trim())
+                        )
+                          ? 'pt-2 border-t border-slate-200/80'
+                          : ''
+                      }
+                    >
+                      <div className="text-[10px] font-bold text-slate-400 mb-1.5">
+                        {t.noNoteText}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {activeVotes
+                          .filter((v) => !String(v.note || '').trim())
+                          .map((v) => {
+                            const isSelected = viewingVote?.id === v.id;
+                            const previewTitle = isJa
+                              ? '投票を見る'
+                              : 'View votes';
+                            return (
+                              <button
+                                key={v.id}
+                                type="button"
+                                disabled={isNotesLockedForEdit}
+                                aria-disabled={isNotesLockedForEdit}
+                                aria-pressed={isSelected}
+                                title={previewTitle}
+                                onClick={() => handleSelectVoterToView(v)}
+                                className={`tactile-press inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-bold ${
+                                  isNotesLockedForEdit
+                                    ? 'bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed'
+                                    : isSelected
+                                      ? 'active:scale-[0.97] bg-sky-100 border-sky-500 text-sky-950 ring-2 ring-sky-400/40 cursor-pointer'
+                                      : 'active:scale-[0.97] bg-slate-50 hover-surface-sky border-slate-200 text-[#1B365D] cursor-pointer'
+                                }`}
+                              >
+                                <span translate="no">{v.name}</span>
+                                <Eye
+                                  className={`w-3 h-3 shrink-0 ${
+                                    isSelected
+                                      ? 'text-sky-700'
+                                      : 'text-slate-400'
+                                  }`}
+                                />
+                              </button>
+                            );
+                          })}
+                      </div>
                     </div>
-                    <Eye className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                  </button>
-                ))
+                  )}
+                </>
               )}
             </div>
+
+            {activeVotes.length > 0 && !isNotesLockedForEdit && (
+              <div className="px-3.5 py-2 border-t border-slate-200/80 bg-slate-50/70 text-[11px] text-slate-500 flex items-center gap-1.5">
+                <Eye className="w-3 h-3 text-slate-400 shrink-0" />
+                <span>{t.notesTapHint}</span>
+              </div>
+            )}
           </section>
         </div>
 
         <footer className="bg-white border border-slate-200 rounded-2xl p-3.5 text-[11px] sm:text-xs text-slate-600 space-y-2.5">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="font-extrabold text-slate-800 inline-flex items-center gap-1.5">
+              <span className="font-extrabold text-slate-800 inline-flex items-center gap-1.5 tabular-nums">
                 <Info className="w-4 h-4 text-[#1B365D] shrink-0" />
                 <span>{t.directoryTitle(VENUES.length)}</span>
               </span>
@@ -2345,7 +2569,7 @@ export default function App() {
                 type="button"
                 onClick={() => setShowVenueList((prev) => !prev)}
                 aria-expanded={showVenueList}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-[#1B365D] font-extrabold text-xs border border-slate-300 transition cursor-pointer whitespace-nowrap"
+                className="tactile-press active:scale-[0.97] inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover-surface-slate-200 text-[#1B365D] font-extrabold text-xs border border-slate-300 cursor-pointer whitespace-nowrap"
               >
                 <span>{showVenueList ? t.hideVenueList : t.showVenueList}</span>
                 <ChevronDown

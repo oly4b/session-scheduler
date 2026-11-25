@@ -11,7 +11,7 @@ export const COPY = {
     editingBanner: (name) => `Editing: ${name}`,
     viewingBanner: (name) => `View-Only: viewing ${name}'s response`,
     defaultBanner: () =>
-      'Please enter your name & choose slots（◯/△/✕）, then press "Submit".',
+      'Enter your name & pick time slots（◯/△/✕）.',
     rsvpWithoutNameBanner: () => 'Please enter your name.',
     nameWithoutSlotsBanner: () => 'Please pick time slots（◯/△/✕）.',
     readyToSubmitBanner: () =>
@@ -65,7 +65,9 @@ export const COPY = {
     legendClosed: 'Closed',
     legendClosedDesc: 'Outside hours / closed',
     legendRec2h: 'Top 2h Block',
-    legendPrime: 'Student Prime (18:00~)',
+    legendPrime: 'Student Prime (18:00+)',
+    closedDayRow: 'Closed — No available slots',
+    notesTapHint: 'Tap a player to highlight their votes',
     legendHint:
       '※ Switch to "Group Tally" and tap "Details" for top venues & voters',
     dateColHeader: 'Date / Day',
@@ -179,7 +181,7 @@ export const COPY = {
     editingBanner: (name) => `編集中: ${name}`,
     viewingBanner: (name) => `閲覧モード: ${name} さんの回答を確認中`,
     defaultBanner: () =>
-      '名前を入力して枠（◯/△/✕）を選び、「回答を登録」を押してください。',
+      '名前を入力して枠（◯/△/✕）を選んでください。',
     rsvpWithoutNameBanner: () => '名前を入力してください。',
     nameWithoutSlotsBanner: () => '空き枠（◯/△/✕）を選んでください。',
     readyToSubmitBanner: () =>
@@ -234,6 +236,8 @@ export const COPY = {
     legendClosedDesc: '営業時間外・休場',
     legendRec2h: 'おすすめ2時間枠',
     legendPrime: '学生向け時間帯 (18:00~)',
+    closedDayRow: '休場・空き枠なし',
+    notesTapHint: 'メンバーをタップで投票を表示',
     legendHint:
       '※ 「みんなの集計」の「詳細」タップでおすすめ予約候補と投票メンバーを表示',
     dateColHeader: '日付 / 曜日',

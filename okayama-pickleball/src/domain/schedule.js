@@ -77,9 +77,11 @@ export function buildCalendarWeeks({
       shortTitle: isJa
         ? `第${idx + 1}週: ${slice[0].shortDate}–${slice[6].shortDate}`
         : `Week ${idx + 1}: ${slice[0].shortDate}–${slice[6].shortDate}`,
-      rangeLabel:
-        `${slice[0].year}年 ${slice[0].jpDate}(${slice[0].dow}) 〜 ` +
-        `${slice[6].jpDate}(${slice[6].dow})`,
+      rangeLabel: isJa
+        ? `${slice[0].year}年 ${slice[0].jpDate}(${slice[0].dow}) 〜 ` +
+          `${slice[6].jpDate}(${slice[6].dow})`
+        : `${slice[0].enDate} (${slice[0].enDow}) – ` +
+          `${slice[6].enDate} (${slice[6].enDow}), ${slice[6].year}`,
       days: slice,
     };
   });
@@ -101,7 +103,9 @@ export function buildCalendarWeeks({
           weekIndex,
           dateKey: day.dateKey,
           jpDate: day.jpDate,
+          enDate: day.enDate,
           dow: day.dow,
+          enDow: day.enDow,
           holiday: day.holiday,
           dayType: day.dayType,
           blockId: block.id,
@@ -209,14 +213,20 @@ export function computeTwoHourHighlights({ calendarWeeks, openVenuesBySlot }) {
       }
 
       const best = candidates[0];
-      for (const key of [best.key1, best.key2]) {
-        twoHourHighlightMap[key] = {
-          isTwoHourPart: true,
-          isPriorityTwoHour: true,
-          spanLabel: best.spanLabel,
-          topVenueName: best.topVenueName,
-        };
-      }
+      twoHourHighlightMap[best.key1] = {
+        isTwoHourPart: true,
+        isPriorityTwoHour: true,
+        priorityPosition: 'start',
+        spanLabel: best.spanLabel,
+        topVenueName: best.topVenueName,
+      };
+      twoHourHighlightMap[best.key2] = {
+        isTwoHourPart: true,
+        isPriorityTwoHour: true,
+        priorityPosition: 'end',
+        spanLabel: best.spanLabel,
+        topVenueName: best.topVenueName,
+      };
     }
   }
 
@@ -369,11 +379,11 @@ export function computeRankedTwoHourBlocks({
           isTwoHourBlock: true,
           dateKey: day.dateKey,
           jpDate: day.jpDate,
+          enDate: day.enDate,
           dow: day.dow,
+          enDow: day.enDow,
           holiday: day.holiday,
-          timeLabel:
-            `${b1.shortLabel}–${String(b2.startHour + 1).padStart(2, '0')}:00 ` +
-            `(2時間)`,
+          timeLabel: `${b1.shortLabel}–${String(b2.startHour + 1).padStart(2, '0')}:00`,
           isIndoor: topCourtType === 'indoor' ? 1 : 0,
           timePrefRank: getTwoHourPreferenceRank(b1.startHour, topCourtType),
           openVenues: filteredShared,

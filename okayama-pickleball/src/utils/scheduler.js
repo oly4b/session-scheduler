@@ -1,11 +1,17 @@
 import { VENUES } from '../config/venues.js';
 import {
   DAY_MS,
+  DOW_EN,
   DOW_JP,
   JST_OFFSET_MS,
   formatJstTimestamp,
   getJstParts,
 } from './jst.js';
+
+const MONTH_EN = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
 
 export { JST_OFFSET_MS, formatJstTimestamp };
 
@@ -148,8 +154,10 @@ export function getJstDayMeta(offsetDays) {
     dateKey,
     year,
     jpDate: `${month}月${day}日`,
+    enDate: `${MONTH_EN[month - 1]} ${day}`,
     shortDate: `${month}/${day}`,
     dow: DOW_JP[dowIdx],
+    enDow: DOW_EN[dowIdx],
     holiday,
     dayType,
   };

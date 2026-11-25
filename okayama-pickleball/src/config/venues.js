@@ -13,6 +13,7 @@ const DIVISION_HALVES = ['半面(A面)', '半面(B面)'];
  * @typedef {{
  *   id: string,
  *   shortName: string,
+ *   shortNameEn?: string,
  *   fullName: string,
  *   area: 'kurashiki' | 'okayama',
  *   source: 'spacepad' | 'yoyacool',
@@ -61,6 +62,7 @@ const mapsSearchUrl = (query) => `${MAPS_SEARCH_BASE}${encodeURIComponent(query)
 function spacepadVenue({
   id,
   shortName,
+  shortNameEn,
   fullName,
   distanceKm,
   spaceId,
@@ -79,6 +81,7 @@ function spacepadVenue({
   return {
     id,
     shortName,
+    shortNameEn: shortNameEn ?? shortName,
     fullName,
     area: 'kurashiki',
     source: 'spacepad',
@@ -116,6 +119,7 @@ function spacepadVenue({
 function yoyacoolVenue({
   id,
   shortName,
+  shortNameEn,
   fullName,
   courtType,
   hasLights,
@@ -131,6 +135,7 @@ function yoyacoolVenue({
   return {
     id,
     shortName,
+    shortNameEn: shortNameEn ?? shortName,
     fullName,
     area: 'okayama',
     source: 'yoyacool',
@@ -159,6 +164,7 @@ export const VENUES = [
   spacepadVenue({
     id: 'fukuda',
     shortName: '福田公園',
+    shortNameEn: 'Fukuda Park',
     fullName: 'シマダみらいアリーナ水島（福田公園）',
     distanceKm: 22.5,
     spaceId: 'itjbcjdbdle4-tgj',
@@ -173,6 +179,7 @@ export const VENUES = [
   spacepadVenue({
     id: 'mizushima',
     shortName: '水島体育館',
+    shortNameEn: 'Mizushima Gym',
     fullName: '水島体育館',
     distanceKm: 24.0,
     spaceId: 'w2xrdrqqmbh-yo2u',
@@ -187,6 +194,7 @@ export const VENUES = [
   spacepadVenue({
     id: 'kurashiki_gym',
     shortName: '倉敷体育館',
+    shortNameEn: 'Kurashiki Gym',
     fullName: '倉敷体育館',
     distanceKm: 16.5,
     spaceId: 'zywnbw47bh5crzg7',
@@ -201,6 +209,7 @@ export const VENUES = [
   spacepadVenue({
     id: 'kurashiki_weightlifting',
     shortName: '倉敷運動公園WL場',
+    shortNameEn: 'Kurashiki WL',
     fullName: '倉敷運動公園 ウエイトリフティング場',
     distanceKm: 17.5,
     spaceId: 'tcccb8_exn7v_vhn',
@@ -214,6 +223,7 @@ export const VENUES = [
   spacepadVenue({
     id: 'mizushima_fureai',
     shortName: '水島ふれあいセンター',
+    shortNameEn: 'Mizushima Fureai',
     fullName: '水島ふれあいセンター 体育館',
     distanceKm: 24.5,
     spaceId: 'jxhat1pcoilh66fs',
@@ -225,6 +235,7 @@ export const VENUES = [
   spacepadVenue({
     id: 'mabi',
     shortName: '真備総合公園',
+    shortNameEn: 'Mabi Park',
     fullName: '真備総合公園 体育館',
     distanceKm: 26.5,
     spaceId: 'mc6zt9acspmyus6x',
@@ -239,6 +250,7 @@ export const VENUES = [
   spacepadVenue({
     id: 'tamashima',
     shortName: '玉島の森',
+    shortNameEn: 'Tamashima Forest',
     fullName: '玉島の森 体育館',
     distanceKm: 28.5,
     spaceId: 'heijieghle9vabwg',
@@ -250,6 +262,7 @@ export const VENUES = [
   spacepadVenue({
     id: 'nakayama',
     shortName: '中山公園',
+    shortNameEn: 'Nakayama Park',
     fullName: '中山公園 体育館',
     distanceKm: 29.5,
     spaceId: '1dc9iimlst_agk6w',
@@ -264,6 +277,7 @@ export const VENUES = [
   yoyacoolVenue({
     id: 'nadasaki',
     shortName: '灘崎体育センター',
+    shortNameEn: 'Nadasaki Ctr',
     fullName: '灘崎体育センター',
     courtType: 'indoor',
     hasLights: true,
@@ -277,6 +291,7 @@ export const VENUES = [
   yoyacoolVenue({
     id: 'futsukaichi',
     shortName: '二日市公園テニス',
+    shortNameEn: 'Futsukaichi Tennis',
     fullName: '二日市公園テニスコート（照明あり）',
     courtType: 'outdoor',
     hasLights: true,
@@ -290,6 +305,7 @@ export const VENUES = [
   yoyacoolVenue({
     id: 'yoshiigawa_1',
     shortName: '吉井川第1緑地',
+    shortNameEn: 'Yoshiigawa 1',
     fullName: '吉井川第1緑地 テニスコート（〜17:00）',
     courtType: 'outdoor',
     hasLights: false,
@@ -300,6 +316,7 @@ export const VENUES = [
   yoyacoolVenue({
     id: 'hyakkengawa_a',
     shortName: '百間川緑地(A・東川原)',
+    shortNameEn: 'Hyakkengawa A',
     fullName: '百間川緑地 テニスコートA（東川原・ハードコート・〜17:00）',
     courtType: 'outdoor',
     hasLights: false,
@@ -313,6 +330,7 @@ export const VENUES = [
   yoyacoolVenue({
     id: 'hyakkengawa_c',
     shortName: '百間川緑地(C・神下)',
+    shortNameEn: 'Hyakkengawa C',
     fullName: '百間川緑地 テニスコートC（神下・ハードコート・〜17:00）',
     courtType: 'outdoor',
     hasLights: false,
