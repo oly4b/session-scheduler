@@ -156,7 +156,7 @@ const COPY = {
       'Could not remove booking. Check Supabase connection.',
     toastAttendeeSaveError:
       'Could not update session attendee. Check Supabase connection.',
-    top5Title: 'Top 5 Recommended 2h Blocks',
+    top5Title: 'Recommended 2h Blocks',
     top5Subtitle: 'Best per day (3+ votes)',
     loadingVotes: 'Loading tallies...',
     noRankedBlocksTitle: 'No continuous 2-hour slots with 3+ votes yet',
@@ -274,7 +274,7 @@ const COPY = {
     oneHourSubLabel: '日程・時間帯を選択 (12:00–22:00)',
     outdoorShort: '屋外',
     indoorShort: '屋内',
-    myVoteTab: (name) => (name ? `${name}'s Vote` : 'My Vote'),
+    myVoteTab: (name) => (name ? `${name}'s Vote` : '自分の回答'),
     tallyTab: 'みんなの集計',
     dayAllFree: '終日',
     dayAfternoonOnly: '昼のみ',
@@ -329,7 +329,7 @@ const COPY = {
       '予約確定の解除に失敗しました。Supabase接続を確認してください。',
     toastAttendeeSaveError:
       '参加予定の更新に失敗しました。Supabase接続を確認してください。',
-    top5Title: 'おすすめ2時間枠 TOP 5（連続空き会場）',
+    top5Title: 'おすすめ2時間枠（連続空き会場）',
     top5Subtitle: '日程別ベスト枠（3名以上）',
     loadingVotes: '集計データを読み込み中...',
     noRankedBlocksTitle: '3名以上の投票がある2時間連続枠はまだありません',
@@ -1525,6 +1525,7 @@ export default function App() {
 
     for (const week of calendarWeeks) {
       for (const day of week.days) {
+        if (day.allBooked || bookedSessionsByDate[day.dateKey]) continue;
         const dayBlocks = [];
 
         for (let i = 0; i < TIME_BLOCKS.length - 1; i += 1) {
@@ -1632,7 +1633,7 @@ export default function App() {
     }
 
     return bestByDate.sort((a, b) => b.score - a.score).slice(0, 5);
-  }, [calendarWeeks, openVenuesBySlot, votes]);
+  }, [calendarWeeks, openVenuesBySlot, votes, bookedSessionsByDate]);
 
   const applyBookingToForm = useCallback((booking) => {
     const hasCustomVenue = Boolean(booking.venueName?.trim());
