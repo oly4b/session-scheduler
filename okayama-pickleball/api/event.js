@@ -2,6 +2,8 @@ import { VENUE_BY_ID } from '../src/config/venues.js';
 
 const DOW_JP = ['日', '月', '火', '水', '木', '金', '土'];
 const DOW_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+// In-app webviews (LINE, Instagram, etc.) block .ics downloads and external calendar
+// intents; we detect them client-side to show the "Open in External Browser" gate.
 const IN_APP_UA_PATTERN =
   /LINE|FBAN|FBAV|Instagram|FB_IAB|Twitter|MicroMessenger|KAKAOTALK|GSA|wv/i;
 
@@ -66,6 +68,7 @@ const EVENT_COPY = {
   },
 };
 
+/** Escapes HTML special characters for safe interpolation into server-rendered HTML/meta tags. */
 function escapeHtml(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')
@@ -75,6 +78,7 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+/** Escapes RFC 5545 `.ics` property text (`\`, `;`, `,`, and newlines). */
 function escapeIcsText(value) {
   return String(value || '')
     .replace(/\\/g, '\\\\')
@@ -83,6 +87,7 @@ function escapeIcsText(value) {
     .replace(/\r?\n/g, '\\n');
 }
 
+// Allowlist map hosts for user-supplied `?map=` params to prevent open-redirect/phishing links.
 const ALLOWED_MAP_HOSTS = new Set([
   'maps.google.com',
   'www.google.com',
@@ -98,6 +103,7 @@ const ALLOWED_MAP_HOSTS = new Set([
 ]);
 const CANONICAL_ORIGIN = 'https://pb-session-scheduler.vercel.app';
 
+/** Validates that a URL uses `http:` or `https:`, rejecting `javascript:` or `data:` schemes. */
 function sanitizeSafeUrl(rawUrl) {
   if (!rawUrl) return '';
   try {
@@ -110,6 +116,7 @@ function sanitizeSafeUrl(rawUrl) {
   }
 }
 
+/** Ensures user-supplied `?map=` URLs point only to known map providers (`ALLOWED_MAP_HOSTS`). */
 function sanitizeAllowedMapUrl(rawUrl) {
   const safeUrl = sanitizeSafeUrl(rawUrl);
   if (!safeUrl) return '';
@@ -129,6 +136,10 @@ function sanitizeAllowedMapUrl(rawUrl) {
   }
 }
 
+/**
+ * Derives a trusted origin from `Host` (Vercel deployments or localhost) so
+ * `og:image` and `.ics` download links cannot be poisoned by spoofed headers.
+ */
 function resolveCanonicalOrigin(req) {
   const rawHost = String(req?.headers?.host || '').trim().toLowerCase();
   if (
@@ -143,6 +154,10 @@ function resolveCanonicalOrigin(req) {
   return CANONICAL_ORIGIN;
 }
 
+/**
+ * Escapes `<`, `>`, `&`, and Unicode line separators so JSON embedded inside
+ * inline `<script>` tags cannot break out with `</script>`.
+ */
 function serializeJsonForScript(value) {
   return JSON.stringify(value)
     .replace(/</g, '\\u003c')
@@ -156,6 +171,7 @@ function escapeIcsParamValue(value) {
   return escapeIcsText(value).replace(/"/g, "'");
 }
 
+/** Extracts a readable venue name from Google Maps `?query=` / `?q=` or `/maps/place/<name>` paths. */
 function extractVenueFromMapUrl(rawMapUrl) {
   const safeUrl = sanitizeSafeUrl(rawMapUrl);
   if (!safeUrl) return '';
@@ -198,6 +214,7 @@ function formatDateFromIso(dateStr, lang) {
   );
 }
 
+/** Generates an RFC 5545 `.ics` file with `Asia/Tokyo` timezone and Apple Maps geo-location tags. */
 function buildIcsCalendar({
   compactDate,
   startStr,
@@ -253,6 +270,11 @@ function buildIcsCalendar({
     .join('\r\n');
 }
 
+/**
+ * Injects an inline script that checks `navigator.userAgent` against `IN_APP_UA_PATTERN`:
+ * normal browsers see `#event-card`, while in-app webviews stay on `#locked-gate` with
+ * Copy Link + Google Maps fallback.
+ */
 function buildCopyAndMapGateScript({ sharePageUrl, copiedText, manualCopyText }) {
   return `<script>
 (function() {
@@ -302,6 +324,99 @@ function buildCopyAndMapGateScript({ sharePageUrl, copiedText, manualCopyText })
   }
 })();
 </script>`;
+}
+
+/**
+ * Renders the bilingual HTML event card and the `#locked-gate` fallback for
+ * in-app webviews (LINE, Instagram, etc.), with Open Graph metadata.
+ */
+function renderEventHtmlPage({
+  lang,
+  copy,
+  summary,
+  pageDescription,
+  ogImageUrl,
+  currentFullUrl,
+  displayDate,
+  startHour,
+  endHour,
+  venueName,
+  address,
+  note,
+  downloadUrl,
+  googleCalUrl,
+  mapUrl,
+}) {
+  return `<!doctype html>
+<html lang="${escapeHtml(lang)}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(summary)}</title>
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="${escapeHtml(summary)}" />
+  <meta property="og:description" content="${escapeHtml(pageDescription)}" />
+  <meta property="og:image" content="${escapeHtml(ogImageUrl)}" />
+  <meta property="og:url" content="${escapeHtml(currentFullUrl)}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="${escapeHtml(ogImageUrl)}" />
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #eef2f6; color: #0f172a; margin: 0; padding: 20px; display: flex; justify-content: center; }
+    .card { max-width: 440px; width: 100%; background: #fff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(15,23,42,.12); border: 1px solid #cbd5e1; }
+    .hdr { background: #1B365D; color: #fff; padding: 18px 20px; }
+    .hdr small { color: #bef264; font-weight: 800; display: block; margin-bottom: 4px; }
+    .hdr h1 { font-size: 18px; margin: 0; }
+    .body { padding: 18px 20px; font-size: 14px; line-height: 1.6; }
+    .row { margin-bottom: 10px; }
+    .steps { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 10px 12px; font-size: 12px; color: #334155; margin-bottom: 12px; }
+    .btn { display: block; width: 100%; box-sizing: border-box; text-align: center; text-decoration: none; font-weight: 800; padding: 12px 16px; border-radius: 12px; margin-top: 10px; font-size: 14px; }
+    .btn-primary { background: #a3e635; color: #1B365D; border: none; cursor: pointer; }
+    .btn-secondary { background: #1B365D; color: #fff; }
+    .btn-outline { background: #f8fafc; color: #1B365D; border: 1px solid #cbd5e1; }
+    .status { min-height: 20px; margin-top: 8px; font-size: 12px; font-weight: 700; color: #15803d; text-align: center; }
+    .fallback-input { display: none; width: 100%; box-sizing: border-box; margin-top: 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 12px; color: #0f172a; }
+  </style>
+</head>
+<body>
+  <div id="locked-gate" class="card">
+    <div class="hdr">
+      <small>${escapeHtml(copy.gateBadge)}</small>
+      <h1>${escapeHtml(copy.gateTitle)}</h1>
+    </div>
+    <div class="body">
+      <div class="row">${escapeHtml(copy.gateBody)}</div>
+      <div class="steps">
+        <strong>${escapeHtml(copy.gateStepsTitle)}</strong><br />
+        ${escapeHtml(copy.gateStepOne)}<br />
+        ${escapeHtml(copy.gateStepTwo)}
+      </div>
+      <button id="copy-link-btn" type="button" class="btn btn-primary">${escapeHtml(copy.copyBtn)}</button>
+      <div id="copy-status" class="status" aria-live="polite"></div>
+      <input id="fallback-url-input" class="fallback-input" type="text" readonly value="${escapeHtml(currentFullUrl)}" />
+      ${mapUrl ? `<a class="btn btn-outline" href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(copy.openMapBtn)}</a>` : ''}
+    </div>
+  </div>
+  <div id="event-card" class="card" style="display:none">
+    <div class="hdr">
+      <small>${escapeHtml(copy.inviteHeading)}</small>
+      <h1>⏰ ${escapeHtml(displayDate)} ${startHour}:00–${endHour}:00</h1>
+    </div>
+    <div class="body">
+      <div class="row"><strong>${escapeHtml(copy.venueLabel)}</strong> ${escapeHtml(venueName)}</div>
+      ${address ? `<div class="row"><strong>${escapeHtml(copy.addressLabel)}</strong> ${escapeHtml(address)}</div>` : ''}
+      ${note ? `<div class="row">${escapeHtml(note)}</div>` : ''}
+      <a class="btn btn-primary" href="${escapeHtml(downloadUrl)}">${escapeHtml(copy.appleCalBtn)}</a>
+      <a class="btn btn-secondary" href="${escapeHtml(googleCalUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(copy.googleCalBtn)}</a>
+      ${mapUrl ? `<a class="btn btn-outline" href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(copy.openMapBtn)}</a>` : ''}
+    </div>
+  </div>
+  ${buildCopyAndMapGateScript({
+    sharePageUrl: currentFullUrl,
+    copiedText: copy.copiedText,
+    manualCopyText: copy.manualCopyText,
+  })}
+</body>
+</html>`;
 }
 
 /**
@@ -463,74 +578,23 @@ export default function handler(req, res) {
   googleCalUrl.searchParams.set('details', descriptionText);
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.status(200).send(`<!doctype html>
-<html lang="${escapeHtml(lang)}">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(summary)}</title>
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="${escapeHtml(summary)}" />
-  <meta property="og:description" content="${escapeHtml(pageDescription)}" />
-  <meta property="og:image" content="${escapeHtml(ogImageUrl)}" />
-  <meta property="og:url" content="${escapeHtml(currentFullUrl)}" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:image" content="${escapeHtml(ogImageUrl)}" />
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #eef2f6; color: #0f172a; margin: 0; padding: 20px; display: flex; justify-content: center; }
-    .card { max-width: 440px; width: 100%; background: #fff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(15,23,42,.12); border: 1px solid #cbd5e1; }
-    .hdr { background: #1B365D; color: #fff; padding: 18px 20px; }
-    .hdr small { color: #bef264; font-weight: 800; display: block; margin-bottom: 4px; }
-    .hdr h1 { font-size: 18px; margin: 0; }
-    .body { padding: 18px 20px; font-size: 14px; line-height: 1.6; }
-    .row { margin-bottom: 10px; }
-    .steps { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 10px 12px; font-size: 12px; color: #334155; margin-bottom: 12px; }
-    .btn { display: block; width: 100%; box-sizing: border-box; text-align: center; text-decoration: none; font-weight: 800; padding: 12px 16px; border-radius: 12px; margin-top: 10px; font-size: 14px; }
-    .btn-primary { background: #a3e635; color: #1B365D; border: none; cursor: pointer; }
-    .btn-secondary { background: #1B365D; color: #fff; }
-    .btn-outline { background: #f8fafc; color: #1B365D; border: 1px solid #cbd5e1; }
-    .status { min-height: 20px; margin-top: 8px; font-size: 12px; font-weight: 700; color: #15803d; text-align: center; }
-    .fallback-input { display: none; width: 100%; box-sizing: border-box; margin-top: 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 12px; color: #0f172a; }
-  </style>
-</head>
-<body>
-  <div id="locked-gate" class="card">
-    <div class="hdr">
-      <small>${escapeHtml(copy.gateBadge)}</small>
-      <h1>${escapeHtml(copy.gateTitle)}</h1>
-    </div>
-    <div class="body">
-      <div class="row">${escapeHtml(copy.gateBody)}</div>
-      <div class="steps">
-        <strong>${escapeHtml(copy.gateStepsTitle)}</strong><br />
-        ${escapeHtml(copy.gateStepOne)}<br />
-        ${escapeHtml(copy.gateStepTwo)}
-      </div>
-      <button id="copy-link-btn" type="button" class="btn btn-primary">${escapeHtml(copy.copyBtn)}</button>
-      <div id="copy-status" class="status" aria-live="polite"></div>
-      <input id="fallback-url-input" class="fallback-input" type="text" readonly value="${escapeHtml(currentFullUrl)}" />
-      ${mapUrl ? `<a class="btn btn-outline" href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(copy.openMapBtn)}</a>` : ''}
-    </div>
-  </div>
-  <div id="event-card" class="card" style="display:none">
-    <div class="hdr">
-      <small>${escapeHtml(copy.inviteHeading)}</small>
-      <h1>⏰ ${escapeHtml(displayDate)} ${startHour}:00–${endHour}:00</h1>
-    </div>
-    <div class="body">
-      <div class="row"><strong>${escapeHtml(copy.venueLabel)}</strong> ${escapeHtml(venueName)}</div>
-      ${address ? `<div class="row"><strong>${escapeHtml(copy.addressLabel)}</strong> ${escapeHtml(address)}</div>` : ''}
-      ${note ? `<div class="row">${escapeHtml(note)}</div>` : ''}
-      <a class="btn btn-primary" href="${escapeHtml(downloadUrl.toString())}">${escapeHtml(copy.appleCalBtn)}</a>
-      <a class="btn btn-secondary" href="${escapeHtml(googleCalUrl.toString())}" target="_blank" rel="noopener noreferrer">${escapeHtml(copy.googleCalBtn)}</a>
-      ${mapUrl ? `<a class="btn btn-outline" href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(copy.openMapBtn)}</a>` : ''}
-    </div>
-  </div>
-  ${buildCopyAndMapGateScript({
-    sharePageUrl: currentFullUrl,
-    copiedText: copy.copiedText,
-    manualCopyText: copy.manualCopyText,
-  })}
-</body>
-</html>`);
+  res.status(200).send(
+    renderEventHtmlPage({
+      lang,
+      copy,
+      summary,
+      pageDescription,
+      ogImageUrl,
+      currentFullUrl,
+      displayDate,
+      startHour,
+      endHour,
+      venueName,
+      address,
+      note,
+      downloadUrl: downloadUrl.toString(),
+      googleCalUrl: googleCalUrl.toString(),
+      mapUrl,
+    })
+  );
 }

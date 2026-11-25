@@ -104,20 +104,24 @@ export function formatJstTimestamp(isoString) {
   return `${mm}/${dd} ${hh}:${min}`;
 }
 
+/** Extracts the 2-digit hour integer from `"HH:00"` or `"HH:00-HH:00"`. */
 export function parseHourValue(timeSlot) {
   return Number(String(timeSlot || '').slice(0, 2));
 }
 
+/** Formats an integer hour (`14`) as `"14:00"`. */
 export function formatHourSlot(hourValue) {
   return `${String(hourValue).padStart(2, '0')}:00`;
 }
 
+/** Normalizes ISO timestamps or date strings to a `YYYY-MM-DD` key. */
 export function normalizeSessionDateKey(rawDate) {
   const trimmed = String(rawDate || '').trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
   return trimmed.slice(0, 10);
 }
 
+/** Returns the earliest bookable hour (`12` for future dates, or `currentJstHour + 1` for today). */
 export function getMinStartHourForDate(dateKey, todayKey, currentJstHour) {
   if (!dateKey || dateKey !== todayKey) return 12;
   return currentJstHour + 1;

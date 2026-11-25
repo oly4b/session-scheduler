@@ -1,6 +1,10 @@
 import React from 'react';
 import { ShieldAlert } from 'lucide-react';
 
+/**
+ * Destructive-action guard modal requiring the user to type an exact confirmation
+ * keyword (e.g. `"DELETE"` or `"CANCEL"`) before unlocking the confirm button.
+ */
 export function ConfirmKeywordModal({
   open,
   title,

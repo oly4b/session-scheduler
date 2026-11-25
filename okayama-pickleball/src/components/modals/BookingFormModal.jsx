@@ -1,6 +1,10 @@
 import React from 'react';
 import { CalendarCheck, Edit3, X } from 'lucide-react';
 
+/**
+ * Shared modal shell for both creating a new confirmed session (`mode="create"`)
+ * and editing an existing one (`mode="edit"`). Form inputs are passed via `formFields`.
+ */
 export function BookingFormModal({
   open,
   mode, // 'create' | 'edit'

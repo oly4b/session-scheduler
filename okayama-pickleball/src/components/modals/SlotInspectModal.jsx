@@ -1,6 +1,10 @@
 import React from 'react';
 import { Award, ExternalLink, X } from 'lucide-react';
 
+/**
+ * Detail modal for a time slot or 2-hour block: shows ranked venue recommendations
+ * (with direct booking links), an optional 2nd-choice 2h block swapper, and voter breakdown.
+ */
 export function SlotInspectModal({
   inspectSlot,
   onSelectSlot,

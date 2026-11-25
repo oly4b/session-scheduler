@@ -9,13 +9,24 @@ import { getJstDayMeta } from './scheduler.js';
 
 export { getTodayJstIsoDate };
 
+// `OTHER_VENUE_OPTION` is the UI <select> sentinel; `MANUAL_VENUE_ID` is persisted
+// in `booked_sessions.venue_id` when the user enters a custom venue manually.
 export const OTHER_VENUE_OPTION = '__other__';
 export const MANUAL_VENUE_ID = 'other';
 
+/**
+ * Coerces arbitrary DB or form values into `'indoor'` or `'outdoor'` so
+ * shoe-requirement notices never render undefined copy.
+ */
 export function normalizeCourtType(value, fallback = 'indoor') {
   return value === 'outdoor' || value === 'indoor' ? value : fallback;
 }
 
+/**
+ * Builds a compact `/api/event` share URL. Known venues pass only `v=<id>` so
+ * the server resolves full name, coordinates, and map URL from `VENUE_BY_ID`,
+ * keeping LINE/chat invite links short.
+ */
 export function buildShortEventUrl({
   origin,
   dateIso,
@@ -40,6 +51,10 @@ export function buildShortEventUrl({
   return url.toString();
 }
 
+/**
+ * Formats the confirmed-session share text (JA, EN, or bilingual) with shoe
+ * guidance and a short `/api/event` link for LINE/WhatsApp/Discord.
+ */
 export function formatConfirmedSessionInvite({
   origin,
   dateIso,

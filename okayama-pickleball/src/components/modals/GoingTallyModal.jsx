@@ -1,6 +1,10 @@
 import React from 'react';
 import { X } from 'lucide-react';
 
+/**
+ * Displays the attendee roster (`◯` Going and `△` Maybe chips) for a confirmed
+ * booked session when clicking its `Going: ◯N` pill.
+ */
 export function GoingTallyModal({
   session,
   yesList,

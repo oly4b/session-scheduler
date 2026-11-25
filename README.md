@@ -44,14 +44,20 @@ okayama-pickleball/
 │   └── scrape-yoyacool.js          # Playwright scraper for Okayama City yoyacool venues
 ├── src/
 │   ├── components/
-│   │   └── modals/                 # Booking, Share, SlotInspect, GoingTally, EditPicker, ConfirmKeyword
+│   │   ├── calendar/               # CalendarGrid, BookedSessionFullRowCard, NoBookingsTodayRowCard, SlotChoiceCircle, FloatingStepReminderBanner
+│   │   ├── modals/                 # Booking, BookingFormFields, Share, SlotInspect, GoingTally, EditPicker, ConfirmKeyword
+│   │   ├── TopRecommendations.jsx  # Top 5 ranked 2h blocks panel
+│   │   ├── VoterForm.jsx           # Voter name/note submission & edit/delete bar
+│   │   └── VoterList.jsx           # Player notes & read-only response preview list
 │   ├── config/
 │   │   └── venues.js               # Master venue metadata, court types, coordinates & booking URLs
 │   ├── domain/
 │   │   ├── bookingForm.js          # Pure booking time-clamping & payload builders
 │   │   └── schedule.js             # Calendar grid, 2h ranking, tallies, reducers & auto-RSVP matching
 │   ├── hooks/
-│   │   └── useSchedulerData.js     # Initial fetch & Supabase Realtime subscription lifecycle
+│   │   ├── useBookingForm.js       # Confirmed-session booking, share invite & unmark state/handlers
+│   │   ├── useSchedulerData.js     # Initial fetch & Supabase Realtime subscription lifecycle
+│   │   └── useVoterForm.js         # Voter form, view/edit mode, day/week presets & vote mutations
 │   ├── i18n/
 │   │   ├── copy.js                 # Bilingual (EN / JA) UI dictionary
 │   │   └── useLanguage.js          # Locale detection, persistence & document sync
@@ -64,6 +70,8 @@ okayama-pickleball/
 │   │   ├── jst.js                  # Shared Asia/Tokyo date/hour helpers (frontend & scripts)
 │   │   └── scheduler.js            # Japanese holiday engine, legacy key merge & venue ranking
 │   └── App.jsx                     # Main scheduling UI & voting matrix
+├── supabase/
+│   └── schema.sql                  # Postgres schema, constraints, RLS & Realtime setup
 ├── tests/
 │   ├── bookingForm.test.js         # Unit tests for booking form, invites & ILIKE escaping
 │   └── schedule.test.js            # Unit tests for calendar, 2h ranking & auto-RSVP matching
@@ -74,18 +82,44 @@ okayama-pickleball/
 
 ---
 
-## Development & Verification
+## Architecture & Data Flow
+
+```mermaid
+flowchart LR
+  Scrapers["Playwright / GraphQL Scrapers<br/>(yoyacool & Spacepad)"] -->|"Upsert slots & prune stale votes"| Supabase[("Supabase Postgres<br/>(court_availability, calendar_votes,<br/>booked_sessions, session_attendees)")]
+  Supabase -->|"Realtime WebSocket + REST"| Grid["React 19 Voting Grid<br/>& Top 2h Recommendations"]
+  Grid -->|"Confirmed session"| Share["Share Link<br/>(/api/event?v=...&date=...)"]
+  Share -->|"Vercel Serverless"| Gate{{"In-App Browser<br/>(LINE / Instagram)?"}}
+  Gate -->|"Yes"| CopyGate["Copy Link + Map Gate"]
+  Gate -->|"No (Safari / Chrome)"| ICS[".ics Apple / Google Calendar<br/>+ Map Links"]
+```
+
+---
+
+## Environment Variables & Setup
+
+Copy the example file inside `okayama-pickleball/` and fill in your Supabase credentials for local development:
 
 ```bash
 cd okayama-pickleball
-npm install
-npm run dev                  # Start local Vite dev server
-npm run lint                 # Run Oxlint
-node --test tests/*.test.js  # Run unit tests
-npm run build                # Build production bundle
+cp .env.example .env.local
 ```
 
-```
+| Variable | Where Used | Purpose |
+| :--- | :--- | :--- |
+| `VITE_SUPABASE_URL` | Vite client (`src/lib/supabase.js`) | Public Supabase project URL exposed to the browser |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Vite client (`src/lib/supabase.js`) | Public anon/publishable key for RLS-scoped client queries & Realtime |
+| `SUPABASE_URL` | GitHub Actions (`scripts/*.js`) | Server-side Supabase project URL for scrapers and vote pruning |
+| `SUPABASE_SERVICE_ROLE_KEY` | GitHub Actions (`scripts/*.js`) | Service-role secret key that bypasses RLS to upsert `court_availability` and prune `calendar_votes` |
+
+---
+
+## Database & Deployment
+
+* **Supabase Schema ([`supabase/schema.sql`](okayama-pickleball/supabase/schema.sql)):** Run this file in the Supabase SQL Editor to provision all four tables (`court_availability`, `calendar_votes`, `booked_sessions`, `session_attendees`), unique constraints (`slot_key` PK, `date_key` PK triggering `23505` on duplicate bookings, and `(session_date, attendee_name)` for RSVP upserts), RLS policies, and the `supabase_realtime` publication.
+* **RLS Model:** The browser client operates anonymously with open `SELECT`/`INSERT`/`UPDATE`/`DELETE` policies on `calendar_votes`, `booked_sessions`, and `session_attendees`, while `court_availability` is public read-only and written exclusively by `service_role` scripts.
+* **Vercel Deployment:** Deploy `okayama-pickleball/` as the root directory with `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` configured in Vercel Project Environment Variables. Serverless routes under `api/` (such as [`api/event.js`](okayama-pickleball/api/event.js)) deploy automatically.
+* **Scheduled Availability Sync ([`.github/workflows/sync-availability.yml`](.github/workflows/sync-availability.yml)):** Runs twice daily via cron (`28 12,21 * * *` UTC — `21:28` and `06:28` JST) and supports manual `workflow_dispatch`. It runs `scrape-yoyacool.js` and `scrape-spacepad.js`, then executes `run-prune-votes.js` when both scrapers succeed. Requires `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in GitHub Repository Secrets.
 
 ---
 

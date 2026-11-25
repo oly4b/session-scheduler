@@ -1,3 +1,8 @@
+/**
+ * Bilingual UI dictionary (`en` and `ja`) consumed by `useLanguage()`.
+ * Every key must exist in both `en` and `ja` objects so switching languages at
+ * runtime never falls back to `undefined`. Dynamic strings are functions.
+ */
 export const COPY = {
   en: {
     badgeIntegrated: (count) => `${count} Venues · Availability & Poll`,

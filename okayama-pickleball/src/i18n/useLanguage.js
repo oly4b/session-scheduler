@@ -3,6 +3,7 @@ import { COPY } from './copy.js';
 
 const LANG_STORAGE_KEY = 'momodinks_lang';
 
+// Reads persisted manual language choice; returns null if unset or blocked by private mode.
 function readStoredLanguage() {
   try {
     const saved = window.localStorage.getItem(LANG_STORAGE_KEY);
@@ -12,6 +13,7 @@ function readStoredLanguage() {
   }
 }
 
+// Inspects browser locales in preference order, defaulting to `ja` for non-EN/JA locales.
 function detectBrowserLanguage(fallback = 'ja') {
   if (typeof navigator === 'undefined') return fallback;
   const locales = [
@@ -27,6 +29,10 @@ function detectBrowserLanguage(fallback = 'ja') {
   return fallback;
 }
 
+/**
+ * Manages active UI language (`'ja' | 'en'`), localStorage persistence, `<html lang>`
+ * / `document.title` sync, and automatic browser locale tracking until manually overridden.
+ */
 export function useLanguage() {
   const [lang, setLangState] = useState(
     () => readStoredLanguage() || detectBrowserLanguage('ja')

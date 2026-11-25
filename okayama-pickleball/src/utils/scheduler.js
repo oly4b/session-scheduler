@@ -15,8 +15,11 @@ const MONTH_EN = [
 
 export { JST_OFFSET_MS, formatJstTimestamp };
 
+// Set of all configured venue IDs; used to ignore retired/unknown court_detail rows in DB.
 export const ACTIVE_VENUE_IDS = new Set(VENUES.map((v) => v.id));
 
+// Canonical 1-hour columns (12:00–22:00). `isStudentPrime` (>= 18:00) marks
+// weekday evening hours when student-discounted/prime sessions are highlighted.
 export const TIME_BLOCKS = Array.from({ length: 10 }, (_, idx) => {
   const startHour = 12 + idx;
   const endHour = startHour + 1;
@@ -172,6 +175,10 @@ export const LEGACY_PREFIX = 'spacepad_1_3_';
  *
  * @param {Record<string, string> | null | undefined} responses
  * @returns {Record<string, string>}
+ */
+/**
+ * Escapes `%`, `_`, and `\` before passing user-supplied names into Supabase `.ilike()`
+ * so special characters are matched literally rather than as SQL wildcards.
  */
 export function escapeIlikePattern(value) {
   return String(value || '').replace(/[\\%_]/g, '\\$&');

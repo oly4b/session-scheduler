@@ -1,6 +1,10 @@
 import React from 'react';
 import { Check, Copy, Edit3, Share2, X } from 'lucide-react';
 
+/**
+ * Displays the generated session invite text with JA / EN / JA+EN format toggles,
+ * one-tap clipboard copy, and an optional "Edit Booking" shortcut.
+ */
 export function ShareInviteModal({
   open,
   canEditBooking,

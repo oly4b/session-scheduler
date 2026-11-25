@@ -2,6 +2,10 @@ import React from 'react';
 import { Edit3, UserCheck, X } from 'lucide-react';
 import { normalizeResponsesMap } from '../../utils/scheduler';
 
+/**
+ * Lists active voters so a user can pick whose submission to load into the grid
+ * for editing (since the app uses open group polling without user accounts).
+ */
 export function EditPickerModal({
   open,
   activeVotes,

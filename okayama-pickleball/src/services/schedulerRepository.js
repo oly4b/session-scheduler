@@ -14,8 +14,13 @@ import {
 } from '../utils/scheduler.js';
 import { supabase } from '../lib/supabase.js';
 
+// Supabase PostgREST caps single responses at 1000 rows; paginate in 1000-row chunks.
 const AVAILABILITY_PAGE_SIZE = 1000;
 
+/**
+ * Normalizes a `booked_sessions` DB row, resolving known venues from `VENUE_BY_ID`
+ * and falling back to `MANUAL_VENUE_ID` ('other') for custom/manual entries.
+ */
 export function normalizeBookedRow(row) {
   if (!row?.date_key) return null;
 
@@ -50,6 +55,10 @@ export function normalizeBookedRow(row) {
   };
 }
 
+/**
+ * Resolves the best display name for a booked session: custom `venueName` first,
+ * then `VENUE_BY_ID` lookup, then the localized TBD fallback.
+ */
 export function resolveBookingVenueLabel(booking, fallbackLabel) {
   if (booking.venueName?.trim()) return booking.venueName.trim();
   const record =
@@ -59,6 +68,7 @@ export function resolveBookingVenueLabel(booking, fallbackLabel) {
   return record?.fullName || record?.shortName || fallbackLabel;
 }
 
+/** Fetches all `calendar_votes` ordered oldest-first so tally chips render in submission order. */
 export async function fetchVotes(client = supabase) {
   const { data, error } = await client
     .from('calendar_votes')
@@ -68,6 +78,7 @@ export async function fetchVotes(client = supabase) {
   return { votes: data || [], error };
 }
 
+/** Fetches upcoming `booked_sessions` from `minDate` onward, keyed by `YYYY-MM-DD`. */
 export async function fetchBookedSessions(
   minDate = getJstDayMeta(0).dateKey,
   client = supabase
@@ -90,6 +101,7 @@ export async function fetchBookedSessions(
   return { bookedSessionsByDate, error: null };
 }
 
+/** Fetches upcoming `session_attendees` from `minDate` onward, grouped by `session_date`. */
 export async function fetchSessionAttendees(
   minDate = getJstDayMeta(0).dateKey,
   client = supabase
@@ -182,6 +194,10 @@ export async function fetchCourtAvailability(
   };
 }
 
+/**
+ * Saves or updates a voter's `calendar_votes` row and syncs any pending
+ * confirmed-session RSVPs (`session_attendees`) in the same submit flow.
+ */
 export async function saveVoteWithRsvps(
   {
     editingVoteId,
@@ -225,6 +241,8 @@ export async function saveVoteWithRsvps(
         );
       if (upsertError) throw upsertError;
     } else {
+      // Use case-insensitive ILIKE match (with escaped wildcards) so minor casing
+      // differences between vote names and attendee rows still delete cleanly.
       const { data: deletedRows, error: deleteError } = await client
         .from('session_attendees')
         .delete()
@@ -242,6 +260,7 @@ export async function saveVoteWithRsvps(
   }
 }
 
+/** Deletes a voter's `calendar_votes` row and cascades to their `session_attendees` RSVPs. */
 export async function deleteVoteCascade(
   { voteId, targetName },
   client = supabase
@@ -261,6 +280,10 @@ export async function deleteVoteCascade(
   }
 }
 
+/**
+ * Upserts auto-matched `yes` attendees into `session_attendees` when a booking
+ * is created or edited, using `(session_date, attendee_name)` as the conflict key.
+ */
 async function seedSessionAttendees(
   { dateKey, dbRow, autoAttendeeNames = [], venueName = '' },
   client = supabase
@@ -296,6 +319,8 @@ export async function createBookedSession(
     ...dbRow,
   });
 
+  // Return `{ isDuplicate: true }` on Postgres unique-violation (23505) so the UI
+  // can prompt to edit/overwrite an existing booking on that date.
   if (error?.code === '23505') {
     return { ok: false, isDuplicate: true, error };
   }
@@ -311,6 +336,11 @@ export async function createBookedSession(
   return { ok: true, isDuplicate: false, error: null };
 }
 
+/**
+ * Updates an existing `booked_sessions` row and replaces its `session_attendees`
+ * with voters who match the new time window (so stale RSVPs from the old time
+ * don't linger).
+ */
 export async function updateBookedSession(
   { dateKey, dbRow, autoAttendeeNames = [], venueName = '' },
   client = supabase
@@ -335,6 +365,7 @@ export async function updateBookedSession(
   );
 }
 
+/** Deletes a `booked_sessions` row and its `session_attendees` records for `dateKey`. */
 export async function clearBookedSessionCascade(
   { dateKey },
   client = supabase
@@ -351,6 +382,10 @@ export async function clearBookedSessionCascade(
     .eq('session_date', dateKey);
 }
 
+/**
+ * Subscribes to realtime Postgres changes on votes, bookings, and attendees.
+ * Returns an unsubscribe cleanup function for React `useEffect`.
+ */
 export function subscribeToSchedulerRealtime(
   { onVotesChange, onBookingEvent, onAttendeesChange },
   client = supabase

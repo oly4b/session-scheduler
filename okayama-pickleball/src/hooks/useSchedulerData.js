@@ -9,7 +9,15 @@ import {
   subscribeToSchedulerRealtime,
 } from '../services/schedulerRepository.js';
 
+/**
+ * Loads initial scheduler data (votes, bookings, attendees, court availability)
+ * and keeps it live via Supabase Realtime subscriptions.
+ *
+ * @param {string} supabaseErrorMessage - Localized fallback error shown when fetches fail.
+ */
 export function useSchedulerData(supabaseErrorMessage) {
+  // Keep latest localized error message in a ref so toggling language does not
+  // tear down and re-subscribe the realtime channels.
   const errorMessageRef = useRef(supabaseErrorMessage);
 
   useEffect(() => {

@@ -10,6 +10,7 @@ import {
   parseHourValue,
 } from '../utils/jst.js';
 
+// Scheduler operates on 1-hour blocks from 12:00 through 22:00 (starts 12–21, ends 13–22).
 export const START_HOUR_OPTIONS = Array.from({ length: 10 }, (_, idx) => {
   const hour = String(idx + 12).padStart(2, '0');
   return `${hour}:00`;
@@ -20,6 +21,10 @@ export const END_HOUR_OPTIONS = Array.from({ length: 10 }, (_, idx) => {
   return `${hour}:00`;
 });
 
+/**
+ * Prevents selecting a past start hour when the user switches the booking date
+ * to today (JST), clamping the range forward while keeping at least 1 hour.
+ */
 export function clampBookingTimeForDate(
   nextDate,
   currentTime,
@@ -42,6 +47,10 @@ export function clampBookingTimeForDate(
   return `${formatHourSlot(nextStart)}-${formatHourSlot(nextEnd)}`;
 }
 
+/**
+ * Auto-bumps the end time to `start + 1h` (capped at 22:00) whenever the user
+ * picks a start time that meets or exceeds the current end time.
+ */
 export function adjustBookingEndForStart(nextStart, currentTime) {
   const currentEnd = String(currentTime || '').split('-')[1] || '19:00';
   const startHour = parseHourValue(nextStart);
@@ -53,6 +62,10 @@ export function adjustBookingEndForStart(nextStart, currentTime) {
   return `${nextStart}-${adjustedEnd}`;
 }
 
+/**
+ * Guarantees end time stays strictly after start time when the user edits the
+ * end-time dropdown directly.
+ */
 export function clampBookingEndTime(nextEnd, currentTime) {
   const currentStart = String(currentTime || '').split('-')[0] || '17:00';
   const startHour = parseHourValue(currentStart);
@@ -63,6 +76,12 @@ export function clampBookingEndTime(nextEnd, currentTime) {
   return `${currentStart}-${clampedEnd}`;
 }
 
+/**
+ * Builds both the Supabase `booked_sessions` row (`dbRow`) and the optimistic
+ * React state entry (`stateEntry`). Known venues omit `venue_name`/`map_url` in
+ * `dbRow` so `VENUE_BY_ID` remains the single source of truth; custom venues use
+ * `MANUAL_VENUE_ID` ('other').
+ */
 export function buildBookingPayloadFromForm({
   bookingTime,
   selectedBookingVenueId,

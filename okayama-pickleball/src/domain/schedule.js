@@ -7,6 +7,14 @@ import {
   rankRecommendedVenues,
 } from '../utils/scheduler.js';
 
+/**
+ * Ranks preferred 2-hour start hours (lower = better).
+ * Outdoor courts peak at 14:00 (daylight/temperature); indoor courts peak at 19:00 (after work/school).
+ *
+ * @param {number} startHour
+ * @param {'indoor' | 'outdoor'} [courtType='indoor']
+ * @returns {number}
+ */
 export function getTwoHourPreferenceRank(startHour, courtType = 'indoor') {
   if (courtType === 'outdoor') {
     if (startHour === 14) return 0;
@@ -20,6 +28,18 @@ export function getTwoHourPreferenceRank(startHour, courtType = 'indoor') {
   return 3 + Math.abs(startHour - 19);
 }
 
+/**
+ * Builds the 4-week (28-day) calendar grid and flattens all open or booked-window
+ * slots into `allOpenSlots` for tallying and week-clearing operations.
+ *
+ * @param {{
+ *   openVenuesBySlot: Record<string, Set<string>>,
+ *   bookedVenuesBySlot: Record<string, Set<string>>,
+ *   bookedSessionsByDate: Record<string, { startHour: number, endHour: number }>,
+ *   isJa: boolean,
+ *   getDayMeta?: typeof getJstDayMeta,
+ * }} params
+ */
 export function buildCalendarWeeks({
   openVenuesBySlot,
   bookedVenuesBySlot,
@@ -123,6 +143,10 @@ export function buildCalendarWeeks({
   return { calendarWeeks, allOpenSlots, hasLiveAvailability };
 }
 
+/**
+ * Keeps voters who have at least one active open-slot vote, a session RSVP, or a note
+ * so old voters from expired weeks drop out of the UI without deleting DB rows.
+ */
 export function filterActiveVotes({ votes, allOpenSlots, attendeesByDate }) {
   const openKeySet = new Set(allOpenSlots.map((s) => s.slotKey));
   const rsvpNames = new Set();
@@ -142,6 +166,11 @@ export function filterActiveVotes({ votes, allOpenSlots, attendeesByDate }) {
   });
 }
 
+/**
+ * Identifies all contiguous 2-hour blocks with at least one shared open venue and
+ * marks the single highest-ranked block per day (`isPriorityTwoHour`) with
+ * `priorityPosition: 'start' | 'end'` so the UI can draw one spanning capsule.
+ */
 export function computeTwoHourHighlights({ calendarWeeks, openVenuesBySlot }) {
   const twoHourHighlightMap = {};
   const twoHourEligibleSlotKeys = new Set();
@@ -249,6 +278,7 @@ export function computeSlotTallies({ allOpenSlots, votes, openVenuesBySlot }) {
       else if (choice === 'no') noPlayers.push(vote);
     }
 
+    // Weight `yes` 10x higher than `maybe` so a slot with more firm attendees always outranks `maybe`s.
     const score = yesPlayers.length * 100 + maybePlayers.length * 10;
     if (yesPlayers.length > 0 && score > bestScore) bestScore = score;
 
@@ -301,6 +331,11 @@ export function computeSlotTallies({ allOpenSlots, votes, openVenuesBySlot }) {
   return tallyMap;
 }
 
+/**
+ * Ranks the top 5 upcoming 2-hour blocks across unbooked days.
+ * Requires >= 3 total votes (minimum viable session size) and tiers scoring so
+ * full 2h `yes` voters (1000) outweigh flexible `yes`/`maybe` (100) and 1h-only (10).
+ */
 export function computeRankedTwoHourBlocks({
   calendarWeeks,
   openVenuesBySlot,
@@ -421,6 +456,10 @@ export function computeRankedTwoHourBlocks({
   return bestByDate.sort((a, b) => b.score - a.score).slice(0, 5);
 }
 
+/**
+ * Purely cycles a single slot through `unset -> yes -> maybe -> no -> unset`
+ * so clicking a cell repeatedly lets voters clear a choice without a reset button.
+ */
 export function cycleSlotChoice(responses, slotKey) {
   const current = responses[slotKey];
   const next = { ...responses };
@@ -431,6 +470,10 @@ export function cycleSlotChoice(responses, slotKey) {
   return next;
 }
 
+/**
+ * Applies a day-level quick-select preset (`all`, `afternoon` <18:00, `evening` >=18:00,
+ * or `null` to clear) only to open slots that belong to a valid 2-hour block.
+ */
 export function applyDayWindowToResponses(
   responses,
   day,
@@ -459,6 +502,10 @@ export function applyDayWindowToResponses(
   return next;
 }
 
+/**
+ * Marks every unbooked, 2h-eligible open slot in the active week as `yes` and
+ * returns updated `dayWindows` so the row quick-select buttons stay in sync.
+ */
 export function fillWeekAllResponses(
   responses,
   week,
@@ -483,6 +530,9 @@ export function fillWeekAllResponses(
   return { responses: next, dayWindows };
 }
 
+/**
+ * Clears all responses belonging to `weekIndex` while preserving votes on other weeks.
+ */
 export function clearWeekResponses(responses, allOpenSlots, weekIndex) {
   const next = { ...responses };
   for (const slot of allOpenSlots) {
@@ -493,6 +543,10 @@ export function clearWeekResponses(responses, allOpenSlots, weekIndex) {
   return next;
 }
 
+/**
+ * Finds voters who answered `yes` to every 1-hour slot within `[startHour, endHour)`
+ * so newly created or edited bookings auto-seed `session_attendees` accurately.
+ */
 export function findAttendeesAvailableForSession({
   votes,
   dateKey,
