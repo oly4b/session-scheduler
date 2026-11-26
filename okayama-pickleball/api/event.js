@@ -357,6 +357,9 @@ function renderEventHtmlPage({
   <meta property="og:title" content="${escapeHtml(summary)}" />
   <meta property="og:description" content="${escapeHtml(pageDescription)}" />
   <meta property="og:image" content="${escapeHtml(ogImageUrl)}" />
+  <meta property="og:image:type" content="image/jpeg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="627" />
   <meta property="og:url" content="${escapeHtml(currentFullUrl)}" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:image" content="${escapeHtml(ogImageUrl)}" />
@@ -567,7 +570,9 @@ export default function handler(req, res) {
     currentUrlObj = new URL('/api/event', originUrl);
   }
   const currentFullUrl = currentUrlObj.toString();
-  const ogImageUrl = `${originUrl}/og-image.jpg`;
+  // Always serve og:image from the public production origin so Vercel Preview
+  // Deployment Protection or localhost hosts do not break external SNS crawlers.
+  const ogImageUrl = `${CANONICAL_ORIGIN}/og-image.jpg`;
   const pageDescription = descriptionLines.join(' · ');
 
   const downloadUrl = new URL(currentFullUrl);
