@@ -50,7 +50,8 @@ export function normalizeBookedRow(row) {
     endHour: Number(row.end_hour),
     venueId: resolvedVenueId,
     venueName: resolvedVenueName,
-    mapUrl: String(row.map_url || '').trim() || matchedVenue?.mapUrl || '',
+    // Prefer VENUE_BY_ID.mapUrl for known venues so stale DB map_url values never override it.
+    mapUrl: matchedVenue?.mapUrl || String(row.map_url || '').trim(),
     courtType: resolvedCourtType,
   };
 }
@@ -69,8 +70,9 @@ export function resolveBookingVenueLabel(booking, fallbackLabel) {
 }
 
 /**
- * Resolves a safe `http:`/`https:` map URL for a booked session (`booking.mapUrl`
- * first, falling back to `VENUE_BY_ID`), returning `''` for invalid/unsafe schemes.
+ * Resolves a safe `http:`/`https:` map URL for a booked session (`VENUE_BY_ID`
+ * first for known venues, then `booking.mapUrl` for custom venues), returning `''`
+ * for invalid/unsafe schemes.
  */
 export function resolveBookingMapUrl(booking) {
   const raw = String(booking?.mapUrl || '').trim();
@@ -78,7 +80,7 @@ export function resolveBookingMapUrl(booking) {
     booking?.venueId && booking.venueId !== MANUAL_VENUE_ID
       ? VENUE_BY_ID.get(booking.venueId)
       : null;
-  const candidate = raw || record?.mapUrl || '';
+  const candidate = record?.mapUrl || raw;
   if (!candidate) return '';
   try {
     const parsed = new URL(candidate);
