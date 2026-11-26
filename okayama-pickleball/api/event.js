@@ -378,6 +378,9 @@ function renderEventHtmlPage({
     .btn-outline { background: #f8fafc; color: #1B365D; border: 1px solid #cbd5e1; }
     .status { min-height: 20px; margin-top: 8px; font-size: 12px; font-weight: 700; color: #15803d; text-align: center; }
     .fallback-input { display: none; width: 100%; box-sizing: border-box; margin-top: 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 12px; color: #0f172a; }
+    @media (pointer: coarse), (max-width: 768px) {
+      input, select, textarea { font-size: 16px; }
+    }
     @media (prefers-color-scheme: dark) {
       body { background: #020617; color: #f1f5f9; }
       .card { background: #0f172a; border-color: #334155; }
