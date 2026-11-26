@@ -5,12 +5,13 @@
  */
 export const COPY = {
   en: {
-    badgeIntegrated: (count) => `${count} Venues · Availability & Poll`,
+    badgeIntegrated: () => 'Availability & Poll',
     syncedWaiting: '※ Waiting for initial availability scrape',
     appTitle: '桃dinks Session Scheduler',
     venuesSummary: (total, okayama, kurashiki) =>
       `Venues (${total}): Okayama (${okayama}) · Kurashiki (${kurashiki})`,
     shareToSns: 'Share',
+    scoringOsBtn: 'Scoring OS',
     supabaseError:
       'Supabase connection error: please check your .env and table settings.',
     editingBanner: (name) => `Editing: ${name}`,
@@ -175,12 +176,13 @@ export const COPY = {
     toastSelectManual: 'Text selected — press Ctrl/Cmd+C to copy',
   },
   ja: {
-    badgeIntegrated: (count) => `${count}会場統合 空き状況 & 日程調整`,
+    badgeIntegrated: () => '空き状況 & 日程調整',
     syncedWaiting: '※ 初回空き状況スクレイピング待機中',
     appTitle: '桃dinks 合同セッション日程調整',
     venuesSummary: (total, okayama, kurashiki) =>
       `対象施設 (${total}会場): 岡山市 (${okayama}施設) ・ 倉敷市 (${kurashiki}施設)`,
     shareToSns: '共有',
+    scoringOsBtn: 'スコアOS',
     supabaseError:
       'Supabase接続エラー: .envとテーブル設定を確認してください。',
     editingBanner: (name) => `編集中: ${name}`,

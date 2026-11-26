@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Share2,
   Sun,
+  Trophy,
 } from 'lucide-react';
 import { VENUES } from './config/venues';
 import {
@@ -42,6 +43,9 @@ import { EditPickerModal } from './components/modals/EditPickerModal';
 import { ShareInviteModal } from './components/modals/ShareInviteModal';
 import { BookingFormModal } from './components/modals/BookingFormModal';
 import { BookingFormFields } from './components/modals/BookingFormFields';
+
+const SCORING_APP_URL =
+  import.meta.env.VITE_SCORING_APP_URL || 'https://sideout-pb-scoring.vercel.app';
 
 function PickleballIcon() {
   return (
@@ -93,6 +97,7 @@ export default function App() {
   const [activeWeekIdx, setActiveWeekIdx] = useState(0);
   const [showVenueList, setShowVenueList] = useState(false);
   const [gridViewMode, setGridViewMode] = useState('vote');
+  const [isSwitchingToScoring, setIsSwitchingToScoring] = useState(false);
   const [tableViewportWidth, setTableViewportWidth] = useState(0);
   const [inspectSlot, setInspectSlot] = useState(null);
   const [inspectGoingSession, setInspectGoingSession] = useState(null);
@@ -268,9 +273,48 @@ export default function App() {
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-full bg-lime-400 text-slate-950 text-[11px] font-extrabold tracking-tight whitespace-nowrap">
-                    {t.badgeIntegrated(VENUES.length)}
-                  </span>
+                  <div
+                    role="navigation"
+                    aria-label="App switcher"
+                    className="relative inline-grid grid-cols-2 rounded-full bg-slate-900/70 p-0.5 border border-white/15 overflow-hidden"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`segmented-thumb pointer-events-none absolute top-0.5 bottom-0.5 left-0.5 w-[calc(50%-2px)] rounded-full bg-lime-400 shadow-xs ${
+                        isSwitchingToScoring ? 'translate-x-full' : 'translate-x-0'
+                      }`}
+                    />
+                    <span
+                      aria-current="page"
+                      className={`relative z-10 inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-extrabold tracking-tight whitespace-nowrap transition-colors ${
+                        isSwitchingToScoring ? 'text-slate-300' : 'text-slate-950'
+                      }`}
+                    >
+                      {t.badgeIntegrated(VENUES.length)}
+                    </span>
+                    <a
+                      href={SCORING_APP_URL}
+                      onClick={(e) => {
+                        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+                          return;
+                        }
+                        e.preventDefault();
+                        setIsSwitchingToScoring(true);
+                        setTimeout(() => {
+                          window.location.assign(SCORING_APP_URL);
+                          setTimeout(() => setIsSwitchingToScoring(false), 500);
+                        }, 180);
+                      }}
+                      className={`relative z-10 inline-flex items-center justify-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold tracking-tight whitespace-nowrap no-underline transition-colors cursor-pointer ${
+                        isSwitchingToScoring
+                          ? 'text-slate-950'
+                          : 'text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      <Trophy className="w-3 h-3 shrink-0" />
+                      <span>{t.scoringOsBtn}</span>
+                    </a>
+                  </div>
                   {hasLiveAvailability ? (
                     <span
                       translate={isJa ? undefined : 'no'}

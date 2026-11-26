@@ -12,6 +12,7 @@ import {
   buildShortEventUrl,
   formatConfirmedSessionInvite,
 } from '../src/utils/confirmedInvite.js';
+import { VENUE_BY_ID } from '../src/config/venues.js';
 import { escapeIlikePattern } from '../src/utils/scheduler.js';
 
 test('bookingForm time clamping and payload building', () => {
@@ -34,8 +35,10 @@ test('bookingForm time clamping and payload building', () => {
   });
   assert.equal(known.dbRow.venue_id, 'kurashiki_gym');
   assert.equal(known.dbRow.venue_name, '');
+  assert.equal(known.dbRow.map_url, VENUE_BY_ID.get('kurashiki_gym').mapUrl);
   assert.equal(known.dbRow.court_type, 'indoor');
   assert.equal(known.stateEntry.venueName, '倉敷体育館');
+  assert.equal(known.stateEntry.mapUrl, VENUE_BY_ID.get('kurashiki_gym').mapUrl);
 
   const custom = buildBookingPayloadFromForm({
     bookingTime: '14:00-16:00',

@@ -50,7 +50,7 @@ export function normalizeBookedRow(row) {
     endHour: Number(row.end_hour),
     venueId: resolvedVenueId,
     venueName: resolvedVenueName,
-    mapUrl: String(row.map_url || '').trim(),
+    mapUrl: String(row.map_url || '').trim() || matchedVenue?.mapUrl || '',
     courtType: resolvedCourtType,
   };
 }
@@ -66,6 +66,28 @@ export function resolveBookingVenueLabel(booking, fallbackLabel) {
       ? VENUE_BY_ID.get(booking.venueId)
       : null;
   return record?.fullName || record?.shortName || fallbackLabel;
+}
+
+/**
+ * Resolves a safe `http:`/`https:` map URL for a booked session (`booking.mapUrl`
+ * first, falling back to `VENUE_BY_ID`), returning `''` for invalid/unsafe schemes.
+ */
+export function resolveBookingMapUrl(booking) {
+  const raw = String(booking?.mapUrl || '').trim();
+  const record =
+    booking?.venueId && booking.venueId !== MANUAL_VENUE_ID
+      ? VENUE_BY_ID.get(booking.venueId)
+      : null;
+  const candidate = raw || record?.mapUrl || '';
+  if (!candidate) return '';
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:'
+      ? parsed.toString()
+      : '';
+  } catch {
+    return '';
+  }
 }
 
 /** Fetches all `calendar_votes` ordered oldest-first so tally chips render in submission order. */

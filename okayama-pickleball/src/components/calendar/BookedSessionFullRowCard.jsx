@@ -2,7 +2,10 @@ import React from 'react';
 import { CalendarCheck, Check, Clock, MapPin, Share2 } from 'lucide-react';
 import { TIME_BLOCKS } from '../../utils/scheduler';
 import { formatHourSlot } from '../../utils/jst';
-import { resolveBookingVenueLabel } from '../../services/schedulerRepository';
+import {
+  resolveBookingMapUrl,
+  resolveBookingVenueLabel,
+} from '../../services/schedulerRepository';
 import { formatDayLabel } from './calendarUtils';
 
 /**
@@ -26,6 +29,7 @@ export function BookedSessionFullRowCard({
   onRequestClearBooking,
 }) {
   const venueLabel = resolveBookingVenueLabel(booking, t.venueTbd);
+  const venueMapUrl = resolveBookingMapUrl(booking);
   const yesAttendees = attendees.filter((row) => row.status !== 'maybe');
   const maybeAttendees = attendees.filter((row) => row.status === 'maybe');
   const viewedName = String(viewingVote?.name || '').trim();
@@ -88,10 +92,22 @@ export function BookedSessionFullRowCard({
             </div>
 
             <div className="flex items-center gap-2 text-sm text-slate-800 dark:text-slate-100 overflow-hidden">
-              <span className="inline-flex items-center gap-1 font-medium text-slate-800 dark:text-slate-100 min-w-0 truncate">
-                <MapPin className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400 shrink-0" />
-                <span className="truncate">{venueLabel}</span>
-              </span>
+              {venueMapUrl ? (
+                <a
+                  href={venueMapUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 font-medium text-slate-800 dark:text-slate-100 no-underline hover:text-sky-600 dark:hover:text-lime-300 transition-colors min-w-0 truncate"
+                >
+                  <MapPin className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400 shrink-0" />
+                  <span className="truncate">{venueLabel}</span>
+                </a>
+              ) : (
+                <span className="inline-flex items-center gap-1 font-medium text-slate-800 dark:text-slate-100 min-w-0 truncate">
+                  <MapPin className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400 shrink-0" />
+                  <span className="truncate">{venueLabel}</span>
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() =>

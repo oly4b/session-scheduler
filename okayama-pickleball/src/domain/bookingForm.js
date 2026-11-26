@@ -78,9 +78,9 @@ export function clampBookingEndTime(nextEnd, currentTime) {
 
 /**
  * Builds both the Supabase `booked_sessions` row (`dbRow`) and the optimistic
- * React state entry (`stateEntry`). Known venues omit `venue_name`/`map_url` in
- * `dbRow` so `VENUE_BY_ID` remains the single source of truth; custom venues use
- * `MANUAL_VENUE_ID` ('other').
+ * React state entry (`stateEntry`). Known venues omit `venue_name` in `dbRow` so
+ * `VENUE_BY_ID` remains the single source of truth for labels, while syncing
+ * `map_url` so external consumers reading `booked_sessions` get the map link.
  */
 export function buildBookingPayloadFromForm({
   bookingTime,
@@ -95,9 +95,11 @@ export function buildBookingPayloadFromForm({
   const isOther =
     selectedBookingVenueId === OTHER_VENUE_OPTION || !selectedBookingVenueId;
   const venueName = isOther ? customBookingVenue.trim() : '';
-  const mapUrl = isOther ? customBookingMapUrl.trim() : '';
   const venueId = isOther ? MANUAL_VENUE_ID : selectedBookingVenueId;
   const matchedVenue = !isOther ? VENUE_BY_ID.get(venueId) : null;
+  const mapUrl = isOther
+    ? customBookingMapUrl.trim()
+    : matchedVenue?.mapUrl || '';
   const courtType = isOther
     ? normalizeCourtType(bookingCourtType, 'indoor')
     : normalizeCourtType(matchedVenue?.courtType, 'indoor');
