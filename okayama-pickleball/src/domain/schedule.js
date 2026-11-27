@@ -471,6 +471,49 @@ export function cycleSlotChoice(responses, slotKey) {
 }
 
 /**
+ * Marks `startHour` and all subsequent 2h-eligible slots on `dateKey` as `'yes'`
+ * when a voter starts a time-range selection (assuming free from that hour onwards).
+ */
+export function fillDayFromHourOnwards(
+  responses,
+  dateKey,
+  startHour,
+  twoHourEligibleSlotKeys
+) {
+  const next = { ...responses };
+  for (const block of TIME_BLOCKS) {
+    if (block.startHour < startHour) continue;
+    const slotKey = `${dateKey}_${block.id}`;
+    if (!twoHourEligibleSlotKeys.has(slotKey)) continue;
+    next[slotKey] = 'yes';
+  }
+  return next;
+}
+
+/**
+ * Finalizes a range selection on `dateKey`: sets all 2h-eligible slots in
+ * `[fromHour, untilHour]` (inclusive) to `'yes'` and clears any auto-filled
+ * slots after `untilHour`.
+ */
+export function applyDayTimeRange(
+  responses,
+  dateKey,
+  fromHour,
+  untilHour,
+  twoHourEligibleSlotKeys
+) {
+  const next = { ...responses };
+  for (const block of TIME_BLOCKS) {
+    if (block.startHour < fromHour) continue;
+    const slotKey = `${dateKey}_${block.id}`;
+    if (!twoHourEligibleSlotKeys.has(slotKey)) continue;
+    if (block.startHour <= untilHour) next[slotKey] = 'yes';
+    else delete next[slotKey];
+  }
+  return next;
+}
+
+/**
  * Applies a day-level quick-select preset (`all`, `afternoon` <18:00, `evening` >=18:00,
  * or `null` to clear) only to open slots that belong to a valid 2-hour block.
  */

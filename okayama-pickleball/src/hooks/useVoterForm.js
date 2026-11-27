@@ -1,11 +1,14 @@
 import { useCallback, useMemo, useState } from 'react';
 import { normalizeResponsesMap } from '../utils/scheduler';
 import {
+  applyDayTimeRange,
   applyDayWindowToResponses,
   clearWeekResponses,
   cycleSlotChoice,
+  fillDayFromHourOnwards,
   fillWeekAllResponses,
 } from '../domain/schedule';
+import { formatHourSlot } from '../utils/jst';
 import {
   deleteVoteCascade,
   saveVoteWithRsvps,
@@ -40,6 +43,7 @@ export function useVoterForm({
   const [responses, setResponses] = useState({});
   const [editingVoteId, setEditingVoteId] = useState(null);
   const [viewingVote, setViewingVote] = useState(null);
+  const [rangeStartByDate, setRangeStartByDate] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [showEditPickerModal, setShowEditPickerModal] = useState(false);
@@ -59,6 +63,7 @@ export function useVoterForm({
     setResponses({});
     setPendingRsvpByDate({});
     setDayWindowByDate({});
+    setRangeStartByDate({});
     setEditingVoteId(null);
     setViewingVote(null);
   }, []);
@@ -79,9 +84,16 @@ export function useVoterForm({
     [viewingVote, t, triggerToast]
   );
 
-  /** Cycles a 2h-eligible slot (`unset -> yes -> maybe -> no -> unset`), blocking non-2h slots. */
+  /**
+   * Handles slot clicks in Vote mode with range-selection ergonomics:
+   * 1. Tapping an unset slot marks it and all subsequent 2h-eligible slots on that day as `yes` (`◯`),
+   *    then prompts for the end time (`rangeStartSlot`).
+   * 2. Tapping a later hour on the same day fills `[start, end]` inclusive and clears hours after `end`.
+   * 3. Tapping an already-set slot (outside an active range) cycles `yes -> maybe -> no -> unset`.
+   */
   const handleCycleSlot = (slotKey) => {
-    if (!slotTallies[slotKey]) return;
+    const slotMeta = slotTallies[slotKey];
+    if (!slotMeta) return;
 
     if (!twoHourEligibleSlotKeys.has(slotKey)) {
       triggerToast(t.no2hTitle);
@@ -94,10 +106,72 @@ export function useVoterForm({
     }
 
     if (gridViewMode === 'heatmap') {
-      setInspectSlot(slotTallies[slotKey]);
+      setInspectSlot(slotMeta);
       return;
     }
 
+    const { dateKey, startHour } = slotMeta;
+    const activeStart = rangeStartByDate[dateKey];
+
+    // Step 2: Finish an active range selection on this specific date.
+    if (activeStart) {
+      if (startHour === activeStart.startHour) {
+        setRangeStartByDate((prev) => {
+          const next = { ...prev };
+          delete next[dateKey];
+          return next;
+        });
+        return;
+      }
+      if (startHour > activeStart.startHour) {
+        setResponses((prev) =>
+          applyDayTimeRange(
+            prev,
+            dateKey,
+            activeStart.startHour,
+            startHour,
+            twoHourEligibleSlotKeys
+          )
+        );
+        setRangeStartByDate((prev) => {
+          const next = { ...prev };
+          delete next[dateKey];
+          return next;
+        });
+        triggerToast(
+          t.toastRangeApplied(
+            formatHourSlot(activeStart.startHour),
+            formatHourSlot(startHour + 1)
+          )
+        );
+        return;
+      }
+      // Clicked an earlier hour on this date: restart range from this earlier hour onwards.
+      setResponses((prev) =>
+        fillDayFromHourOnwards(prev, dateKey, startHour, twoHourEligibleSlotKeys)
+      );
+      setRangeStartByDate((prev) => ({
+        ...prev,
+        [dateKey]: { startHour, slotKey },
+      }));
+      triggerToast(t.toastRangePrompt(formatHourSlot(startHour)));
+      return;
+    }
+
+    // Step 1: Tapping an unset slot starts an independent range on this date.
+    if (!responses[slotKey]) {
+      setResponses((prev) =>
+        fillDayFromHourOnwards(prev, dateKey, startHour, twoHourEligibleSlotKeys)
+      );
+      setRangeStartByDate((prev) => ({
+        ...prev,
+        [dateKey]: { startHour, slotKey },
+      }));
+      triggerToast(t.toastRangePrompt(formatHourSlot(startHour)));
+      return;
+    }
+
+    // Already-set slot outside an active range: cycle individual slot (◯ -> △ -> ✕ -> unset).
     setResponses((prev) => cycleSlotChoice(prev, slotKey));
   };
 
@@ -106,6 +180,12 @@ export function useVoterForm({
       triggerToast(t.viewingBanner(viewingVote.name));
       return;
     }
+    setRangeStartByDate((prev) => {
+      if (!prev[day.dateKey]) return prev;
+      const next = { ...prev };
+      delete next[day.dateKey];
+      return next;
+    });
 
     const currentMode = dayWindowByDate[day.dateKey];
     const nextMode = currentMode === windowMode ? null : windowMode;
@@ -370,6 +450,7 @@ export function useVoterForm({
     editingVoteId,
     viewingVote,
     setViewingVote,
+    rangeStartByDate,
     activeMap,
     isSubmitting,
     showEditPickerModal,

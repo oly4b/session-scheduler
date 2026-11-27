@@ -174,6 +174,10 @@ export const COPY = {
     toastDeleteError: 'Error removing response.',
     toastCopiedShare: 'Copied SNS invite summary!',
     toastSelectManual: 'Text selected — press Ctrl/Cmd+C to copy',
+    toastRangePrompt: (startLabel) =>
+      `${startLabel}~ onwards marked ◯ — tap until what time you're free (or tap ${startLabel} again to keep)`,
+    toastRangeApplied: (startLabel, endLabel) =>
+      `Marked ${startLabel}–${endLabel} as ◯`,
   },
   ja: {
     badgeIntegrated: () => '空き状況 & 日程調整',
@@ -349,5 +353,9 @@ export const COPY = {
     toastDeleteError: '削除中にエラーが発生しました。',
     toastCopiedShare: '案内文をコピーしました！',
     toastSelectManual: 'テキストを選択しました — コピーしてください (Ctrl/Cmd+C)',
+    toastRangePrompt: (startLabel) =>
+      `${startLabel}〜以降を◯にしました — 何時まで空いているか終了時刻をタップ（${startLabel}をもう一度タップで確定）`,
+    toastRangeApplied: (startLabel, endLabel) =>
+      `${startLabel}〜${endLabel} を◯に設定しました`,
   },
 };

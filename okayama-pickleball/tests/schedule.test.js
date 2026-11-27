@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  applyDayTimeRange,
   applyDayWindowToResponses,
   buildCalendarWeeks,
   clearWeekResponses,
@@ -8,6 +9,7 @@ import {
   computeSlotTallies,
   computeTwoHourHighlights,
   cycleSlotChoice,
+  fillDayFromHourOnwards,
   fillWeekAllResponses,
   filterActiveVotes,
   findAttendeesAvailableForSession,
@@ -276,4 +278,31 @@ test('findAttendeesAvailableForSession works across arbitrary time ranges and du
     }),
     ['AllHours']
   );
+});
+
+test('fillDayFromHourOnwards and applyDayTimeRange fill contiguous time ranges', () => {
+  const dateKey = '2026-12-01';
+  const eligible = new Set([
+    `${dateKey}_13:00-14:00`,
+    `${dateKey}_14:00-15:00`,
+    `${dateKey}_15:00-16:00`,
+    `${dateKey}_16:00-17:00`,
+    `${dateKey}_17:00-18:00`,
+    `${dateKey}_18:00-19:00`,
+    `${dateKey}_19:00-20:00`,
+    `${dateKey}_20:00-21:00`,
+  ]);
+
+  const onwards = fillDayFromHourOnwards({}, dateKey, 13, eligible);
+  assert.equal(onwards[`${dateKey}_13:00-14:00`], 'yes');
+  assert.equal(onwards[`${dateKey}_16:00-17:00`], 'yes');
+  assert.equal(onwards[`${dateKey}_20:00-21:00`], 'yes');
+  assert.equal(onwards[`${dateKey}_12:00-13:00`], undefined);
+
+  const ranged = applyDayTimeRange(onwards, dateKey, 13, 18, eligible);
+  assert.equal(ranged[`${dateKey}_13:00-14:00`], 'yes');
+  assert.equal(ranged[`${dateKey}_15:00-16:00`], 'yes');
+  assert.equal(ranged[`${dateKey}_18:00-19:00`], 'yes');
+  assert.equal(ranged[`${dateKey}_19:00-20:00`], undefined);
+  assert.equal(ranged[`${dateKey}_20:00-21:00`], undefined);
 });

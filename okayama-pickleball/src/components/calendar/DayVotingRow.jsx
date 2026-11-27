@@ -16,6 +16,7 @@ export function DayVotingRow({
   twoHourHighlightMap,
   slotTallies,
   activeMap,
+  rangeStartSlotKey,
   gridViewMode,
   viewingVote,
   isJa,
@@ -236,10 +237,14 @@ export function DayVotingRow({
               'bg-rose-50/80 dark:bg-rose-950/45 [--slot-hover-bg:rgb(255_228_230_/_0.7)] [--slot-hover-bg-dark:rgb(136_19_55_/_0.55)]';
           }
 
+          const isRangeStart =
+            rangeStartSlotKey === slotKey && !showTallyDetails;
           const topPickRing =
             showTallyDetails && tally.isTopPick
               ? 'ring-2 ring-inset ring-amber-400'
-              : '';
+              : isRangeStart
+                ? 'ring-2 ring-inset ring-lime-400'
+                : '';
 
           return (
             <td

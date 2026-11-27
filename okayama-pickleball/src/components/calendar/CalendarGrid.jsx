@@ -44,6 +44,7 @@ export function CalendarGrid({
   twoHourHighlightMap,
   slotTallies,
   activeMap,
+  rangeStartByDate,
   isJa,
   t,
   onOpenBookingModal,
@@ -385,6 +386,7 @@ export function CalendarGrid({
                   twoHourHighlightMap={twoHourHighlightMap}
                   slotTallies={slotTallies}
                   activeMap={activeMap}
+                  rangeStartSlotKey={rangeStartByDate?.[day.dateKey]?.slotKey || ''}
                   gridViewMode={gridViewMode}
                   viewingVote={viewingVote}
                   isJa={isJa}

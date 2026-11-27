@@ -450,6 +450,7 @@ export default function App() {
           twoHourHighlightMap={twoHourHighlightMap}
           slotTallies={slotTallies}
           activeMap={voterForm.activeMap}
+          rangeStartByDate={voterForm.rangeStartByDate}
           isJa={isJa}
           t={t}
           onOpenBookingModal={bookingForm.handleOpenBookingModal}
