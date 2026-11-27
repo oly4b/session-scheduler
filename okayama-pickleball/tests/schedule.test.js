@@ -280,9 +280,10 @@ test('findAttendeesAvailableForSession works across arbitrary time ranges and du
   );
 });
 
-test('fillDayFromHourOnwards and applyDayTimeRange fill contiguous time ranges', () => {
+test('fillDayFromHourOnwards and applyDayTimeRange support multiple ranges and single-slot reset', () => {
   const dateKey = '2026-12-01';
   const eligible = new Set([
+    `${dateKey}_12:00-13:00`,
     `${dateKey}_13:00-14:00`,
     `${dateKey}_14:00-15:00`,
     `${dateKey}_15:00-16:00`,
@@ -293,16 +294,56 @@ test('fillDayFromHourOnwards and applyDayTimeRange fill contiguous time ranges',
     `${dateKey}_20:00-21:00`,
   ]);
 
-  const onwards = fillDayFromHourOnwards({}, dateKey, 13, eligible);
-  assert.equal(onwards[`${dateKey}_13:00-14:00`], 'yes');
-  assert.equal(onwards[`${dateKey}_16:00-17:00`], 'yes');
-  assert.equal(onwards[`${dateKey}_20:00-21:00`], 'yes');
-  assert.equal(onwards[`${dateKey}_12:00-13:00`], undefined);
+  // 1) Select 17:00-19:00
+  const firstPreview = fillDayFromHourOnwards({}, dateKey, 17, eligible);
+  assert.equal(firstPreview.responses[`${dateKey}_17:00-18:00`], 'yes');
+  assert.equal(firstPreview.responses[`${dateKey}_20:00-21:00`], 'yes');
 
-  const ranged = applyDayTimeRange(onwards, dateKey, 13, 18, eligible);
-  assert.equal(ranged[`${dateKey}_13:00-14:00`], 'yes');
-  assert.equal(ranged[`${dateKey}_15:00-16:00`], 'yes');
-  assert.equal(ranged[`${dateKey}_18:00-19:00`], 'yes');
-  assert.equal(ranged[`${dateKey}_19:00-20:00`], undefined);
-  assert.equal(ranged[`${dateKey}_20:00-21:00`], undefined);
+  const after17to19 = applyDayTimeRange(
+    firstPreview.responses,
+    dateKey,
+    17,
+    18,
+    eligible,
+    firstPreview.previewKeys
+  );
+  assert.equal(after17to19[`${dateKey}_17:00-18:00`], 'yes');
+  assert.equal(after17to19[`${dateKey}_18:00-19:00`], 'yes');
+  assert.equal(after17to19[`${dateKey}_19:00-20:00`], undefined);
+
+  // 2) Tap 15:00 -> stops before 17:00, then tap 16:00 -> keeps 15:00-16:00 and 17:00-19:00
+  const secondPreview = fillDayFromHourOnwards(after17to19, dateKey, 15, eligible);
+  assert.deepEqual(secondPreview.previewKeys, [
+    `${dateKey}_15:00-16:00`,
+    `${dateKey}_16:00-17:00`,
+  ]);
+  const after15to16 = applyDayTimeRange(
+    secondPreview.responses,
+    dateKey,
+    15,
+    16,
+    eligible,
+    secondPreview.previewKeys
+  );
+  assert.equal(after15to16[`${dateKey}_15:00-16:00`], 'yes');
+  assert.equal(after15to16[`${dateKey}_16:00-17:00`], 'yes');
+  assert.equal(after15to16[`${dateKey}_17:00-18:00`], 'yes');
+
+  // 3) Double-tap 13:00 -> only 13:00 is marked, 14:00 cleared, 15:00+ untouched
+  const thirdPreview = fillDayFromHourOnwards(after15to16, dateKey, 13, eligible);
+  assert.deepEqual(thirdPreview.previewKeys, [
+    `${dateKey}_13:00-14:00`,
+    `${dateKey}_14:00-15:00`,
+  ]);
+  const afterDoubleTap13 = applyDayTimeRange(
+    thirdPreview.responses,
+    dateKey,
+    13,
+    13,
+    eligible,
+    thirdPreview.previewKeys
+  );
+  assert.equal(afterDoubleTap13[`${dateKey}_13:00-14:00`], 'yes');
+  assert.equal(afterDoubleTap13[`${dateKey}_14:00-15:00`], undefined);
+  assert.equal(afterDoubleTap13[`${dateKey}_15:00-16:00`], 'yes');
 });

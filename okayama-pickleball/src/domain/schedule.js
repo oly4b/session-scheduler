@@ -471,8 +471,12 @@ export function cycleSlotChoice(responses, slotKey) {
 }
 
 /**
- * Marks `startHour` and all subsequent 2h-eligible slots on `dateKey` as `'yes'`
- * when a voter starts a time-range selection (assuming free from that hour onwards).
+ * Marks `startHour` and subsequent unset 2h-eligible slots on `dateKey` as `'yes'`,
+ * stopping before the next already-selected slot so existing ranges on the same
+ * day (e.g. `17:00-19:00` when tapping `15:00`) are never overwritten.
+ *
+ * Returns `{ responses, previewKeys }` so a second tap can trim or reset only
+ * the auto-filled preview slots.
  */
 export function fillDayFromHourOnwards(
   responses,
@@ -481,34 +485,44 @@ export function fillDayFromHourOnwards(
   twoHourEligibleSlotKeys
 ) {
   const next = { ...responses };
+  const previewKeys = [];
   for (const block of TIME_BLOCKS) {
     if (block.startHour < startHour) continue;
     const slotKey = `${dateKey}_${block.id}`;
     if (!twoHourEligibleSlotKeys.has(slotKey)) continue;
+    if (block.startHour > startHour && next[slotKey]) break;
     next[slotKey] = 'yes';
+    previewKeys.push(slotKey);
   }
-  return next;
+  return { responses: next, previewKeys };
 }
 
 /**
- * Finalizes a range selection on `dateKey`: sets all 2h-eligible slots in
- * `[fromHour, untilHour]` (inclusive) to `'yes'` and clears any auto-filled
- * slots after `untilHour`.
+ * Finalizes a range selection on `dateKey`: keeps `fromHour..untilHour` as `'yes'`
+ * and clears only the auto-filled `previewKeys` after `untilHour`, leaving any
+ * previously selected ranges on the same date intact.
  */
 export function applyDayTimeRange(
   responses,
   dateKey,
   fromHour,
   untilHour,
-  twoHourEligibleSlotKeys
+  twoHourEligibleSlotKeys,
+  previewKeys = null
 ) {
   const next = { ...responses };
+  const previewSet = previewKeys ? new Set(previewKeys) : null;
   for (const block of TIME_BLOCKS) {
     if (block.startHour < fromHour) continue;
     const slotKey = `${dateKey}_${block.id}`;
     if (!twoHourEligibleSlotKeys.has(slotKey)) continue;
-    if (block.startHour <= untilHour) next[slotKey] = 'yes';
-    else delete next[slotKey];
+    if (block.startHour <= untilHour) {
+      if (!previewSet || previewSet.has(slotKey)) {
+        next[slotKey] = 'yes';
+      }
+    } else if (!previewSet || previewSet.has(slotKey)) {
+      delete next[slotKey];
+    }
   }
   return next;
 }

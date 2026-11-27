@@ -113,9 +113,20 @@ export function useVoterForm({
     const { dateKey, startHour } = slotMeta;
     const activeStart = rangeStartByDate[dateKey];
 
-    // Step 2: Finish an active range selection on this specific date.
+    // Step 2: Finish or reset an active range selection on this date.
     if (activeStart) {
+      // Double-tapping the start slot resets the range preview to only that single slot.
       if (startHour === activeStart.startHour) {
+        setResponses((prev) =>
+          applyDayTimeRange(
+            prev,
+            dateKey,
+            activeStart.startHour,
+            activeStart.startHour,
+            twoHourEligibleSlotKeys,
+            activeStart.previewKeys
+          )
+        );
         setRangeStartByDate((prev) => {
           const next = { ...prev };
           delete next[dateKey];
@@ -130,7 +141,8 @@ export function useVoterForm({
             dateKey,
             activeStart.startHour,
             startHour,
-            twoHourEligibleSlotKeys
+            twoHourEligibleSlotKeys,
+            activeStart.previewKeys
           )
         );
         setRangeStartByDate((prev) => {
@@ -146,26 +158,39 @@ export function useVoterForm({
         );
         return;
       }
-      // Clicked an earlier hour on this date: restart range from this earlier hour onwards.
-      setResponses((prev) =>
-        fillDayFromHourOnwards(prev, dateKey, startHour, twoHourEligibleSlotKeys)
-      );
-      setRangeStartByDate((prev) => ({
-        ...prev,
-        [dateKey]: { startHour, slotKey },
-      }));
+      // Clicked an earlier hour while a range was open: clear old preview and start fresh.
+      setResponses((prev) => {
+        const cleaned = { ...prev };
+        for (const k of activeStart.previewKeys || []) delete cleaned[k];
+        const { responses: nextResponses, previewKeys } = fillDayFromHourOnwards(
+          cleaned,
+          dateKey,
+          startHour,
+          twoHourEligibleSlotKeys
+        );
+        setRangeStartByDate((rPrev) => ({
+          ...rPrev,
+          [dateKey]: { startHour, slotKey, previewKeys },
+        }));
+        return nextResponses;
+      });
       triggerToast(t.toastRangePrompt(formatHourSlot(startHour)));
       return;
     }
 
-    // Step 1: Tapping an unset slot starts an independent range on this date.
+    // Step 1: Tapping any unset slot starts a range on that date, stopping before
+    // any existing selections so multiple ranges (e.g. 17-19 -> 15-16 -> 12-13) work.
     if (!responses[slotKey]) {
-      setResponses((prev) =>
-        fillDayFromHourOnwards(prev, dateKey, startHour, twoHourEligibleSlotKeys)
+      const { responses: nextResponses, previewKeys } = fillDayFromHourOnwards(
+        responses,
+        dateKey,
+        startHour,
+        twoHourEligibleSlotKeys
       );
+      setResponses(nextResponses);
       setRangeStartByDate((prev) => ({
         ...prev,
-        [dateKey]: { startHour, slotKey },
+        [dateKey]: { startHour, slotKey, previewKeys },
       }));
       triggerToast(t.toastRangePrompt(formatHourSlot(startHour)));
       return;
@@ -202,6 +227,14 @@ export function useVoterForm({
     );
   };
 
+  const clearDateKeysFromMap = (prev, dateKeys) => {
+    const next = { ...prev };
+    for (const dateKey of dateKeys) {
+      delete next[dateKey];
+    }
+    return next;
+  };
+
   const handleFillActiveWeekAll = () => {
     if (viewingVote) {
       triggerToast(t.viewingBanner(viewingVote.name));
@@ -209,6 +242,7 @@ export function useVoterForm({
     }
 
     const week = calendarWeeks[activeWeekIdx];
+    const weekDateKeys = new Set(week.days.map((day) => day.dateKey));
     const { responses: nextResponses, dayWindows } = fillWeekAllResponses(
       responses,
       week,
@@ -218,6 +252,7 @@ export function useVoterForm({
 
     setResponses(nextResponses);
     setDayWindowByDate((prev) => ({ ...prev, ...dayWindows }));
+    setRangeStartByDate((prev) => clearDateKeysFromMap(prev, weekDateKeys));
     triggerToast(`${week.shortTitle}: ${t.weekFillAll}`);
   };
 
@@ -230,14 +265,8 @@ export function useVoterForm({
     const week = calendarWeeks[activeWeekIdx];
     const weekDateKeys = new Set(week.days.map((day) => day.dateKey));
 
-    setDayWindowByDate((prev) => {
-      const next = { ...prev };
-      for (const dateKey of weekDateKeys) {
-        delete next[dateKey];
-      }
-      return next;
-    });
-
+    setDayWindowByDate((prev) => clearDateKeysFromMap(prev, weekDateKeys));
+    setRangeStartByDate((prev) => clearDateKeysFromMap(prev, weekDateKeys));
     setResponses((prev) => clearWeekResponses(prev, allOpenSlots, activeWeekIdx));
 
     triggerToast(`${t.weekClearAll}: ${week.shortTitle}`);
@@ -275,6 +304,7 @@ export function useVoterForm({
       }
 
       setViewingVote(null);
+      setRangeStartByDate({});
       setEditingVoteId(vote.id);
       setVoterName(vote.name || '');
       setVoterNote(vote.note || '');
